@@ -1,0 +1,41 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+networkx==3.4.2
+scipy>=1.11          # networkx pagerank (sparse) + gaussian KDE
+scikit-learn>=1.4   # DBSCAN / ST-DBSCAN hotspot clustering + baselines
+# --- Phase 9 risk-scoring foundation models ---
+# Google TabFM = the PRIMARY zero-shot tabular foundation model (doc 02 §2).
+# It is a 1.64B-param / 6.3GB model: needs a GPU or ~8GB+ free RAM (bf16 ~3.3GB).
+# TabPFN v2 is the CPU-feasible drop-in alternative; XGBoost is the calibration
+# baseline. The ModelInterface auto-detects these and falls back gracefully
+# (TabFM -> TabPFN -> in-context) based on availability + free RAM.
+tabfm==1.0.0        # Google TabFM (primary foundation model)
+tabpfn==2.0.9       # TabPFN v2 (drop-in alternative, CPU-friendly)
+xgboost>=2.0        # gradient-boosted calibration baseline (doc 02 §9)
+torch>=2.2          # foundation-model backend (CPU build sufficient)
+# --- Phase 10 similar-case embeddings (doc 02 §5) ---
+# The PRIMARY encoder is a 768-dim multilingual sentence-transformer
+# (paraphrase-multilingual-mpnet-base-v2, EN + Kannada in one space). The
+# EmbedderInterface uses it when importable and falls back to a deterministic
+# 768-dim hashing encoder otherwise (always available, no heavy download), so
+# similar-case search works with or without this dependency.
+sentence-transformers>=2.2   # optional but preferred; hashing fallback if absent
+# --- Phase 12 forecasting learned models (doc 02 §4, doc 05 §2-3) ---
+# TimesFM 2.5 (200M) is the real zero-shot count forecaster (fan-chart quantiles);
+# torch-geometric powers the real spatio-temporal GNN (GCN + GRU + MC-dropout).
+# Both are used when importable; the layers keep a statistical/numpy fallback so
+# forecasting still runs if they are absent.
+timesfm==2.0.2          # ships the TimesFM 2.5 200M PyTorch model
+torch-geometric>=2.8    # ST-GNN spatial conv (native scatter; no torch-scatter/sparse)
+# NOTE: torch-geometric-temporal is intentionally NOT pinned — it hard-requires
+# torch-scatter/torch-sparse, which have no wheels for this torch build (and need
+# MSVC to compile). The ST-GNN is therefore built directly on torch-geometric to
+# the same end (A3TGCN-style GRU+GCN). Install torch-geometric-temporal on a
+# platform with those wheels to swap in its prebuilt cells.
+# test/dev
+httpx==0.28.1
+pytest==8.3.4

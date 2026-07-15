@@ -1,0 +1,23 @@
+# DRISHTI ML service stub.
+# Secrets are NOT baked into the image; DATABASE_URL is injected at runtime.
+# Provide it via a shell env var or an env_file (kept out of the image/VCS).
+#
+#   DATABASE_URL=postgresql://... docker compose up --build
+#
+services:
+  drishti-ml:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: drishti/ml:0.1.0
+    container_name: drishti-ml
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in your shell or env_file}
+      READONLY_ROLE: ${READONLY_ROLE:-drishti_readonly}
+    # Optional: load from a local env file that is git-ignored and NOT copied
+    # into the image. Uncomment to use.
+    # env_file:
+    #   - ../../.env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

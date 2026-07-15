@@ -1,0 +1,18 @@
+# Never ship secrets, tests, caches, or multi-GB model weights into the image.
+**/.env
+**/*.env
+.env
+tests/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.md
+docker-compose.yml
+# TabFM weights (3.3GB bf16 / 6.3GB fp32) are downloaded/converted at deploy time,
+# never baked into the image.
+models/
+*.safetensors
+_*.py
+_*.txt

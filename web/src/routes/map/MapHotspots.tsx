@@ -1,0 +1,738 @@
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { Layer, PickingInfo } from "@deck.gl/core";
+import {
+  Box,
+  Building2,
+  Camera,
+  Flame,
+  Layers,
+  MapPin,
+  Radar,
+  Share2,
+  Shield,
+  Siren,
+} from "lucide-react";
+import { api } from "@/api";
+import type { AlertFeature, CaseLinkNode, MapCell, PointFeature, StationFeature } from "@/api/types";
+import { cn, formatNumber } from "@/lib/utils";
+import { categoryColor } from "@/lib/palette";
+import { useRole } from "@/providers/RoleProvider";
+import { useTimeStore } from "@/stores/useTimeStore";
+import { useUIStore } from "@/stores/useUIStore";
+import { usePeekStore } from "@/stores/usePeekStore";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect } from "@/components/ui/native-select";
+import { ExportViewButton, PrintHeader } from "@/components/common/PrintExport";
+import { Layer as MlLayer, Marker, Source } from "react-map-gl/maplibre";
+import { MapCanvas, type MapViewState } from "@/components/map/MapCanvas";
+import { basemapStyle, BASEMAP_OPTIONS, KARNATAKA_VIEW, type BasemapId } from "@/components/map/mapConfig";
+import { StreetViewPanel } from "@/components/map/StreetViewPanel";
+import { CasePopup, StationPopup } from "@/components/map/MapDetailPopup";
+import { hasMapillary, MAPILLARY_TILES } from "@/components/map/mapillary";
+import {
+  alertCore,
+  alertPulse,
+  caseArcs,
+  coverageGaps,
+  densityHeatmap,
+  districtSymbols,
+  forecastCells,
+  hexBins3D,
+  hexColorDomain,
+  hotspotOutlines,
+  linkSource,
+  linkTargets,
+  pointsHex,
+  pointsScatter,
+  stationMarkers,
+  type DistrictAgg,
+} from "@/components/map/layers";
+
+type Mode = "live" | "hotspots" | "forecast" | "patrol" | "alerts";
+const MODES: { key: Mode; label: string; icon: React.ElementType }[] = [
+  { key: "live", label: "Live Map", icon: MapPin },
+  { key: "hotspots", label: "Hotspots", icon: Flame },
+  { key: "forecast", label: "Forecast", icon: Radar },
+  { key: "patrol", label: "Patrol Planning", icon: Shield },
+  { key: "alerts", label: "Red-Zone Alerts", icon: Siren },
+];
+
+const TOD_BUCKETS: { key: string; label: string; range: [number, number] | null }[] = [
+  { key: "all", label: "All day", range: null },
+  { key: "night", label: "Night 0–6", range: [0, 6] },
+  { key: "morning", label: "Morning 6–12", range: [6, 12] },
+  { key: "afternoon", label: "Noon 12–18", range: [12, 18] },
+  { key: "evening", label: "Evening 18–24", range: [18, 24] },
+];
+
+const HORIZONS = [7, 14, 30];
+const STATION_MIN_ZOOM = 7;
+
+type Selected =
+  | { type: "case"; id: number; lon: number; lat: number }
+  | { type: "station"; station: StationFeature }
+  | null;
+
+function haversineKm(a: [number, number], b: [number, number]) {
+  const R = 6371;
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+  const dLon = ((b[0] - a[0]) * Math.PI) / 180;
+  const la1 = (a[1] * Math.PI) / 180;
+  const la2 = (b[1] * Math.PI) / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+export function MapHotspots() {
+  const { role } = useRole();
+  const push = usePeekStore((s) => s.push);
+  const playhead = useTimeStore((s) => s.playhead);
+  const theme = useUIStore((s) => s.theme);
+  const isPolicymaker = role === "policymaker";
+
+  const [viewState, setViewState] = useState<MapViewState>(KARNATAKA_VIEW);
+  const [mode, setMode] = useState<Mode>(isPolicymaker ? "forecast" : "live");
+  const [tod, setTod] = useState("all");
+  const [horizon, setHorizon] = useState(30);
+  const [crimeFilter, setCrimeFilter] = useState("");
+  const [showStations, setShowStations] = useState(true);
+  const [ackIds, setAckIds] = useState<Set<number>>(new Set());
+  const [pulse, setPulse] = useState(0);
+  const [selected, setSelected] = useState<Selected>(null);
+  const [streetView, setStreetView] = useState<{ lon: number; lat: number } | null>(null);
+  const [svCamera, setSvCamera] = useState<{ lon: number; lat: number } | null>(null);
+  const [showCoverage, setShowCoverage] = useState(false);
+  // 3D + basemap + connections
+  const [basemap, setBasemap] = useState<BasemapId>("auto");
+  const [is3D, setIs3D] = useState(false);
+  const [hex3D, setHex3D] = useState(false);
+  const [showLinks, setShowLinks] = useState(false);
+  const [linkHub, setLinkHub] = useState<{ id: number; lon: number; lat: number } | null>(null);
+
+  const allowedModes = isPolicymaker ? MODES.filter((m) => m.key === "forecast") : MODES;
+
+  const mapStyle = basemapStyle(basemap, theme);
+
+  const set3D = (on: boolean) => {
+    setIs3D(on);
+    setViewState((v) => ({ ...v, pitch: on ? 50 : 0, bearing: on ? v.bearing : 0 }));
+  };
+
+  // The only looping animation in the product: red-zone pulse.
+  useEffect(() => {
+    if (mode !== "alerts") return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setPulse(0.5);
+      return;
+    }
+    const t = window.setInterval(() => setPulse((p) => (p + 0.04) % 1), 55);
+    return () => window.clearInterval(t);
+  }, [mode]);
+  useEffect(() => setSelected(null), [mode]);
+
+  // --- data. NB: incidents/hotspots are NOT constrained by the global time
+  // window (the dataset spans 2021–2025; a "last 30 days" window would be empty).
+  // The scrubber's playhead instead animates over the data's OWN date range. ---
+  const needPoints = mode === "live" || mode === "hotspots";
+  const pointsQ = useQuery({
+    queryKey: ["geo", "points", "all"],
+    queryFn: ({ signal }) => api.geo.points({ limit: 12000 }, signal),
+    enabled: needPoints && !isPolicymaker,
+  });
+  const stationsQ = useQuery({
+    queryKey: ["geo", "stations"],
+    queryFn: ({ signal }) => api.geo.stations({ limit: 1500 }, signal),
+    enabled: mode === "live" && !isPolicymaker,
+  });
+  const hotspotsQ = useQuery({
+    queryKey: ["geo", "hotspots", "map"],
+    queryFn: ({ signal }) => api.geo.hotspots({ limit: 1500 }, signal),
+    enabled: mode === "hotspots" || mode === "patrol",
+  });
+  const forecastQ = useQuery({
+    queryKey: ["forecast", "map", "fused"],
+    queryFn: ({ signal }) => api.forecast.map({ layer: "fused" }, signal),
+    enabled: mode === "forecast" || mode === "patrol",
+  });
+  const alertsQ = useQuery({
+    queryKey: ["geo", "alerts", "map"],
+    queryFn: ({ signal }) => api.geo.alerts({ limit: 300 }, signal),
+    enabled: mode === "alerts",
+  });
+  const linksQ = useQuery({
+    queryKey: ["geo", "case-links", linkHub?.id],
+    queryFn: ({ signal }) => api.geo.caseLinks(linkHub!.id, 80, signal),
+    enabled: mode === "live" && showLinks && linkHub != null,
+  });
+
+  useEffect(() => {
+    if (!showLinks) setLinkHub(null);
+  }, [showLinks]);
+
+  const allPoints = pointsQ.data?.points ?? [];
+
+  // Distinct crime types actually present (drives the filter + legend).
+  const crimeGroups = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of allPoints) if (p.crime_group) counts.set(p.crime_group, (counts.get(p.crime_group) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g);
+  }, [allPoints]);
+
+  // Playhead → reveal incidents up to a cutoff within the data's own range.
+  const dataRange = useMemo<[number, number] | null>(() => {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const p of allPoints) {
+      if (!p.date) continue;
+      const t = new Date(p.date).getTime();
+      if (t < min) min = t;
+      if (t > max) max = t;
+    }
+    return Number.isFinite(min) && Number.isFinite(max) ? [min, max] : null;
+  }, [allPoints]);
+
+  const windowPoints = useMemo(() => {
+    if (playhead >= 0.999 || !dataRange) return allPoints;
+    const cutoff = dataRange[0] + (dataRange[1] - dataRange[0]) * playhead;
+    return allPoints.filter((p) => !p.date || new Date(p.date).getTime() <= cutoff);
+  }, [allPoints, playhead, dataRange]);
+
+  const visiblePoints = useMemo(
+    () => (crimeFilter ? windowPoints.filter((p) => p.crime_group === crimeFilter) : windowPoints),
+    [windowPoints, crimeFilter],
+  );
+
+  const todPoints = useMemo(() => {
+    const bucket = TOD_BUCKETS.find((b) => b.key === tod);
+    if (!bucket?.range) return visiblePoints;
+    const [lo, hi] = bucket.range;
+    return visiblePoints.filter((p) => p.hour != null && p.hour >= lo && p.hour < hi);
+  }, [visiblePoints, tod]);
+
+  // Clamped colour domains so the extreme metro outlier can't collapse the ramp
+  // (Live low-zoom hex + Hotspots 3D hex both use quantize over these domains).
+  const liveHexDomain = useMemo(() => hexColorDomain(visiblePoints), [visiblePoints]);
+  const hotspotHexDomain = useMemo(() => hexColorDomain(todPoints), [todPoints]);
+
+  const stations = stationsQ.data?.stations ?? [];
+
+  const districtAggs = useMemo<DistrictAgg[]>(() => {
+    const cells = forecastQ.data?.cells ?? [];
+    const by = new Map<number, { lon: number; lat: number; pred: number; conf: number; n: number }>();
+    for (const c of cells) {
+      if (c.district_id == null || c.lat == null || c.lon == null) continue;
+      const cur = by.get(c.district_id) ?? { lon: 0, lat: 0, pred: 0, conf: 0, n: 0 };
+      cur.lon += c.lon;
+      cur.lat += c.lat;
+      cur.pred += c.predicted_count ?? 0;
+      cur.conf += c.confidence ?? 0;
+      cur.n += 1;
+      by.set(c.district_id, cur);
+    }
+    return [...by.entries()].map(([district_id, v]) => ({
+      district_id,
+      lon: v.lon / v.n,
+      lat: v.lat / v.n,
+      predicted: v.pred,
+      confidence: v.conf / v.n,
+    }));
+  }, [forecastQ.data]);
+
+  const gaps = useMemo(() => {
+    const cells = (forecastQ.data?.cells ?? []).filter((c) => c.lat != null && c.lon != null);
+    if (!cells.length) return [];
+    const sorted = [...cells].sort((a, b) => (b.predicted_count ?? 0) - (a.predicted_count ?? 0));
+    const top = sorted.slice(0, Math.ceil(sorted.length * 0.25));
+    const centroids = (hotspotsQ.data?.hotspots ?? [])
+      .filter((h) => h.centroid_lon != null && h.centroid_lat != null)
+      .map((h) => [h.centroid_lon as number, h.centroid_lat as number] as [number, number]);
+    return top
+      .filter((c) => {
+        const p: [number, number] = [c.lon as number, c.lat as number];
+        return !centroids.some((h) => haversineKm(p, h) < 3);
+      })
+      .map((c) => ({ lon: c.lon as number, lat: c.lat as number, predicted: c.predicted_count ?? 0 }));
+  }, [forecastQ.data, hotspotsQ.data]);
+
+  const activeAlerts = (alertsQ.data?.alerts ?? []).filter((a) => !ackIds.has(a.alert_id));
+  const horizonScale = horizon / 30;
+
+  const layers = useMemo<Layer[]>(() => {
+    const L: Layer[] = [];
+    if (isPolicymaker) {
+      L.push(districtSymbols(districtAggs, horizonScale));
+      return L;
+    }
+    if (mode === "live") {
+      const onCaseClick = (p: PointFeature) => {
+        setSelected({ type: "case", id: p.case_id, lon: p.lon, lat: p.lat });
+        if (showLinks) {
+          setLinkHub({ id: p.case_id, lon: p.lon, lat: p.lat });
+          if (!is3D) set3D(true);
+        }
+      };
+      if (viewState.zoom < 8.5) L.push(pointsHex(visiblePoints, liveHexDomain));
+      else L.push(pointsScatter(visiblePoints, onCaseClick));
+      if (showStations && viewState.zoom >= STATION_MIN_ZOOM)
+        L.push(stationMarkers(stations, (s) => setSelected({ type: "station", station: s })));
+      // Connected-cases 3D arcs (shared accused footprint)
+      const lk = linksQ.data;
+      if (showLinks && linkHub && lk && lk.source_lon != null && lk.source_lat != null) {
+        const src = { lon: lk.source_lon, lat: lk.source_lat };
+        L.push(caseArcs(src, lk.links));
+        L.push(
+          linkTargets(lk.links, (l: CaseLinkNode) => {
+            setSelected({ type: "case", id: l.case_id, lon: l.lon, lat: l.lat });
+            setLinkHub({ id: l.case_id, lon: l.lon, lat: l.lat });
+          }),
+        );
+        L.push(linkSource(src));
+      }
+    } else if (mode === "hotspots") {
+      if (hex3D) {
+        L.push(hexBins3D(todPoints, true, hotspotHexDomain));
+      } else {
+        L.push(densityHeatmap(todPoints));
+        if (hotspotsQ.data) L.push(hotspotOutlines(hotspotsQ.data.hotspots));
+      }
+    } else if (mode === "forecast") {
+      L.push(forecastCells(forecastQ.data?.cells ?? [], horizonScale));
+      L.push(districtSymbols(districtAggs, horizonScale));
+    } else if (mode === "patrol") {
+      L.push(forecastCells(forecastQ.data?.cells ?? [], horizonScale));
+      L.push(coverageGaps(gaps));
+    } else if (mode === "alerts") {
+      L.push(alertPulse(activeAlerts, pulse));
+      L.push(
+        alertCore(activeAlerts, (a) =>
+          push({ kind: "alert", id: a.alert_id, label: a.title, sublabel: a.district_name ?? a.alert_type }),
+        ),
+      );
+    }
+    return L;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isPolicymaker, visiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D]);
+
+  const getTooltip = (info: PickingInfo): { html: string; style: Record<string, string> } | null => {
+    const o = info.object as unknown;
+    if (!o) return null;
+    let html = "";
+    const id = info.layer?.id;
+    if (id === "incident-points") html = `${(o as PointFeature).crime_group ?? "Incident"} · case ${(o as PointFeature).case_id}`;
+    else if (id === "incident-hex") html = `${(o as { points?: unknown[] }).points?.length ?? ""} incidents`;
+    else if (id === "police-stations") html = `${(o as StationFeature).name ?? "Station"} · ${(o as StationFeature).case_count} cases`;
+    else if (id === "link-targets") html = `${(o as CaseLinkNode).crime_no ?? "Case"} · linked via ${(o as CaseLinkNode).via ?? "shared accused"}`;
+    else if (id === "hotspot-hex-3d") html = `${(o as { points?: unknown[] }).points?.length ?? ""} incidents`;
+    else if (id === "forecast-cells") html = `~${Math.round(((o as MapCell).predicted_count ?? 0) * horizonScale)} predicted · ${Math.round(((o as MapCell).confidence ?? 0) * 100)}% conf`;
+    else if (id === "district-symbols") html = `District ${(o as DistrictAgg).district_id} · ~${Math.round((o as DistrictAgg).predicted * horizonScale)} predicted`;
+    else if (id === "coverage-gaps") html = `Coverage gap · ~${Math.round((o as { predicted: number }).predicted)} predicted, no nearby hotspot`;
+    else if (id === "alert-core") html = `${(o as AlertFeature).severity.toUpperCase()} · ${(o as AlertFeature).title}`;
+    if (!html) return null;
+    return {
+      html,
+      style: {
+        background: "#1d2740",
+        color: "#e8ecf6",
+        fontSize: "12px",
+        padding: "4px 8px",
+        borderRadius: "8px",
+        border: "1px solid #28324d",
+      },
+    };
+  };
+
+  return (
+    <div>
+      <PrintHeader title="Map & Hotspots" />
+      {/* Mode sub-nav */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1">
+          {allowedModes.map((m) => {
+            const Icon = m.icon;
+            const active = mode === m.key;
+            return (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setMode(m.key)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-control px-2.5 py-1.5 text-13 font-medium transition-colors",
+                  active ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content",
+                )}
+              >
+                <Icon className="size-4" />
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2">
+          {isPolicymaker && <Badge variant="neutral">District-aggregate only</Badge>}
+          <ExportViewButton />
+        </div>
+      </div>
+
+      {/* Map + floating panels */}
+      <div className="relative h-[calc(100vh-11rem)] overflow-hidden rounded-card border border-hairline">
+        <MapCanvas
+          viewState={viewState}
+          onViewStateChange={setViewState}
+          layers={layers}
+          getTooltip={getTooltip}
+          mapStyle={mapStyle}
+          onMapClick={(ll) => streetView && setStreetView({ lon: ll.lng, lat: ll.lat })}
+        >
+          {showCoverage && MAPILLARY_TILES && (
+            <Source id="mly-coverage" type="vector" tiles={[MAPILLARY_TILES]} minzoom={6} maxzoom={14}>
+              <MlLayer id="mly-sequence" type="line" source-layer="sequence" paint={{ "line-color": "#12b981", "line-width": 1.2, "line-opacity": 0.55 }} />
+              <MlLayer id="mly-image" type="circle" source-layer="image" minzoom={12} paint={{ "circle-radius": 2, "circle-color": "#12b981", "circle-opacity": 0.6 }} />
+            </Source>
+          )}
+          {streetView && (svCamera ?? streetView) && (
+            <Marker longitude={(svCamera ?? streetView).lon} latitude={(svCamera ?? streetView).lat} anchor="center">
+              <span className="block size-3 rounded-full border-2 border-white bg-primary shadow" />
+            </Marker>
+          )}
+          {selected?.type === "case" && (
+            <CasePopup id={selected.id} lon={selected.lon} lat={selected.lat} onClose={() => setSelected(null)} />
+          )}
+          {selected?.type === "station" && (
+            <StationPopup station={selected.station} onClose={() => setSelected(null)} />
+          )}
+        </MapCanvas>
+
+        {streetView && (
+          <StreetViewPanel
+            target={streetView}
+            onClose={() => {
+              setStreetView(null);
+              setSvCamera(null);
+            }}
+            onImageLocated={(lon, lat) => setSvCamera({ lon, lat })}
+          />
+        )}
+
+        {/* Left control card */}
+        <div className="absolute left-3 top-3 z-10 max-h-[calc(100%-1.5rem)] w-64 overflow-y-auto rounded-card border border-hairline bg-surface/95 p-3 shadow-pop backdrop-blur">
+          {/* Map view: basemap + 3D (always available) */}
+          <div className="mb-3 space-y-2 border-b border-hairline pb-3">
+            <div className="flex items-center gap-1.5 text-12 font-semibold text-content-dim">
+              <Layers className="size-3.5" /> Map view
+            </div>
+            <NativeSelect
+              value={basemap}
+              onChange={(v) => setBasemap(v as BasemapId)}
+              options={BASEMAP_OPTIONS.map((b) => ({ value: b.id, label: b.label }))}
+              placeholder="Match theme"
+              aria-label="Basemap"
+            />
+            <button
+              type="button"
+              onClick={() => set3D(!is3D)}
+              className={cn(
+                "flex w-full items-center justify-center gap-1.5 rounded-control px-2 py-1.5 text-12 font-medium transition-colors",
+                is3D ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content",
+              )}
+            >
+              <Box className="size-3.5" /> {is3D ? "3D tilt: on" : "3D tilt"}
+            </button>
+          </div>
+          <ModeControls
+            mode={mode}
+            isPolicymaker={isPolicymaker}
+            pointsCount={visiblePoints.length}
+            stationCount={stations.length}
+            hotspotCount={hotspotsQ.data?.count}
+            forecastCount={forecastQ.data?.count}
+            crimeGroups={crimeGroups}
+            crimeFilter={crimeFilter}
+            setCrimeFilter={setCrimeFilter}
+            showStations={showStations}
+            setShowStations={setShowStations}
+            showLinks={showLinks}
+            setShowLinks={setShowLinks}
+            linkCount={linksQ.data?.count}
+            linkActive={linkHub != null}
+            hex3D={hex3D}
+            setHex3D={(v) => {
+              setHex3D(v);
+              if (v && !is3D) set3D(true);
+            }}
+            tod={tod}
+            setTod={setTod}
+            horizon={horizon}
+            setHorizon={setHorizon}
+            zoom={viewState.zoom}
+            alerts={activeAlerts}
+            ack={(id) => setAckIds((s) => new Set(s).add(id))}
+            onAlertClick={(a) => push({ kind: "alert", id: a.alert_id, label: a.title, sublabel: a.district_name ?? a.alert_type })}
+          />
+          <div className="mt-3 space-y-1.5 border-t border-hairline pt-2.5">
+            {hasMapillary() ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStreetView((sv) => (sv ? null : { lon: viewState.longitude, lat: viewState.latitude }))}
+                  className={cn(
+                    "flex w-full items-center justify-center gap-1.5 rounded-control px-2 py-1.5 text-12 font-medium transition-colors",
+                    streetView ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content",
+                  )}
+                >
+                  <Camera className="size-3.5" /> {streetView ? "Close street view" : "Street view"}
+                </button>
+                <label className="flex cursor-pointer items-center gap-2 px-0.5 text-12 text-content-dim">
+                  <input type="checkbox" checked={showCoverage} onChange={(e) => setShowCoverage(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
+                  Show Mapillary coverage
+                </label>
+                {streetView && <p className="text-[11px] text-content-dim">Click the map to move the camera.</p>}
+              </>
+            ) : (
+              <p className="text-[11px] text-content-dim">
+                Set <code className="rounded bg-surface-2 px-1">VITE_MAPILLARY_TOKEN</code> for street view.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <Legend mode={mode} isPolicymaker={isPolicymaker} crimeGroups={crimeGroups} />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ Controls ---------------------------------- */
+function ModeControls({
+  mode,
+  isPolicymaker,
+  pointsCount,
+  stationCount,
+  hotspotCount,
+  forecastCount,
+  crimeGroups,
+  crimeFilter,
+  setCrimeFilter,
+  showStations,
+  setShowStations,
+  showLinks,
+  setShowLinks,
+  linkCount,
+  linkActive,
+  hex3D,
+  setHex3D,
+  tod,
+  setTod,
+  horizon,
+  setHorizon,
+  zoom,
+  alerts,
+  ack,
+  onAlertClick,
+}: {
+  mode: Mode;
+  isPolicymaker: boolean;
+  pointsCount: number;
+  stationCount: number;
+  hotspotCount?: number;
+  forecastCount?: number;
+  crimeGroups: string[];
+  crimeFilter: string;
+  setCrimeFilter: (v: string) => void;
+  showStations: boolean;
+  setShowStations: (v: boolean) => void;
+  showLinks: boolean;
+  setShowLinks: (v: boolean) => void;
+  linkCount?: number;
+  linkActive: boolean;
+  hex3D: boolean;
+  setHex3D: (v: boolean) => void;
+  tod: string;
+  setTod: (v: string) => void;
+  horizon: number;
+  setHorizon: (v: number) => void;
+  zoom: number;
+  alerts: AlertFeature[];
+  ack: (id: number) => void;
+  onAlertClick: (a: AlertFeature) => void;
+}) {
+  if (isPolicymaker || mode === "forecast" || mode === "patrol") {
+    return (
+      <div className="space-y-2.5">
+        <div className="text-13 font-semibold text-content">{isPolicymaker ? "District forecast" : mode === "patrol" ? "Patrol planning" : "Forecast"}</div>
+        <div>
+          <div className="mb-1 text-12 text-content-dim">Horizon</div>
+          <div className="flex gap-1">
+            {HORIZONS.map((h) => (
+              <button key={h} type="button" onClick={() => setHorizon(h)} className={cn("flex-1 rounded-control px-2 py-1 text-12 font-medium transition-colors", horizon === h ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content")}>
+                {h}d
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-content-dim">Linear projection from the fused daily forecast.</p>
+        </div>
+        {forecastCount != null && <div className="tnum text-12 text-content-dim">{formatNumber(forecastCount)} forecast cells</div>}
+        {mode === "patrol" && <p className="text-12 text-content-dim">Red rings mark high-forecast cells with no historical hotspot nearby — emerging coverage gaps.</p>}
+      </div>
+    );
+  }
+
+  if (mode === "live") {
+    return (
+      <div className="space-y-2.5">
+        <div className="text-13 font-semibold text-content">Live incidents</div>
+        <div>
+          <div className="mb-1 text-12 text-content-dim">Crime type</div>
+          <NativeSelect
+            value={crimeFilter}
+            onChange={setCrimeFilter}
+            options={crimeGroups.map((g) => ({ value: g, label: g }))}
+            placeholder="All crime types"
+            aria-label="Crime type filter"
+          />
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-12 text-content">
+          <input type="checkbox" checked={showStations} onChange={(e) => setShowStations(e.target.checked)} className="size-3.5 accent-[var(--primary)]" />
+          <Building2 className="size-3.5 text-content-dim" /> Police stations{" "}
+          <span className="tnum text-content-dim">({formatNumber(stationCount)})</span>
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-12 text-content">
+          <input type="checkbox" checked={showLinks} onChange={(e) => setShowLinks(e.target.checked)} className="size-3.5 accent-[var(--primary)]" />
+          <Share2 className="size-3.5 text-content-dim" /> Connected cases (3D arcs)
+        </label>
+        {showLinks && (
+          <p className="rounded-control bg-surface-2/60 px-2 py-1.5 text-[11px] text-content-dim">
+            {linkActive
+              ? `${linkCount ?? 0} cases linked by shared accused — click a pink node to re-centre.`
+              : "Click any incident to arc out to cases sharing an accused."}
+          </p>
+        )}
+        <div className="tnum text-12 text-content-dim">{formatNumber(pointsCount)} incidents shown</div>
+        <p className="text-[11px] text-content-dim">
+          {zoom < 8.5
+            ? "Zoom in to resolve clusters into individual incidents."
+            : "Click an incident or station for details."}
+          {zoom < STATION_MIN_ZOOM && showStations ? " Stations appear as you zoom in." : ""}
+        </p>
+      </div>
+    );
+  }
+
+  if (mode === "hotspots") {
+    return (
+      <div className="space-y-2">
+        <div className="text-13 font-semibold text-content">Density{hex3D ? " (3D hex-bins)" : " (KDE)"}</div>
+        <button
+          type="button"
+          onClick={() => setHex3D(!hex3D)}
+          className={cn(
+            "flex w-full items-center justify-center gap-1.5 rounded-control px-2 py-1.5 text-12 font-medium transition-colors",
+            hex3D ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content",
+          )}
+        >
+          <Box className="size-3.5" /> {hex3D ? "3D hex-bins: on" : "3D hex-bins"}
+        </button>
+        <div className="text-12 text-content-dim">Time of day</div>
+        <div className="grid grid-cols-1 gap-1">
+          {TOD_BUCKETS.map((b) => (
+            <button key={b.key} type="button" onClick={() => setTod(b.key)} className={cn("rounded-control px-2 py-1 text-left text-12 font-medium transition-colors", tod === b.key ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content")}>
+              {b.label}
+            </button>
+          ))}
+        </div>
+        {hotspotCount != null && <div className="tnum text-12 text-content-dim">{hotspotCount} DBSCAN clusters outlined</div>}
+      </div>
+    );
+  }
+
+  // alerts
+  return (
+    <div className="space-y-2">
+      <div className="text-13 font-semibold text-content">Red-zone alerts ({alerts.length})</div>
+      <div className="max-h-[46vh] space-y-1 overflow-y-auto">
+        {alerts.length === 0 && <p className="text-12 text-content-dim">No active alerts.</p>}
+        {alerts.map((a) => (
+          <div key={a.alert_id} className="rounded-control border border-hairline p-2">
+            <button type="button" onClick={() => onAlertClick(a)} className="block w-full text-left">
+              <div className="flex items-center gap-1.5">
+                <Badge variant={a.severity === "critical" ? "critical" : a.severity === "high" ? "high" : "medium"} className="capitalize">{a.severity}</Badge>
+                <span className="truncate text-12 font-medium text-content">{a.title}</span>
+              </div>
+              {a.district_name && <div className="mt-0.5 truncate text-[11px] text-content-dim">{a.district_name}</div>}
+            </button>
+            <button type="button" onClick={() => ack(a.alert_id)} className="mt-1 text-[11px] text-content-dim hover:text-content">
+              Acknowledge (session)
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------- Legend ----------------------------------- */
+function Legend({ mode, isPolicymaker, crimeGroups }: { mode: Mode; isPolicymaker: boolean; crimeGroups: string[] }) {
+  if (!isPolicymaker && mode === "live") {
+    const groups = crimeGroups.slice(0, 6);
+    if (groups.length === 0) return null;
+    return (
+      <LegendBox title="Crime type">
+        {groups.map((g) => (
+          <span key={g} className="inline-flex items-center gap-1.5">
+            <span className="size-2.5 rounded-full" style={{ background: categoryColor(g) }} />
+            {g}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2.5 rounded-full border border-primary bg-[#e8ecf6]" />
+          Police station
+        </span>
+      </LegendBox>
+    );
+  }
+  if (mode === "hotspots") {
+    return (
+      <LegendBox title="Density (low → high)">
+        <Ramp colors={["#0c4a6e", "#0e7490", "#14b8a6", "#84cc16", "#f59e0b", "#dc2626"]} />
+        <span className="text-[11px] text-content-dim">scaled to 88th percentile</span>
+      </LegendBox>
+    );
+  }
+  if (mode === "forecast" || isPolicymaker || mode === "patrol") {
+    return (
+      <LegendBox title="Predicted (low → high)">
+        <Ramp colors={["#12376b", "#2f7fd1", "#5aa2e8", "#9cc7f5"]} />
+        <span className="text-[11px] text-content-dim">Fainter = lower confidence</span>
+      </LegendBox>
+    );
+  }
+  return (
+    <LegendBox title="Alert severity">
+      {["critical", "high", "medium", "low"].map((s) => (
+        <span key={s} className="inline-flex items-center gap-1.5 capitalize">
+          <span className="size-2.5 rounded-full" style={{ background: `var(--sev-${s})` }} />
+          {s}
+        </span>
+      ))}
+    </LegendBox>
+  );
+}
+
+function LegendBox({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="absolute bottom-3 left-3 z-10 flex max-w-md flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-hairline bg-surface/95 px-2.5 py-1.5 text-12 text-content-dim backdrop-blur">
+      <span className="font-medium text-content">{title}:</span>
+      {children}
+    </div>
+  );
+}
+
+function Ramp({ colors }: { colors: string[] }) {
+  return (
+    <span className="inline-flex h-2.5 w-24 overflow-hidden rounded-full">
+      {colors.map((c) => (
+        <span key={c} className="flex-1" style={{ background: c }} />
+      ))}
+    </span>
+  );
+}
