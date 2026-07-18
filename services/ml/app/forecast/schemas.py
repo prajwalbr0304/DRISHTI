@@ -34,6 +34,7 @@ class ForecastRunResponse(BaseModel):
     layers: list[LayerRun]
     alerts_written: int
     fused: list[FusedDistrict]
+    governed: Optional["GovernedPersistence"] = None
 
 
 class LayerInfo(BaseModel):
@@ -110,3 +111,58 @@ class ValidationResponse(BaseModel):
     area_fraction: float
     overall: Optional[dict[str, Any]] = None
     per_crime_head: dict[str, Any] = {}
+
+
+# ---------------------------------------------------------------------------
+# Phase-12 backtest + data-freshness + governed-persistence responses
+# ---------------------------------------------------------------------------
+class BacktestResponse(BaseModel):
+    """Rolling-origin backtest: model metrics vs baselines, coverage, geographic
+    holdout and per-dimension error. Evidence a forecast is backtested and
+    baseline-compared."""
+    result: AiResult
+    scope: dict[str, Any] = {}
+    n_series: int = 0
+    origins: list[str] = []
+    scored_points: int = 0
+    cells_considered: int = 0
+    abstained_cells: int = 0
+    abstention_rate: float = 0.0
+    model: dict[str, Any] = {}
+    baselines: dict[str, Any] = {}
+    skill_vs_baselines: dict[str, Any] = {}
+    beats_all_baselines: Optional[bool] = None
+    error_by_district: list[dict[str, Any]] = []
+    error_by_season: dict[str, Any] = {}
+    error_by_head: dict[str, Any] = {}
+    geo_holdout: dict[str, Any] = {}
+    persisted_backtest_id: Optional[int] = None
+
+
+class FreshnessResponse(BaseModel):
+    """Data-as-of per source + approved external-context versions + the
+    valid-geography scope applied to forecasts."""
+    result: AiResult
+    as_of: dict[str, Any] = {}
+    case_data_stale_days: Optional[int] = None
+    approved_sources: list[dict[str, Any]] = []
+    valid_geography: dict[str, Any] = {}
+
+
+class GovernedPersistence(BaseModel):
+    """Summary of persisting the fused forecast through the governed
+    FeatureSnapshot -> PredictionRequest -> PredictionResult contract."""
+    model_version_id: Optional[int] = None
+    feature_schema_version_id: Optional[int] = None
+    snapshots_new: int = 0
+    snapshots_reused: int = 0
+    requests_new: int = 0
+    results_new: int = 0
+    superseded_prior: int = 0
+    skipped: int = 0
+    backtest_referenced: bool = False
+    error: Optional[str] = None
+
+
+# Resolve the forward reference to GovernedPersistence declared on ForecastRunResponse.
+ForecastRunResponse.model_rebuild()

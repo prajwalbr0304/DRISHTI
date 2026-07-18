@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CommunicationEvent",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

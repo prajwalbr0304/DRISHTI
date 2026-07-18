@@ -1,0 +1,5 @@
+{
+  "table_identifier": "HiddenAssociation",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

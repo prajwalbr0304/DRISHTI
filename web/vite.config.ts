@@ -7,6 +7,7 @@ import { fileURLToPath, URL } from "node:url";
 // see src/api/client.ts. Mocks are the default so the shell runs standalone.
 export default defineConfig({
   plugins: [react()],
+  publicDir: "public",
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

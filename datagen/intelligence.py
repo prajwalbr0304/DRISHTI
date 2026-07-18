@@ -16,6 +16,7 @@ from typing import Dict, List
 
 import numpy as np
 
+from . import boundaries as B
 from . import reference as ref
 from .config import GenConfig
 from .context import Context
@@ -93,15 +94,32 @@ def _entity_graph(cur, cfg, ctx: Context, rng: RNG):
     ent_offender: Dict[int, int] = {}
     ent_gang: Dict[int, int] = {}
 
+    # Entity "home" points are placed inside the real home-district polygon so
+    # gang/offender nodes never land in the sea or across a state border.
+    bnd = B.load_boundaries()
+    _region_cache: Dict[int, object] = {}
+
+    def _home_point(dist_idx: int):
+        region = _region_cache.get(dist_idx)
+        if region is None:
+            region = bnd.district(ctx.districts[dist_idx]["name"])
+            _region_cache[dist_idx] = region
+        if region is None:  # defensive: unmapped district
+            dd = ctx.districts[dist_idx]
+            return dd["lon"], dd["lat"]
+        p = B.uniform_points(region.geom, region.bounds, rng.g, 1)[0]
+        return float(p[0]), float(p[1])
+
     # gang nodes
     for gi, g in enumerate(ctx.gangs):
         eid += 1
         d = ctx.districts[g["home_dist"]]
+        glon, glat = _home_point(g["home_dist"])
         rows.append((eid, "gang", g["name"], "Gang", str(gi), None,
                      Json({"specialty": ctx.crime_profiles[g["specialty"]]["sub"],
                            "home_district": d["name"],
                            "vehicles": g["vehicles"]}),
-                     Geom.point(d["lon"], d["lat"])))
+                     Geom.point(glon, glat)))
         ent_gang[gi] = eid
 
     # recurring-offender nodes (highest offense budgets first, capped)
@@ -112,13 +130,13 @@ def _entity_graph(cur, cfg, ctx: Context, rng: RNG):
         o = ctx.offenders[off_idx]
         eid += 1
         d = ctx.districts[o["home_dist"]]
+        olon, olat = _home_point(o["home_dist"])
         rows.append((eid, "person", o["name"], "Accused", str(off_idx), None,
                      Json({"specialty": ctx.crime_profiles[o["specialty"]]["sub"],
                            "home_district": d["name"],
                            "career_offenses": o["offense_budget"],
                            "juvenile": o["is_juvenile"]}),
-                     Geom.point(d["lon"] + float(rng.gaussian(0, 0.05)),
-                                d["lat"] + float(rng.gaussian(0, 0.05)))))
+                     Geom.point(olon, olat)))
         ent_offender[off_idx] = eid
 
     copy_rows(cur, "EntityGraph",

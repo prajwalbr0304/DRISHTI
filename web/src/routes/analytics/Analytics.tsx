@@ -1,5 +1,5 @@
-import { useSearchParams } from "react-router-dom";
-import { Cpu, Fingerprint, LineChart, Lock, Radar, Scale } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Cpu, Fingerprint, Gauge, LineChart, Lock, Radar, Scale, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole } from "@/providers/RoleProvider";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -9,6 +9,7 @@ import { TrendsMode } from "@/routes/analytics/modes/TrendsMode";
 import { PatternsMode } from "@/routes/analytics/modes/PatternsMode";
 import { SocioMode } from "@/routes/analytics/modes/SocioMode";
 import { ForecastsMode } from "@/routes/analytics/modes/ForecastsMode";
+import { WorkloadMode } from "@/routes/analytics/modes/WorkloadMode";
 import { ExplainabilityMode } from "@/routes/analytics/modes/ExplainabilityMode";
 
 /* ============================================================================
@@ -20,13 +21,14 @@ import { ExplainabilityMode } from "@/routes/analytics/modes/ExplainabilityMode"
    gated out for them, as link-level views are elsewhere.
    ========================================================================== */
 
-type Mode = "trends" | "patterns" | "socio" | "forecasts" | "explain";
+type Mode = "trends" | "patterns" | "socio" | "forecasts" | "workload" | "explain";
 
 const MODES: { key: Mode; label: string; icon: React.ElementType; aggregate: boolean }[] = [
   { key: "trends", label: "Trends", icon: LineChart, aggregate: true },
   { key: "patterns", label: "Crime Patterns", icon: Fingerprint, aggregate: false },
   { key: "socio", label: "Socio-Economic", icon: Scale, aggregate: true },
   { key: "forecasts", label: "Forecasts", icon: Radar, aggregate: true },
+  { key: "workload", label: "Case-Review Workload", icon: Gauge, aggregate: true },
   { key: "explain", label: "Model Explainability", icon: Cpu, aggregate: true },
 ];
 
@@ -53,7 +55,15 @@ export function Analytics() {
       <PageHeader
         title="Analytics & Forecasting"
         description="Trends, crime patterns, socio-economic signal, forecasts and model explainability."
-        actions={<ExportViewButton />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Link to="/governance"
+              className="inline-flex items-center gap-1.5 rounded-control border border-hairline px-2.5 py-1.5 text-12 font-medium text-content-dim transition-colors hover:text-content">
+              <ShieldCheck className="size-3.5" /> Model governance
+            </Link>
+            <ExportViewButton />
+          </div>
+        }
       />
 
       {/* Mode sub-nav */}
@@ -92,6 +102,7 @@ export function Analytics() {
           {mode === "patterns" && <PatternsMode />}
           {mode === "socio" && <SocioMode />}
           {mode === "forecasts" && <ForecastsMode />}
+          {mode === "workload" && <WorkloadMode />}
           {mode === "explain" && <ExplainabilityMode />}
         </>
       )}

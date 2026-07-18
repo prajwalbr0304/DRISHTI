@@ -1,0 +1,5 @@
+{
+  "table_identifier": "ExternalSourceVersion",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

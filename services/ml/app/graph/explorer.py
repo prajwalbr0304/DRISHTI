@@ -88,7 +88,7 @@ def entity_detail(entity_id: int) -> Optional[dict]:
                 'SELECT "EntityID","EntityType"::text,"Label","RefTable","RefID",'
                 '"AccusedMasterID","Attributes"::text,'
                 'ST_X("geom")::float, ST_Y("geom")::float,'
-                '"CreatedAt"::text '
+                '"CreatedAt"::text,"CanonicalEntityID" '
                 'FROM "EntityGraph" WHERE "EntityID"=%s',
                 (entity_id,),
             )
@@ -98,6 +98,7 @@ def entity_detail(entity_id: int) -> Optional[dict]:
 
             import json
             attrs = json.loads(row[6]) if row[6] else {}
+            canonical_entity_id = row[10]
 
             detail: dict[str, Any] = {
                 "entity_id": int(row[0]),
@@ -106,6 +107,7 @@ def entity_detail(entity_id: int) -> Optional[dict]:
                 "ref_table": row[3],
                 "ref_id": row[4],
                 "accused_master_id": row[5],
+                "canonical_entity_id": canonical_entity_id,
                 "attributes": attrs,
                 "longitude": row[7],
                 "latitude": row[8],
@@ -117,9 +119,29 @@ def entity_detail(entity_id: int) -> Optional[dict]:
                 "district": attrs.get("district"),
             }
 
-            # Criminal history: cases linked via AccusedMasterID or RefTable/RefID
+            # Criminal history via CANONICAL identity (Phase 4): the entity's
+            # CanonicalEntityID -> CanonicalPersonID -> CasePartyRole -> cases.
+            # No name matching. Falls back to a direct AccusedMasterID link only.
             cases: list[dict] = []
-            if row[5]:  # AccusedMasterID
+            if canonical_entity_id is not None:
+                cur.execute(
+                    'SELECT DISTINCT cm."CaseMasterID", cm."CrimeNo", cm."CrimeRegisteredDate"::text,'
+                    ' ch."CrimeGroupName", st."CaseStatusName", r."RoleType" '
+                    'FROM "CanonicalEntity" ce '
+                    'JOIN "CasePartyRole" r ON r."CanonicalPersonID" = ce."CanonicalPersonID" '
+                    'JOIN "CaseMaster" cm ON cm."CaseMasterID" = r."CaseMasterID" '
+                    'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
+                    'LEFT JOIN "CaseStatusMaster" st ON st."CaseStatusID" = cm."CaseStatusID" '
+                    'WHERE ce."CanonicalEntityID" = %s '
+                    'ORDER BY cm."CrimeRegisteredDate" DESC NULLS LAST LIMIT 50',
+                    (canonical_entity_id,),
+                )
+                for r2 in cur.fetchall():
+                    cases.append({
+                        "case_id": int(r2[0]), "crime_no": r2[1], "registered_date": r2[2],
+                        "crime_group": r2[3], "status": r2[4], "role": r2[5],
+                    })
+            if not cases and row[5]:  # legacy fallback: direct AccusedMasterID link
                 cur.execute(
                     'SELECT cm."CaseMasterID", cm."CrimeNo", cm."CrimeRegisteredDate"::text,'
                     ' ch."CrimeGroupName", st."CaseStatusName" '
@@ -133,36 +155,8 @@ def entity_detail(entity_id: int) -> Optional[dict]:
                 )
                 for r2 in cur.fetchall():
                     cases.append({
-                        "case_id": int(r2[0]),
-                        "crime_no": r2[1],
-                        "registered_date": r2[2],
-                        "crime_group": r2[3],
-                        "status": r2[4],
-                        "role": "accused",
-                    })
-            # Also try name match if label is person
-            if row[1] == "person" and not cases:
-                cur.execute(
-                    'SELECT cm."CaseMasterID", cm."CrimeNo", cm."CrimeRegisteredDate"::text,'
-                    ' ch."CrimeGroupName", st."CaseStatusName" '
-                    'FROM "Accused" a '
-                    'JOIN "CaseMaster" cm ON cm."CaseMasterID" = a."CaseMasterID" '
-                    'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
-                    'LEFT JOIN "CaseStatusMaster" st ON st."CaseStatusID" = cm."CaseStatusID" '
-                    'WHERE lower(trim(a."AccusedName")) = lower(trim(%s)) '
-                    'GROUP BY cm."CaseMasterID", cm."CrimeNo", cm."CrimeRegisteredDate",'
-                    ' ch."CrimeGroupName", st."CaseStatusName" '
-                    'ORDER BY cm."CrimeRegisteredDate" DESC NULLS LAST LIMIT 30',
-                    (row[2],),  # Label as name
-                )
-                for r2 in cur.fetchall():
-                    cases.append({
-                        "case_id": int(r2[0]),
-                        "crime_no": r2[1],
-                        "registered_date": r2[2],
-                        "crime_group": r2[3],
-                        "status": r2[4],
-                        "role": "accused (name match)",
+                        "case_id": int(r2[0]), "crime_no": r2[1], "registered_date": r2[2],
+                        "crime_group": r2[3], "status": r2[4], "role": "accused",
                     })
             detail["cases"] = cases
 

@@ -1,0 +1,10 @@
+{
+  "name": "cron_reconcile",
+  "version": "0.1.0",
+  "description": "DRISHTI reconciliation/backup/cleanup cron (DISABLED scaffold).",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

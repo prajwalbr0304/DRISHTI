@@ -21,9 +21,10 @@ _LEADS_MODEL = ("drishti-leads", "nlp", "1.0.0")
 
 
 # ---- 1. similar cases (live, read-only) ------------------------------------
-def similar_cases(case_id: int, k: int = 5):
+def similar_cases(case_id: int, k: int = 5, scope: str = "district",
+                  district_id: int = None):
     with db.ro_conn() as conn:
-        res = similar_mod.find_similar(conn, case_id, k=k)
+        res = similar_mod.find_similar(conn, case_id, k=k, scope=scope, district_id=district_id)
         if res is None:
             return None
         if res.get("error") == "no_corpus":
@@ -33,19 +34,28 @@ def similar_cases(case_id: int, k: int = 5):
     cases = [SimilarCase(**c) for c in res["results"]]
     top_sim = cases[0].similarity if cases else 0.0
     src = [f"CaseMaster:{c.case_id}" for c in cases]
+    scoped = res.get("scope_district_id")
+    ctx_note = (f" within the demo district context (district {scoped})" if scoped is not None
+                else " across the full corpus")
     result = AiResult(
         answer=(f"Found {len(cases)} case(s) with the closest modus-operandi / context to "
-                f"case {case_id}." if cases else f"No comparable cases found for case {case_id}."),
+                f"case {case_id}{ctx_note}." if cases
+                else f"No comparable cases found for case {case_id}{ctx_note}."),
         confidence=round(float(top_sim), 4),
         source_record_ids=src,
         reasoning_summary=("Semantic nearest-neighbour search over case embeddings "
-                           "(pgvector HNSW, cosine distance), computed live against the "
-                           f"{res['corpus_size']}-case corpus. Similarity = 1 - cosine distance."),
+                           "(pgvector HNSW, cosine distance) in ONE model-version space, "
+                           f"filtered to the selected demo context first. Corpus {res['corpus_size']}. "
+                           "Similarity = 1 - cosine distance."),
         model_version=model_label,
     )
     return SimilarResponse(
         result=result, query_case_id=case_id, model_name=res["model_name"],
         model_version_id=res["model_version_id"], corpus_size=res["corpus_size"],
+        scope=res.get("scope", scope), scope_district_id=scoped,
+        limitations=("Similar cases are decision-support leads by shared context/MO, not an "
+                     "identity match and not evidence of a shared offender. Review the source "
+                     "records before acting."),
         results=cases)
 
 

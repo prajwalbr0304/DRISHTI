@@ -1,0 +1,15 @@
+{
+  "workflow": "embeddings-and-similarity-index-refresh",
+  "fixture_status": "representative",
+  "idempotency_key": "embed:corpus-v3:mv-embed-0.1",
+  "input": { "corpus_version": "corpus-v3", "model_version": "mv-embed-0.1", "source": "authorized reviewed case metadata (no raw bytes)" },
+  "expected_output": {
+    "shadow_index": { "built": true, "dims": 384, "digest": "e3b0...synthetic" },
+    "validation": { "dims_ok": true, "digest_ok": true },
+    "retrieval_eval": { "labelled": true, "quality_vs_prior": "+0.03", "gate": "pass" },
+    "active_switch": { "atomic": true, "prior_pointer": "idx-v2", "new_pointer": "idx-v3" },
+    "cache_invalidation": ["lookup:similar:*"]
+  },
+  "lineage": { "corpus_version": "corpus-v3", "model_version": "mv-embed-0.1", "active_index_history": ["idx-v1", "idx-v2", "idx-v3"] },
+  "asserts": [ "one coherent embedding space per ModelVersion", "raw file bytes + unreviewed text never enter", "atomic switch reversible to prior pointer" ]
+}

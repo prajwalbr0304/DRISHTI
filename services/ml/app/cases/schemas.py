@@ -23,6 +23,8 @@ class SimilarCase(BaseModel):
     registered_date: Optional[str] = None
     similarity: float                           # 1 - cosine distance, clamped [0,1]
     distance: float
+    why_match: list[str] = []                   # shared context/MO (never outcome)
+    source_links: list[str] = []                # provenance: CaseMaster refs
 
 
 class SimilarResponse(BaseModel):
@@ -31,6 +33,9 @@ class SimilarResponse(BaseModel):
     model_name: str
     model_version_id: int
     corpus_size: int
+    scope: str = "district"                     # demo case/unit context filter applied
+    scope_district_id: Optional[int] = None
+    limitations: str = ""
     results: list[SimilarCase]
 
 

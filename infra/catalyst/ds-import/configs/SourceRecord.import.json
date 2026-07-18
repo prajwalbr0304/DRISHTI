@@ -1,0 +1,5 @@
+{
+  "table_identifier": "SourceRecord",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

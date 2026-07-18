@@ -1,0 +1,23 @@
+{
+  "workflow": "bootstrap-catalyst-serving-data",
+  "fixture_status": "runnable",
+  "idempotency_key": "ExternalID (operation=upsert, find_by=ExternalID)",
+  "input": {
+    "source_table": "CaseMaster",
+    "rows": [
+      { "CaseMasterID": 1001, "CrimeNo": "SYN-CR-1001", "FIRNo": "FIR-1001", "Brief": "synthetic theft case", "synthetic": true },
+      { "CaseMasterID": 1002, "CrimeNo": "SYN-CR-1002", "FIRNo": "FIR-1002", "Brief": "synthetic burglary case", "synthetic": true }
+    ]
+  },
+  "expected_output": {
+    "datastore_table": "Case",
+    "accepted": 2,
+    "rejected": 0,
+    "external_ids": ["case:1001", "case:1002"],
+    "content_sha256": "2aa333055f01e86ef57092c7e6ca914adb8bd0e12ead0b3e0b13140ad35f1010",
+    "idempotent": "re-run yields same content hash; upsert never duplicates"
+  },
+  "lineage": { "mapping_version": "2026.07.18-1", "config": "configs/CaseMaster.import.json" },
+  "runnable_via": "python infra/catalyst/ds-import/import_serving_subset.py --source-table CaseMaster --export <this rows as jsonl> [--commit]",
+  "notes": "Deployed path: catalyst ds:import <Case.csv> --config configs/CaseMaster.import.json"
+}

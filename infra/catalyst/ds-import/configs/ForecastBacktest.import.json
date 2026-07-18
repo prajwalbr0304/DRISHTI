@@ -1,0 +1,5 @@
+{
+  "table_identifier": "ForecastBacktest",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

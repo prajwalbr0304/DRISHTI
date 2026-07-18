@@ -47,12 +47,23 @@ def overlay(conn) -> dict[int, dict]:
     return out
 
 
-def district_centroids(conn) -> dict[int, tuple[float, float]]:
+def district_centroids(conn, valid_geo_only: bool = True) -> dict[int, tuple[float, float]]:
+    """District centroids from incident coordinates.
+
+    ``valid_geo_only`` (default True for forecasting) excludes incidents whose
+    coordinates fall outside the state polygon, so an out-of-jurisdiction outlier
+    cannot drag a district's forecast centroid off the Karnataka landmass. Safe
+    no-op when no boundary is loaded.
+    """
+    from ..geo import geoscope
+    where = ['cm."geom" IS NOT NULL']
+    params: list = []
+    geoscope.apply_exclusion(conn, where, params, valid_geo_only)
     with conn.cursor() as cur:
         cur.execute(
             'SELECT u."DistrictID", AVG(cm."longitude"), AVG(cm."latitude") '
             'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
-            'WHERE cm."geom" IS NOT NULL GROUP BY u."DistrictID"')
+            'WHERE ' + ' AND '.join(where) + ' GROUP BY u."DistrictID"', params)
         return {int(r[0]): (float(r[1]), float(r[2])) for r in cur.fetchall()}
 
 
@@ -109,7 +120,8 @@ def build(conn, head_id: Optional[int] = None, window: int = 6) -> dict:
         cur.execute('SELECT DISTINCT u."DistrictID" FROM "Unit" u WHERE u."DistrictID" IS NOT NULL')
         district_ids = sorted(int(r[0]) for r in cur.fetchall())
 
-    series = {d: trends.monthly_series(conn, district_id=d, head_id=head_id) for d in district_ids}
+    series = {d: trends.monthly_series(conn, district_id=d, head_id=head_id, valid_geo_only=True)
+              for d in district_ids}
     # class edges from the pooled monthly-count distribution
     all_counts = [c for d in district_ids for c in series[d][1] if series[d][1]]
     edges = list(np.percentile(all_counts, _PCTL)) if all_counts else [1, 2, 3, 4]

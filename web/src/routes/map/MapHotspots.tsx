@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Layer, PickingInfo } from "@deck.gl/core";
 import {
@@ -10,6 +11,7 @@ import {
   MapPin,
   Radar,
   Share2,
+  Shapes,
   Shield,
   Siren,
 } from "lucide-react";
@@ -36,6 +38,7 @@ import {
   caseArcs,
   coverageGaps,
   densityHeatmap,
+  districtBoundaries,
   districtSymbols,
   forecastCells,
   hexBins3D,
@@ -45,7 +48,10 @@ import {
   linkTargets,
   pointsHex,
   pointsScatter,
+  shoRegionsLayer,
+  stateBoundary,
   stationMarkers,
+  talukBoundaries,
   type DistrictAgg,
 } from "@/components/map/layers";
 
@@ -68,6 +74,14 @@ const TOD_BUCKETS: { key: string; label: string; range: [number, number] | null 
 
 const HORIZONS = [7, 14, 30];
 const STATION_MIN_ZOOM = 7;
+
+type BoundaryKey = "state" | "districts" | "taluks" | "sho";
+const BOUNDARY_TOGGLES: { key: BoundaryKey; label: string; swatch: string; policymaker: boolean }[] = [
+  { key: "state", label: "State", swatch: "#f59e0b", policymaker: true },
+  { key: "districts", label: "Districts", swatch: "#38bdf8", policymaker: true },
+  { key: "taluks", label: "Taluks", swatch: "#94a3b8", policymaker: true },
+  { key: "sho", label: "SHO regions", swatch: "#60a5fa", policymaker: false },
+];
 
 type Selected =
   | { type: "case"; id: number; lon: number; lat: number }
@@ -109,6 +123,15 @@ export function MapHotspots() {
   const [hex3D, setHex3D] = useState(false);
   const [showLinks, setShowLinks] = useState(false);
   const [linkHub, setLinkHub] = useState<{ id: number; lon: number; lat: number } | null>(null);
+  // optional admin boundary overlays (state / district / taluk / SHO regions)
+  const [boundaries, setBoundaries] = useState<Set<BoundaryKey>>(() => new Set());
+  const toggleBoundary = (k: BoundaryKey) =>
+    setBoundaries((s) => {
+      const n = new Set(s);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
 
   const allowedModes = isPolicymaker ? MODES.filter((m) => m.key === "forecast") : MODES;
 
@@ -165,6 +188,40 @@ export function MapHotspots() {
     queryKey: ["geo", "case-links", linkHub?.id],
     queryFn: ({ signal }) => api.geo.caseLinks(linkHub!.id, 80, signal),
     enabled: mode === "live" && showLinks && linkHub != null,
+  });
+
+  // Boundary overlays are static reference geography — fetch once, keep forever.
+  const stateBndQ = useQuery({
+    queryKey: ["geo", "boundary", "state"],
+    queryFn: ({ signal }) => api.geo.boundaries("state", signal),
+    enabled: boundaries.has("state"),
+    staleTime: Infinity,
+  });
+  const distBndQ = useQuery({
+    queryKey: ["geo", "boundary", "districts"],
+    queryFn: ({ signal }) => api.geo.boundaries("districts", signal),
+    enabled: boundaries.has("districts"),
+    staleTime: Infinity,
+  });
+  const talukBndQ = useQuery({
+    queryKey: ["geo", "boundary", "taluks"],
+    queryFn: ({ signal }) => api.geo.boundaries("taluks", signal),
+    enabled: boundaries.has("taluks"),
+    staleTime: Infinity,
+  });
+  const shoBndQ = useQuery({
+    queryKey: ["geo", "sho-regions"],
+    queryFn: ({ signal }) => api.geo.shoRegions(1500, signal),
+    enabled: boundaries.has("sho") && !isPolicymaker,
+    staleTime: Infinity,
+  });
+  // Persisted boundary versions/counts (data freshness) — the map overlays and
+  // the DB share ONE versioned source of truth (JurisdictionBoundary).
+  const bndFreshnessQ = useQuery({
+    queryKey: ["geo", "jurisdiction", "freshness"],
+    queryFn: ({ signal }) => api.geo.jurisdictionFreshness(signal),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
   useEffect(() => {
@@ -261,6 +318,11 @@ export function MapHotspots() {
 
   const layers = useMemo<Layer[]>(() => {
     const L: Layer[] = [];
+    // Optional boundary overlays, drawn first so they sit beneath the data.
+    if (boundaries.has("sho") && shoBndQ.data) L.push(shoRegionsLayer(shoBndQ.data));
+    if (boundaries.has("taluks") && talukBndQ.data) L.push(talukBoundaries(talukBndQ.data));
+    if (boundaries.has("districts") && distBndQ.data) L.push(districtBoundaries(distBndQ.data));
+    if (boundaries.has("state") && stateBndQ.data) L.push(stateBoundary(stateBndQ.data));
     if (isPolicymaker) {
       L.push(districtSymbols(districtAggs, horizonScale));
       return L;
@@ -313,7 +375,7 @@ export function MapHotspots() {
     }
     return L;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, isPolicymaker, visiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D]);
+  }, [mode, isPolicymaker, visiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D, boundaries, stateBndQ.data, distBndQ.data, talukBndQ.data, shoBndQ.data]);
 
   const getTooltip = (info: PickingInfo): { html: string; style: Record<string, string> } | null => {
     const o = info.object as unknown;
@@ -329,6 +391,14 @@ export function MapHotspots() {
     else if (id === "district-symbols") html = `District ${(o as DistrictAgg).district_id} · ~${Math.round((o as DistrictAgg).predicted * horizonScale)} predicted`;
     else if (id === "coverage-gaps") html = `Coverage gap · ~${Math.round((o as { predicted: number }).predicted)} predicted, no nearby hotspot`;
     else if (id === "alert-core") html = `${(o as AlertFeature).severity.toUpperCase()} · ${(o as AlertFeature).title}`;
+    else if (id === "bnd-districts") html = `${(o as { properties?: { district?: string } }).properties?.district ?? "District"}`;
+    else if (id === "bnd-taluks") {
+      const p = (o as { properties?: { taluk?: string; district?: string } }).properties;
+      html = `${p?.taluk ?? "Taluk"}${p?.district ? ` · ${p.district}` : ""}`;
+    } else if (id === "bnd-sho") {
+      const p = (o as { properties?: { name?: string; district?: string; case_count?: number } }).properties;
+      html = `${p?.name ?? "Station"}${p?.district ? ` · ${p.district}` : ""}${p?.case_count != null ? ` · ${p.case_count} cases` : ""}`;
+    }
     if (!html) return null;
     return {
       html,
@@ -438,6 +508,67 @@ export function MapHotspots() {
             >
               <Box className="size-3.5" /> {is3D ? "3D tilt: on" : "3D tilt"}
             </button>
+          </div>
+          {/* Optional boundary overlays (state / district / taluk / SHO regions) */}
+          <div className="mb-3 space-y-2 border-b border-hairline pb-3">
+            <div className="flex items-center gap-1.5 text-12 font-semibold text-content-dim">
+              <Shapes className="size-3.5" /> Boundaries
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {BOUNDARY_TOGGLES.map(({ key, label, swatch, policymaker }) => {
+                if (!policymaker && isPolicymaker) return null;
+                const active = boundaries.has(key);
+                const q = key === "state" ? stateBndQ : key === "districts" ? distBndQ : key === "taluks" ? talukBndQ : shoBndQ;
+                const loading = active && q.isFetching && !q.data;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleBoundary(key)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-control px-2 py-1.5 text-12 font-medium transition-colors",
+                      active ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content",
+                    )}
+                  >
+                    <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: swatch }} />
+                    <span className="truncate">{label}</span>
+                    {loading && <span className="ml-auto text-[10px] opacity-70">…</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {boundaries.has("sho") && (
+              <p className="text-[11px] text-content-dim">
+                SHO = police-station jurisdictions (Voronoi of stations, clipped to district).
+              </p>
+            )}
+            {/* Persisted boundary freshness — the map + DB share one versioned
+                source of truth; link to the reviewed spatial-repair queue. */}
+            {bndFreshnessQ.data && (
+              <div className="space-y-1 border-t border-hairline pt-2 text-[11px] text-content-dim">
+                <p>
+                  Persisted geography:{" "}
+                  {["state", "district", "taluk"]
+                    .filter((lvl) => bndFreshnessQ.data!.boundaries[lvl])
+                    .map((lvl) => `${bndFreshnessQ.data!.boundaries[lvl].count} ${lvl}`)
+                    .join(" · ")}
+                  {bndFreshnessQ.data.boundaries.district?.version != null
+                    && ` · v${bndFreshnessQ.data.boundaries.district.version}`}
+                </p>
+                {!isPolicymaker && (
+                  <div className="flex items-center justify-between">
+                    <span>
+                      {bndFreshnessQ.data.open_jurisdiction_issues > 0
+                        ? `${bndFreshnessQ.data.open_jurisdiction_issues} open jurisdiction issue(s)`
+                        : "No open jurisdiction issues"}
+                    </span>
+                    <Link to="/review/jurisdiction" className="inline-flex items-center gap-1 text-primary hover:underline">
+                      <Shield className="size-3" /> Review
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <ModeControls
             mode={mode}

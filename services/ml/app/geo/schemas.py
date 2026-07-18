@@ -135,3 +135,66 @@ class CaseLinksResponse(BaseModel):
     source_crime_no: Optional[str] = None
     count: int
     links: list[CaseLinkNode]
+
+
+# ---- Phase 9: jurisdiction freshness / containment scan / reassignment ------
+
+class JurisdictionFreshnessResponse(BaseModel):
+    boundaries: dict[str, Any]           # level -> {count, version, as_of, source}
+    unit_locations: int
+    last_scan: Optional[dict[str, Any]] = None
+    open_jurisdiction_issues: int = 0
+    environment_label: str
+
+
+class ContainmentScanResponse(BaseModel):
+    run_id: int
+    run_key: str
+    scope: str
+    checked: int
+    out_of_state: int
+    out_of_district: int
+    issues_raised: int
+
+
+class ContainmentIssue(BaseModel):
+    data_quality_issue_id: int
+    issue_type: str
+    severity: str
+    status: str
+    case_master_id: Optional[int] = None
+    crime_no: Optional[str] = None
+    assigned_district_id: Optional[int] = None
+    assigned_district_name: Optional[str] = None
+    resolved_district_id: Optional[int] = None
+    resolved_district_name: Optional[str] = None
+    detail: dict[str, Any] = {}
+    created_at: Optional[str] = None
+
+
+class ContainmentIssuesResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    status: str
+    items: list[ContainmentIssue] = []
+
+
+class ReassignRequest(BaseModel):
+    case_master_id: int
+    to_district_id: Optional[int] = None
+    action: str = "reassign"             # reassign|override|quarantine
+    reason: str
+    data_quality_issue_id: Optional[int] = None
+    actor: Optional[str] = None
+
+
+class ReassignResponse(BaseModel):
+    jurisdiction_reassignment_id: int
+    case_master_id: int
+    action: str
+    from_district_id: Optional[int] = None
+    to_district_id: Optional[int] = None
+    new_case_version_id: int
+    issues_resolved: int
+    source_record_id: Optional[int] = None

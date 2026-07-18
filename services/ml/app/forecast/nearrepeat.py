@@ -27,6 +27,7 @@ GRID_DEG = 0.0025             # ~275 m grid cell
 
 
 def _recent_points(conn, district_id, head_id, ref: dt.datetime, lookback_days: int):
+    from ..geo import geoscope
     where = ['cm."geom" IS NOT NULL', 'cm."IncidentFromDate" IS NOT NULL',
              'cm."IncidentFromDate" <= %s', 'cm."IncidentFromDate" >= %s']
     params = [ref, ref - dt.timedelta(days=lookback_days)]
@@ -35,6 +36,9 @@ def _recent_points(conn, district_id, head_id, ref: dt.datetime, lookback_days: 
         where.append('u."DistrictID" = %s'); params.append(district_id)
     if head_id is not None:
         where.append('cm."CrimeMajorHeadID" = %s'); params.append(head_id)
+    # Valid geography only: a self-exciting near-repeat surface must not be seeded
+    # by an incident whose coordinates fall outside the state polygon.
+    geoscope.apply_exclusion(conn, where, params, valid_geo_only=True)
     with conn.cursor() as cur:
         cur.execute('SELECT cm."latitude", cm."longitude", '
                     'EXTRACT(EPOCH FROM (%s - cm."IncidentFromDate"))/86400.0 '

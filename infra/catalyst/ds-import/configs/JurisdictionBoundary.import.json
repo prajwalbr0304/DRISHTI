@@ -1,0 +1,5 @@
+{
+  "table_identifier": "JurisdictionBoundary",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

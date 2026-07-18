@@ -9,12 +9,13 @@ Endpoints:
 from __future__ import annotations
 
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import db, matviews, models
+from . import audit, db, matviews, models
 from .config import get_settings
 from .contracts import AiResult, HealthReport
 from .graph.router import router as graph_router
@@ -26,28 +27,72 @@ from .money.router import router as money_router
 from .forecast.router import router as forecast_router
 from .explain.router import router as explain_router
 from .chat.router import router as chat_router
+from .intake.router import router as intake_router
+from .identity.router import router as identity_router
+from .evidence.router import router as evidence_router
+from .casework.router import router as casework_router
+from .imports.router import router as imports_router
+from .governance.router import router as governance_router
+from .workload.router import router as workload_router
+from .search.router import router as search_router
+from .internal.router import router as internal_router
 from .guards import HonestyMiddleware
+from .hardening import (BodySizeLimitMiddleware, RateLimitMiddleware,
+                        install_error_handlers, masked_db_target,
+                        verify_hackathon_startup)
+from .gateway_enforcement import GatewayContextEnforcementMiddleware
+from .obs import AccessLogMiddleware, configure_logging
+from .request_context import RequestContextMiddleware
 
 REQUIRED_EXTENSIONS = ("postgis", "vector", "pg_trgm")
 OPTIONAL_EXTENSIONS = ("pgrouting",)
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version=settings.app_version)
-# Shared honesty guard: stamp aggregate/forecast responses with causation +
-# k-anonymity headers (payload-level suppression/disclaimers live in the endpoints).
-app.add_middleware(HonestyMiddleware)
-# CORS for the Wave-C SPA (Vite dev/preview). Added last so it is the outermost
-# layer and handles preflight before the honesty guard. Tighten for production.
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Install the structured-log handler (no-op formatter until a line is emitted).
+    configure_logging()
+    # Phase 3: refuse to start hackathon mode against a non-synthetic database,
+    # and make the (masked) DB target obvious at boot so a mis-routed
+    # DATABASE_URL cannot silently point the demo at the wrong database.
+    verify_hackathon_startup()
+    yield
+
+
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+
+# API errors must never return SQL, stack traces or credentials.
+install_error_handlers(app)
+
+# Middleware execution order is the REVERSE of registration (last added is
+# outermost). Target order, outermost -> innermost:
+#   AccessLog -> CORS -> GatewayEnforcement -> RequestContext -> BodySizeLimit
+#   -> RateLimit -> Honesty -> routes
+# GatewayEnforcement is placed just inside CORS (so preflight still works) and
+# just outside RequestContext, so it can verify the signed context and rewrite
+# the trusted role BEFORE the request context + role gates read it.
+app.add_middleware(HonestyMiddleware)          # innermost of the custom stack
+app.add_middleware(RateLimitMiddleware)        # conservative per-IP fixed window
+app.add_middleware(BodySizeLimitMiddleware)    # reject oversized bodies (413)
+app.add_middleware(RequestContextMiddleware)   # request id + demo actor for audit
+# Deployed trust boundary (Part D items 10/12): verify the gateway/service signed
+# context and inject the server-trusted role. OFF by default (no-op) so local dev
+# and tests are unaffected; the deployed AppSail sets DRISHTI_REQUIRE_GATEWAY_CONTEXT.
+app.add_middleware(GatewayContextEnforcementMiddleware)
+# CORS restricted to localhost + the exact configured demo origin (no wildcard).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:4173", "http://127.0.0.1:4173",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_origins=settings.cors_allow_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "X-Role", "X-Request-ID", "X-Demo-Actor"],
+    expose_headers=["X-Request-ID", "X-DRISHTI-Causation", "X-DRISHTI-Anonymity", "X-DRISHTI-Use"],
 )
+# Structured redacted access log — outermost so it records the final status +
+# total latency. No-op unless DRISHTI_ACCESS_LOG_ENABLED=true (deployed only).
+app.add_middleware(AccessLogMiddleware)
 app.include_router(graph_router)
 app.include_router(geo_router)
 app.include_router(analytics_router)
@@ -57,6 +102,17 @@ app.include_router(money_router)
 app.include_router(forecast_router)
 app.include_router(explain_router)
 app.include_router(chat_router)
+app.include_router(intake_router)
+app.include_router(identity_router)
+app.include_router(evidence_router)
+app.include_router(casework_router)
+app.include_router(imports_router)
+app.include_router(governance_router)
+app.include_router(workload_router)
+# Deployed Data Store full-text metadata search (case/FIR/person/evidence).
+app.include_router(search_router)
+# Internal service-to-service endpoints (require a signed gateway/service context).
+app.include_router(internal_router)
 
 
 @app.get("/health", response_model=HealthReport)
@@ -64,10 +120,11 @@ def health() -> HealthReport:
     try:
         db_ok = db.ping()
         installed = db.installed_extensions()
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        # Never echo the raw driver error (it can contain the DB host/identifiers).
         return HealthReport(
             status="degraded", app=settings.app_name, version=settings.app_version,
-            database=False, extensions={}, detail=str(exc).strip(),
+            database=False, extensions={}, detail="database unavailable",
         )
     ext_flags = {
         name: (name in installed)
@@ -80,6 +137,39 @@ def health() -> HealthReport:
         status=status, app=settings.app_name, version=settings.app_version,
         database=db_ok, extensions=ext_flags, detail=detail,
     )
+
+
+@app.get("/health/live")
+def health_live() -> dict:
+    """Liveness probe (Catalyst AppSail).
+
+    Reports only that the process is up and serving. It performs NO external
+    dependency checks on purpose: a transient RDS/Data-Store/AWS outage must
+    never trip the liveness probe and trigger an AppSail restart loop.
+    """
+    return {"status": "live", "app": settings.app_name, "version": settings.app_version}
+
+
+@app.get("/health/ready")
+def health_ready() -> dict:
+    """Readiness probe (Catalyst AppSail).
+
+    Reports whether the service can accept traffic. The deployed operational
+    CRUD path uses the Catalyst SDK (Data Store / Stratus), so readiness does
+    NOT hard-require the AWS RDS ``DATABASE_URL`` — RDS is an advisory analytics
+    dependency only and its absence never flips the service to not-ready.
+    """
+    checks: dict[str, str] = {
+        "config": "ok",
+        "environment": settings.synthetic_env_expected,
+        "hackathon_mode": "on" if settings.hackathon_mode else "off",
+    }
+    # Advisory-only: probe the analytics DB but never fail readiness on it.
+    try:
+        checks["analytics_db"] = "ok" if db.ping() else "unavailable"
+    except Exception:  # noqa: BLE001 — advisory probe must not raise
+        checks["analytics_db"] = "unavailable"
+    return {"status": "ready", "ready": True, "checks": checks}
 
 
 class RiskScoreRequest(BaseModel):
@@ -127,6 +217,13 @@ def demo_risk_score(req: RiskScoreRequest) -> AiResult:
             confidence=req.risk_score, ref_table="District", ref_id=str(req.district_id),
             latency_ms=latency_ms,
         )
+
+        # 4b. append an audit event for the model run (same transaction) — no
+        # secrets/narratives/PII, just ids + non-sensitive references.
+        audit.record(audit.Action.MODEL_RUN, resource="model_inference",
+                     resource_id=inf_id, conn=conn,
+                     detail={"model_version_id": mv_id, "district_id": req.district_id,
+                             "risk_level": level})
 
     # 5. refresh the dependent matview (own txn/connection)
     with db.rw_conn() as conn:

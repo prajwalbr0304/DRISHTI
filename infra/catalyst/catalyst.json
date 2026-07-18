@@ -1,0 +1,23 @@
+{
+  "functions": {
+    "source": "functions",
+    "targets": [
+      "gateway_api",
+      "evidence_event",
+      "datastore_event",
+      "prediction_event",
+      "report_event",
+      "notify_dispatch",
+      "cron_reconcile",
+      "cron_forecast"
+    ],
+    "ignore": [
+      "**/node_modules/**",
+      "**/.env",
+      "**/secrets.json"
+    ]
+  },
+  "client": {
+    "source": "client"
+  }
+}

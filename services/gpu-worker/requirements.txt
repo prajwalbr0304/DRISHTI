@@ -1,0 +1,22 @@
+# DRISHTI GPU worker — AWS SageMaker / AWS Batch custom inference image (G.3).
+#
+# This is the ONLY image that carries the heavy GPU / foundation-model stack.
+# It NEVER runs inside Catalyst AppSail. Versions are pinned for reproducibility
+# and to match the CUDA base image; the model-weight digest + license are checked
+# at load time by _tabfm_loader.py.
+
+# Serving contract (SageMaker /ping + /invocations).
+flask==3.0.3
+gunicorn==23.0.0
+pydantic==2.10.4
+
+# Foundation models (GPU). torch must match the CUDA base image (cu124).
+# The build installs the CUDA wheels via --extra-index-url in the Dockerfile.
+torch==2.5.1
+tabfm==1.0.0
+timesfm==2.0.2
+numpy>=1.26
+scikit-learn>=1.4
+
+# S3 access for context snapshots + artifacts (execution role, no static keys).
+boto3>=1.34

@@ -60,32 +60,92 @@ def _fetch_cards(cur, ids: list[int]) -> dict[int, dict]:
     return out
 
 
-def find_similar(conn, case_id: int, k: int = 5) -> Optional[dict]:
-    """Return the query case, the resolved corpus model, and the top-k neighbours
-    with similarity scores + outcomes. None if the case doesn't exist; a dict with
-    'error' if the corpus isn't embedded yet."""
+def _query_context(cur, case_id: int) -> dict:
+    """The query case's demo context: district + crime group/sub-head (for the
+    case/unit-context filter and the why-match explanation)."""
+    cur.execute(
+        'SELECT u."DistrictID", ch."CrimeGroupName", csh."CrimeHeadName", cm."PoliceStationID" '
+        'FROM "CaseMaster" cm '
+        'LEFT JOIN "Unit" u ON u."UnitID" = cm."PoliceStationID" '
+        'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
+        'LEFT JOIN "CrimeSubHead" csh ON csh."CrimeSubHeadID" = cm."CrimeMinorHeadID" '
+        'WHERE cm."CaseMasterID" = %s', (case_id,))
+    r = cur.fetchone()
+    if not r:
+        return {}
+    return {"district_id": r[0], "crime_group": r[1], "crime_subhead": r[2], "unit_id": r[3]}
+
+
+def _why_match(query_ctx: dict, card: dict) -> list[str]:
+    """Human-readable reasons the hit matched (shared context/MO). Never outcome."""
+    why: list[str] = []
+    if query_ctx.get("crime_group") and card.get("crime_group") == query_ctx["crime_group"]:
+        why.append(f"same crime group ({card['crime_group']})")
+    if query_ctx.get("crime_subhead") and card.get("crime_subhead") == query_ctx["crime_subhead"]:
+        why.append(f"same sub-head ({card['crime_subhead']})")
+    if card.get("district") and query_ctx.get("district_name") \
+            and card["district"] == query_ctx["district_name"]:
+        why.append(f"same district ({card['district']})")
+    return why
+
+
+def find_similar(conn, case_id: int, k: int = 5, scope: str = "district",
+                 district_id: Optional[int] = None) -> Optional[dict]:
+    """Top-k semantically nearest cases with similarity, why-match, source links.
+
+    ``scope`` applies the demo case/unit CONTEXT FILTER before the ANN search:
+      * 'district' (default) — restrict candidates to the query case's district
+        (or ``district_id`` if given), so retrieval stays within the selected
+        synthetic demo context;
+      * 'all' — search the whole embedded corpus.
+    None if the case doesn't exist; a dict with 'error' if the corpus is empty.
+    The query text is leakage-safe (no outcome/label fields); outcomes appear
+    only on result cards for display.
+    """
     with conn.cursor() as cur:
         q = casedata.case_query_text(cur, case_id)
         if not q:
             return None
+        ctx = _query_context(cur, case_id)
         cm = corpus_model(cur)
         if not cm:
             return {"error": "no_corpus", "query_case_id": case_id}
         mv_id, model_name, corpus_size = int(cm[0]), cm[1], int(cm[2])
 
+        # resolve the demo-context district filter
+        scope_district = None
+        if scope == "district":
+            scope_district = district_id if district_id is not None else ctx.get("district_id")
+        elif district_id is not None:
+            scope_district = district_id
+
         embedder = embedder_for_model_name(model_name)
         qvec = to_pgvector(embedder.embed([q["text"]])[0])
 
-        # ANN search in the SAME model-version space, excluding the query case.
+        # ANN search in the SAME model-version space, excluding the query case +
+        # any archived embedding, filtered to the demo context BEFORE ranking.
+        params: list = [qvec, mv_id, case_id]
+        joins = ""
+        where_ctx = ""
+        if scope_district is not None:
+            joins = ('JOIN "CaseMaster" qm ON qm."CaseMasterID" = ce."CaseMasterID" '
+                     'JOIN "Unit" qu ON qu."UnitID" = qm."PoliceStationID" ')
+            where_ctx = 'AND qu."DistrictID" = %s '
         cur.execute(
             'SELECT ce."CaseMasterID", (ce."Embedding" <=> %s::vector) AS dist '
-            'FROM "CrimeEmbedding" ce '
+            'FROM "CrimeEmbedding" ce ' + joins +
             'WHERE ce."ModelVersionID"=%s AND ce."SourceType"=\'case\' '
-            '  AND ce."CaseMasterID" <> %s '
+            '  AND ce."IsArchived" = FALSE AND ce."CaseMasterID" <> %s '
+            + where_ctx +
             'ORDER BY ce."Embedding" <=> %s::vector LIMIT %s',
-            (qvec, mv_id, case_id, qvec, int(k)))
+            params + ([scope_district] if scope_district is not None else []) + [qvec, int(k)])
         hits = [(int(r[0]), float(r[1])) for r in cur.fetchall()]
         cards = _fetch_cards(cur, [h[0] for h in hits])
+        # query district name for the why-match
+        if ctx.get("district_id") is not None:
+            cur.execute('SELECT "DistrictName" FROM "District" WHERE "DistrictID"=%s', (ctx["district_id"],))
+            dn = cur.fetchone()
+            ctx["district_name"] = dn[0] if dn else None
 
     results = []
     for cid, dist in hits:
@@ -93,6 +153,8 @@ def find_similar(conn, case_id: int, k: int = 5) -> Optional[dict]:
         # cosine distance in [0,2] -> similarity in [-1,1]; clamp to [0,1] for display
         card["similarity"] = round(max(0.0, min(1.0, 1.0 - dist)), 4)
         card["distance"] = round(dist, 6)
+        card["why_match"] = _why_match(ctx, card)
+        card["source_links"] = [f"CaseMaster:{cid}"]
         results.append(card)
 
     return {
@@ -101,5 +163,7 @@ def find_similar(conn, case_id: int, k: int = 5) -> Optional[dict]:
         "model_version_id": mv_id,
         "model_name": model_name,
         "corpus_size": corpus_size,
+        "scope": scope,
+        "scope_district_id": scope_district,
         "results": results,
     }

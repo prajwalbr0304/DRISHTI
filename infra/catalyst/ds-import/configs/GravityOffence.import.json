@@ -1,0 +1,5 @@
+{
+  "table_identifier": "GravityOffence",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

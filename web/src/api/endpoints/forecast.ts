@@ -1,8 +1,10 @@
 import { apiClient } from "@/api/client";
 import type {
+  BacktestResponse,
   DistrictForecastResponse,
   ForecastMapResponse,
   ForecastRunResponse,
+  FreshnessResponse,
   LayersResponse,
   NearRepeatTriggerResponse,
   ValidationResponse,
@@ -54,4 +56,15 @@ export const forecastApi = {
     opts: { cutoff?: string; horizon_months?: number; area_fraction?: number } = {},
     signal?: AbortSignal,
   ) => apiClient.get<ValidationResponse>("/forecast/validation", opts, signal),
+
+  /** Rolling-origin backtest: MAE/RMSE/WAPE/sMAPE + interval coverage + baseline
+   *  comparison + geographic holdout. Read-only unless persist=true. */
+  backtest: (
+    opts: { head_id?: number; horizon?: number; n_origins?: number; per_head?: boolean; persist?: boolean } = {},
+    signal?: AbortSignal,
+  ) => apiClient.get<BacktestResponse>("/forecast/backtest", opts, signal),
+
+  /** Data-as-of per source + approved external context + valid-geography scope. */
+  freshness: (signal?: AbortSignal) =>
+    apiClient.get<FreshnessResponse>("/forecast/freshness", undefined, signal),
 };

@@ -330,6 +330,14 @@ def contract_audit() -> ContractAuditResponse:
         "/cases", "/cases/filters", "/cases/{case_id}/detail", "/cases/{case_id}/network",
         "/cases/{case_id}/evidence",
         "/geo/points", "/geo/stations", "/geo/case-links",
+        # Phase 9 jurisdiction/boundary endpoints are raw OPERATIONAL geodata +
+        # data-quality workflow (GeoJSON boundaries, containment scan/issues,
+        # reviewed reassignment, freshness) — not model outputs, so they are
+        # exempt like the other raw geo reads above. The forecast's own
+        # /forecast/freshness DOES carry an AiResult.
+        "/geo/boundaries/{level}", "/geo/db-boundaries/{level}", "/geo/sho-regions",
+        "/geo/jurisdiction/freshness", "/geo/jurisdiction/issues",
+        "/geo/jurisdiction/scan", "/geo/jurisdiction/reassign",
         "/graph/entities", "/graph/entities/{entity_id}",
         "/graph/communities/list", "/graph/communities/{community_id}/subgraph",
         "/chat/sessions", "/chat/sessions/{session_id}",

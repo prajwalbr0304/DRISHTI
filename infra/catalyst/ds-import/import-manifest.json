@@ -1,0 +1,1867 @@
+{
+  "mapping_version": "2026.07.18-1",
+  "dev_row_cap": 5000,
+  "generated_from": "services/ml/app/datastore/mapping.py",
+  "import_mechanism": "catalyst ds:import (operation=upsert, find_by=ExternalID); offline alternative: import_serving_subset.py (SDK bulk_upsert)",
+  "csv_contract": "Serving CSV must include an ExternalID column (ExternalID = '<external_id_prefix>:<pk...>'); first row = headers; <=5000 rows/table in the development environment.",
+  "imported_table_count": 106,
+  "search_enabled_count": 16,
+  "disposition_counts": {
+    "operational": 93,
+    "ui_projection": 13,
+    "analytics_only": 9,
+    "not_imported": 7
+  },
+  "tables": [
+    {
+      "source_table": "State",
+      "datastore_table": "State",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/State.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "state",
+      "pk_columns": [
+        "StateID"
+      ],
+      "search_columns": [
+        "StateName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "District",
+      "datastore_table": "District",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/District.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "district",
+      "pk_columns": [
+        "DistrictID"
+      ],
+      "search_columns": [
+        "DistrictName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "UnitType",
+      "datastore_table": "UnitType",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/UnitType.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "unittype",
+      "pk_columns": [
+        "UnitTypeID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Unit",
+      "datastore_table": "Unit",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/Unit.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "unit",
+      "pk_columns": [
+        "UnitID"
+      ],
+      "search_columns": [
+        "UnitName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "UnitLocation",
+      "datastore_table": "UnitLocation",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/UnitLocation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "unitloc",
+      "pk_columns": [
+        "UnitLocationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "JurisdictionBoundary",
+      "datastore_table": "JurisdictionBoundary",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/JurisdictionBoundary.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "jbound",
+      "pk_columns": [
+        "JurisdictionBoundaryID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "JurisdictionReassignment",
+      "datastore_table": "JurisdictionReassignment",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/JurisdictionReassignment.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "jreassign",
+      "pk_columns": [
+        "JurisdictionReassignmentID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "SpatialRepairRun",
+      "datastore_table": "SpatialRepairRun",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/SpatialRepairRun.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "spatialrepair",
+      "pk_columns": [
+        "SpatialRepairRunID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Rank",
+      "datastore_table": "Rank",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/Rank.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "rank",
+      "pk_columns": [
+        "RankID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Designation",
+      "datastore_table": "Designation",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/Designation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "designation",
+      "pk_columns": [
+        "DesignationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Employee",
+      "datastore_table": "Employee",
+      "domain": "organisation_geography",
+      "disposition": "operational",
+      "config": "configs/Employee.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "employee",
+      "pk_columns": [
+        "EmployeeID"
+      ],
+      "search_columns": [
+        "EmployeeName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseMaster",
+      "datastore_table": "Case",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseMaster.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "case",
+      "pk_columns": [
+        "CaseMasterID"
+      ],
+      "search_columns": [
+        "CrimeNo",
+        "Brief",
+        "FIRNo"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseVersion",
+      "datastore_table": "CaseVersion",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "casever",
+      "pk_columns": [
+        "CaseVersionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseEvent",
+      "datastore_table": "CaseEvent",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseEvent.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "caseevt",
+      "pk_columns": [
+        "CaseEventID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseSource",
+      "datastore_table": "CaseSource",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseSource.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "casesrc",
+      "pk_columns": [
+        "CaseSourceID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseCategory",
+      "datastore_table": "CaseCategory",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseCategory.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "casecat",
+      "pk_columns": [
+        "CaseCategoryID"
+      ],
+      "search_columns": [
+        "CategoryName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseCategoryWorkflow",
+      "datastore_table": "CaseCategoryWorkflow",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseCategoryWorkflow.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "casewf",
+      "pk_columns": [
+        "CaseCategoryWorkflowID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseStatusMaster",
+      "datastore_table": "CaseStatusMaster",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseStatusMaster.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "casestatus",
+      "pk_columns": [
+        "CaseStatusID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CaseDisposition",
+      "datastore_table": "CaseDisposition",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/CaseDisposition.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "casedisp",
+      "pk_columns": [
+        "CaseDispositionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ChargesheetDetails",
+      "datastore_table": "ChargesheetDetails",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/ChargesheetDetails.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "chargesheet",
+      "pk_columns": [
+        "ChargesheetID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ArrestSurrender",
+      "datastore_table": "ArrestSurrender",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/ArrestSurrender.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "arrest",
+      "pk_columns": [
+        "ArrestSurrenderID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "AlertHistory",
+      "datastore_table": "AlertHistory",
+      "domain": "case_lifecycle",
+      "disposition": "operational",
+      "config": "configs/AlertHistory.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "alert",
+      "pk_columns": [
+        "AlertID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CanonicalPerson",
+      "datastore_table": "CanonicalPerson",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/CanonicalPerson.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "person",
+      "pk_columns": [
+        "CanonicalPersonID"
+      ],
+      "search_columns": [
+        "DisplayName",
+        "PrimaryName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CanonicalOrganisation",
+      "datastore_table": "CanonicalOrganisation",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/CanonicalOrganisation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "org",
+      "pk_columns": [
+        "CanonicalOrganisationID"
+      ],
+      "search_columns": [
+        "OrganisationName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CanonicalEntity",
+      "datastore_table": "CanonicalEntity",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/CanonicalEntity.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "entity",
+      "pk_columns": [
+        "CanonicalEntityID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CasePartyRole",
+      "datastore_table": "CasePartyRole",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/CasePartyRole.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "party",
+      "pk_columns": [
+        "CasePartyRoleID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PersonAlias",
+      "datastore_table": "PersonAlias",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/PersonAlias.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "alias",
+      "pk_columns": [
+        "PersonAliasID"
+      ],
+      "search_columns": [
+        "AliasName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PersonIdentifier",
+      "datastore_table": "PersonIdentifier",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/PersonIdentifier.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "personid",
+      "pk_columns": [
+        "PersonIdentifierID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [
+        "RawIdentifierValue"
+      ],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PersonContact",
+      "datastore_table": "PersonContact",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/PersonContact.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "contact",
+      "pk_columns": [
+        "PersonContactID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PersonAddress",
+      "datastore_table": "PersonAddress",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/PersonAddress.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "address",
+      "pk_columns": [
+        "PersonAddressID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EntityResolutionCandidate",
+      "datastore_table": "EntityResolutionCandidate",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/EntityResolutionCandidate.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "erc",
+      "pk_columns": [
+        "EntityResolutionCandidateID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EntityMergeHistory",
+      "datastore_table": "EntityMergeHistory",
+      "domain": "canonical_identity",
+      "disposition": "operational",
+      "config": "configs/EntityMergeHistory.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "merge",
+      "pk_columns": [
+        "EntityMergeHistoryID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "GangMembership",
+      "datastore_table": "GangMembership",
+      "domain": "canonical_identity",
+      "disposition": "ui_projection",
+      "config": "configs/GangMembership.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "gang",
+      "pk_columns": [
+        "GangMembershipID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EvidenceItem",
+      "datastore_table": "EvidenceItem",
+      "domain": "evidence",
+      "disposition": "operational",
+      "config": "configs/EvidenceItem.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "evid",
+      "pk_columns": [
+        "EvidenceItemID"
+      ],
+      "search_columns": [
+        "Title",
+        "Description",
+        "Tags"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EvidenceObject",
+      "datastore_table": "EvidenceObject",
+      "domain": "evidence",
+      "disposition": "operational",
+      "config": "configs/EvidenceObject.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "evobj",
+      "pk_columns": [
+        "EvidenceObjectID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EvidenceVersion",
+      "datastore_table": "EvidenceVersion",
+      "domain": "evidence",
+      "disposition": "operational",
+      "config": "configs/EvidenceVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "evver",
+      "pk_columns": [
+        "EvidenceVersionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EvidenceCaseLink",
+      "datastore_table": "EvidenceCaseLink",
+      "domain": "evidence",
+      "disposition": "operational",
+      "config": "configs/EvidenceCaseLink.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "evcase",
+      "pk_columns": [
+        "EvidenceCaseLinkID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EvidenceEntityLink",
+      "datastore_table": "EvidenceEntityLink",
+      "domain": "evidence",
+      "disposition": "operational",
+      "config": "configs/EvidenceEntityLink.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "eventity",
+      "pk_columns": [
+        "EvidenceEntityLinkID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EvidenceActivityEvent",
+      "datastore_table": "EvidenceActivityEvent",
+      "domain": "evidence",
+      "disposition": "operational",
+      "config": "configs/EvidenceActivityEvent.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "evact",
+      "pk_columns": [
+        "EvidenceActivityEventID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Statement",
+      "datastore_table": "Statement",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/Statement.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "stmt",
+      "pk_columns": [
+        "StatementID"
+      ],
+      "search_columns": [
+        "StatementText"
+      ],
+      "excluded_columns": [
+        "RestrictedText"
+      ],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "StatementVersion",
+      "datastore_table": "StatementVersion",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/StatementVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "stmtver",
+      "pk_columns": [
+        "StatementVersionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Seizure",
+      "datastore_table": "Seizure",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/Seizure.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "seizure",
+      "pk_columns": [
+        "SeizureID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PropertyItem",
+      "datastore_table": "PropertyItem",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/PropertyItem.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "property",
+      "pk_columns": [
+        "PropertyItemID"
+      ],
+      "search_columns": [
+        "Description"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "LabResult",
+      "datastore_table": "LabResult",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/LabResult.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "lab",
+      "pk_columns": [
+        "LabResultID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Device",
+      "datastore_table": "Device",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/Device.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "device",
+      "pk_columns": [
+        "DeviceID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "DeviceArtifact",
+      "datastore_table": "DeviceArtifact",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/DeviceArtifact.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "devart",
+      "pk_columns": [
+        "DeviceArtifactID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CommunicationEvent",
+      "datastore_table": "CommunicationEvent",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/CommunicationEvent.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "commevt",
+      "pk_columns": [
+        "CommunicationEventID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "LocationObservation",
+      "datastore_table": "LocationObservation",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/LocationObservation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "locobs",
+      "pk_columns": [
+        "LocationObservationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "DigitalImportBatch",
+      "datastore_table": "DigitalImportBatch",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/DigitalImportBatch.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "digbatch",
+      "pk_columns": [
+        "DigitalImportBatchID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "FinancialAccount",
+      "datastore_table": "FinancialAccount",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/FinancialAccount.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "acct",
+      "pk_columns": [
+        "AccountID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [
+        "RawAccountNo"
+      ],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "FinancialTransaction",
+      "datastore_table": "FinancialTransaction",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/FinancialTransaction.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "txn",
+      "pk_columns": [
+        "TransactionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "TransactionLink",
+      "datastore_table": "TransactionLink",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/TransactionLink.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "txnlink",
+      "pk_columns": [
+        "TransactionLinkID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CourtEvent",
+      "datastore_table": "CourtEvent",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/CourtEvent.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "court",
+      "pk_columns": [
+        "CourtEventID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "BailEvent",
+      "datastore_table": "BailEvent",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/BailEvent.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "bail",
+      "pk_columns": [
+        "BailEventID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "OutcomeObservation",
+      "datastore_table": "OutcomeObservation",
+      "domain": "structured_domains",
+      "disposition": "operational",
+      "config": "configs/OutcomeObservation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "outcome",
+      "pk_columns": [
+        "OutcomeObservationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "SourceSystem",
+      "datastore_table": "SourceSystem",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/SourceSystem.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "srcsys",
+      "pk_columns": [
+        "SourceSystemID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "SourceRecord",
+      "datastore_table": "SourceRecord",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/SourceRecord.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "srcrec",
+      "pk_columns": [
+        "SourceRecordID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "IngestionJob",
+      "datastore_table": "IngestionJob",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/IngestionJob.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "ingjob",
+      "pk_columns": [
+        "IngestionJobID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "IngestionRecord",
+      "datastore_table": "IngestionRecord",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/IngestionRecord.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "ingrec",
+      "pk_columns": [
+        "IngestionRecordID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ImportBatch",
+      "datastore_table": "ImportBatch",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/ImportBatch.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "impbatch",
+      "pk_columns": [
+        "ImportBatchID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ImportStagingRow",
+      "datastore_table": "ImportStagingRow",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/ImportStagingRow.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "impstage",
+      "pk_columns": [
+        "ImportStagingRowID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ImportTemplate",
+      "datastore_table": "ImportTemplate",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/ImportTemplate.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "imptpl",
+      "pk_columns": [
+        "ImportTemplateID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ImportTemplateVersion",
+      "datastore_table": "ImportTemplateVersion",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/ImportTemplateVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "imptplver",
+      "pk_columns": [
+        "ImportTemplateVersionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "DataQualityIssue",
+      "datastore_table": "DataQualityIssue",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/DataQualityIssue.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "dqi",
+      "pk_columns": [
+        "DataQualityIssueID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "audit_logs",
+      "datastore_table": "AuditEvent",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/audit_logs.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "audit",
+      "pk_columns": [
+        "log_id"
+      ],
+      "search_columns": [],
+      "excluded_columns": [
+        "raw_payload"
+      ],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "DemoActor",
+      "datastore_table": "DemoActor",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/DemoActor.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "actor",
+      "pk_columns": [
+        "DemoActorID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "SavedQuery",
+      "datastore_table": "SavedQuery",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/SavedQuery.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "savedq",
+      "pk_columns": [
+        "SavedQueryID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "SyntheticDataRun",
+      "datastore_table": "SyntheticDataRun",
+      "domain": "governance",
+      "disposition": "operational",
+      "config": "configs/SyntheticDataRun.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "synrun",
+      "pk_columns": [
+        "SyntheticDataRunID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "FeatureDefinition",
+      "datastore_table": "FeatureDefinition",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/FeatureDefinition.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "featdef",
+      "pk_columns": [
+        "FeatureDefinitionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "FeatureSchemaVersion",
+      "datastore_table": "FeatureSchemaVersion",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/FeatureSchemaVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "featschema",
+      "pk_columns": [
+        "FeatureSchemaVersionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "FeatureSnapshot",
+      "datastore_table": "FeatureSnapshot",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/FeatureSnapshot.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "featsnap",
+      "pk_columns": [
+        "FeatureSnapshotID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "TrainingDatasetSnapshot",
+      "datastore_table": "TrainingDatasetSnapshot",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/TrainingDatasetSnapshot.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "trainsnap",
+      "pk_columns": [
+        "TrainingDatasetSnapshotID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "OutcomeLabel",
+      "datastore_table": "OutcomeLabel",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/OutcomeLabel.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "label",
+      "pk_columns": [
+        "OutcomeLabelID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PredictionRequest",
+      "datastore_table": "PredictionRequest",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/PredictionRequest.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "predreq",
+      "pk_columns": [
+        "PredictionRequestID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PredictionResult",
+      "datastore_table": "PredictionResult",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/PredictionResult.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "predres",
+      "pk_columns": [
+        "PredictionResultID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PredictionReview",
+      "datastore_table": "PredictionReview",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/PredictionReview.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "predrev",
+      "pk_columns": [
+        "PredictionReviewID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ModelVersion",
+      "datastore_table": "ModelVersion",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/ModelVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "model",
+      "pk_columns": [
+        "ModelVersionID"
+      ],
+      "search_columns": [
+        "ModelName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ModelInference",
+      "datastore_table": "ModelInference",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/ModelInference.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "inference",
+      "pk_columns": [
+        "InferenceID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ModelBenchmark",
+      "datastore_table": "ModelBenchmark",
+      "domain": "analytics_contract",
+      "disposition": "operational",
+      "config": "configs/ModelBenchmark.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "benchmark",
+      "pk_columns": [
+        "ModelBenchmarkID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "EntityGraph",
+      "datastore_table": "GraphEntity",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/EntityGraph.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "gnode",
+      "pk_columns": [
+        "EntityID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "NetworkEdge",
+      "datastore_table": "GraphEdge",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/NetworkEdge.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "gedge",
+      "pk_columns": [
+        "EdgeID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "drishti_hidden_associations",
+      "datastore_table": "HiddenAssociation",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/drishti_hidden_associations.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "hidden",
+      "pk_columns": [
+        "association_id"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimePattern",
+      "datastore_table": "CrimePattern",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/CrimePattern.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "pattern",
+      "pk_columns": [
+        "PatternID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimePatternCase",
+      "datastore_table": "CrimePatternCase",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/CrimePatternCase.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "patterncase",
+      "pk_columns": [
+        "PatternCaseID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimeHotspot",
+      "datastore_table": "CrimeHotspot",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/CrimeHotspot.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "hotspot",
+      "pk_columns": [
+        "HotspotID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimePrediction",
+      "datastore_table": "CrimePrediction",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/CrimePrediction.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "areapred",
+      "pk_columns": [
+        "PredictionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ForecastBacktest",
+      "datastore_table": "ForecastBacktest",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/ForecastBacktest.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "backtest",
+      "pk_columns": [
+        "BacktestID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "MoneyAlert",
+      "datastore_table": "MoneyAlert",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/MoneyAlert.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "moneyalert",
+      "pk_columns": [
+        "MoneyAlertID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "MoneyAlertReview",
+      "datastore_table": "MoneyAlertReview",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/MoneyAlertReview.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "moneyrev",
+      "pk_columns": [
+        "MoneyAlertReviewID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "OfficerRecommendation",
+      "datastore_table": "OfficerRecommendation",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/OfficerRecommendation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "officerrec",
+      "pk_columns": [
+        "RecommendationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "AISummary",
+      "datastore_table": "AISummary",
+      "domain": "analytics_contract",
+      "disposition": "ui_projection",
+      "config": "configs/AISummary.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "aisummary",
+      "pk_columns": [
+        "SummaryID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Act",
+      "datastore_table": "Act",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/Act.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "act",
+      "pk_columns": [
+        "ActID"
+      ],
+      "search_columns": [
+        "ActName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "Section",
+      "datastore_table": "Section",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/Section.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "section",
+      "pk_columns": [
+        "SectionID"
+      ],
+      "search_columns": [
+        "SectionNo",
+        "Description"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ActSectionAssociation",
+      "datastore_table": "ActSectionAssociation",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/ActSectionAssociation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "actsection",
+      "pk_columns": [
+        "AssociationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimeHead",
+      "datastore_table": "CrimeHead",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/CrimeHead.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "crimehead",
+      "pk_columns": [
+        "CrimeHeadID"
+      ],
+      "search_columns": [
+        "HeadName"
+      ],
+      "excluded_columns": [],
+      "search": true,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimeSubHead",
+      "datastore_table": "CrimeSubHead",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/CrimeSubHead.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "crimesubhead",
+      "pk_columns": [
+        "CrimeSubHeadID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "CrimeHeadActSection",
+      "datastore_table": "CrimeHeadActSection",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/CrimeHeadActSection.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "chas",
+      "pk_columns": [
+        "CrimeHeadActSectionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "GravityOffence",
+      "datastore_table": "GravityOffence",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/GravityOffence.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "gravity",
+      "pk_columns": [
+        "GravityOffenceID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "OccupationMaster",
+      "datastore_table": "OccupationMaster",
+      "domain": "reference_lookups",
+      "disposition": "operational",
+      "config": "configs/OccupationMaster.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "occupation",
+      "pk_columns": [
+        "OccupationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "WeatherIndicator",
+      "datastore_table": "WeatherIndicator",
+      "domain": "external_context",
+      "disposition": "operational",
+      "config": "configs/WeatherIndicator.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "weather",
+      "pk_columns": [
+        "WeatherIndicatorID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "HolidayCalendar",
+      "datastore_table": "HolidayCalendar",
+      "domain": "external_context",
+      "disposition": "operational",
+      "config": "configs/HolidayCalendar.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "holiday",
+      "pk_columns": [
+        "HolidayID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "PublicEvent",
+      "datastore_table": "PublicEvent",
+      "domain": "external_context",
+      "disposition": "operational",
+      "config": "configs/PublicEvent.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "pubevent",
+      "pk_columns": [
+        "PublicEventID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "AreaContextObservation",
+      "datastore_table": "AreaContextObservation",
+      "domain": "external_context",
+      "disposition": "operational",
+      "config": "configs/AreaContextObservation.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "areactx",
+      "pk_columns": [
+        "AreaContextObservationID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ExternalSourceVersion",
+      "datastore_table": "ExternalSourceVersion",
+      "domain": "external_context",
+      "disposition": "operational",
+      "config": "configs/ExternalSourceVersion.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "extsrcver",
+      "pk_columns": [
+        "ExternalSourceVersionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ChatSession",
+      "datastore_table": "ChatSession",
+      "domain": "assistant_chat",
+      "disposition": "operational",
+      "config": "configs/ChatSession.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "chatsess",
+      "pk_columns": [
+        "ChatSessionID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    },
+    {
+      "source_table": "ChatMessage",
+      "datastore_table": "ChatMessage",
+      "domain": "assistant_chat",
+      "disposition": "operational",
+      "config": "configs/ChatMessage.import.json",
+      "external_id_field": "ExternalID",
+      "external_id_prefix": "chatmsg",
+      "pk_columns": [
+        "ChatMessageID"
+      ],
+      "search_columns": [],
+      "excluded_columns": [
+        "RawPrompt"
+      ],
+      "search": false,
+      "dev_row_cap": 5000,
+      "mapping_version": "2026.07.18-1"
+    }
+  ]
+}

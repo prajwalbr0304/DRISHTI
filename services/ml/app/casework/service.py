@@ -1,0 +1,994 @@
+"""Casework service — statements, property/seizure, lab results, court events,
+bail, disposition, verified outcomes, event-backed lifecycle + timeline.
+
+Design (mirrors app/intake/service.py):
+  * Internal ``_fn(conn, ...)`` helpers run on an OPEN connection and never
+    commit, so tests drive real SQL then ROLL BACK.
+  * Public functions open app.db.rw_conn()/ro_conn() and delegate.
+
+Safety rules enforced server-side (Phase 7 DoD):
+  * append-only statement versions (never overwrite history);
+  * restricted statements are redacted for roles without sensitive access;
+  * court/disposition events require their prerequisites;
+  * an OutcomeObservation may be created ONLY after a verified final event;
+  * uploaded files are linked by id only — content is never parsed.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from psycopg2.extras import Json
+
+from .. import audit, db
+from ..intake import service as intake_service
+from ..intake import workflow as wf
+from . import schemas as S
+
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+class CaseworkError(Exception):
+    pass
+
+
+class CaseworkNotFound(CaseworkError):
+    pass
+
+
+class CaseworkConflict(CaseworkError):
+    pass
+
+
+class CaseworkValidationError(CaseworkError):
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+STATEMENT_TYPES = ("witness", "complainant", "accused", "expert")
+STATEMENT_STATES = ("draft", "recorded", "reviewed")
+ACCESS_CLASSIFICATIONS = ("demo_normal", "restricted")
+PROPERTY_ITEM_TYPES = ("property", "vehicle", "weapon", "substance", "document")
+PROPERTY_STATUSES = ("seized", "recovered", "returned", "disposed")
+COURT_EVENT_TYPES = ("chargesheet_filed", "supplementary_chargesheet", "hearing",
+                     "remand", "framing_of_charges", "judgment", "adjournment",
+                     "bail_hearing", "transfer")
+BAIL_STATUSES = ("granted", "rejected", "pending")
+DISPOSITION_TYPES = ("convicted", "acquitted", "closed_b_report", "closed_c_report",
+                     "transferred", "pending", "withdrawn")
+LAB_TEST_TYPES = ("chemical", "dna", "ballistic", "fingerprint", "toxicology",
+                  "handwriting", "digital_forensic", "other")
+LAB_STATUSES = ("requested", "in_progress", "completed", "inconclusive", "cancelled")
+
+# Roles allowed to read restricted statement/lab text (policymaker is already
+# denied all case files at the router; analyst is the reduced case-reader).
+SENSITIVE_ROLES = {"investigator", "supervisor", "super_admin"}
+REDACTED_TEXT = "[Restricted — limited to assigned investigators / supervisors]"
+
+FINAL_DISPOSITION_TYPES = {"convicted", "acquitted", "closed_b_report",
+                           "closed_c_report", "withdrawn"}
+DISPOSITION_NEEDS_JUDGMENT = {"convicted", "acquitted"}
+TERMINAL_STATUSES = {
+    wf.S_CONVICTED, wf.S_ACQUITTED, wf.S_UNDETECTED, wf.S_FALSE, wf.S_TRANSFERRED,
+    wf.S_MISSING_RECOVERED, wf.S_MISSING_UNTRACED, wf.S_ENQUIRY_CLOSED,
+    wf.S_INQUEST_CLOSED, wf.S_CONVERTED,
+}
+# reverse of STATUS_TO_LEGACY for deriving a rich status from a legacy row.
+LEGACY_TO_STATUS = {v: k for k, v in wf.STATUS_TO_LEGACY.items()}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _s(v) -> Optional[str]:
+    return str(v) if v is not None else None
+
+
+def _f(v) -> Optional[float]:
+    return float(v) if v is not None else None
+
+
+def _can_see_restricted(role: Optional[str]) -> bool:
+    return (role or "") in SENSITIVE_ROLES
+
+
+def _case_exists(conn, cid: int) -> bool:
+    with conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM "CaseMaster" WHERE "CaseMasterID"=%s', (cid,))
+        return cur.fetchone() is not None
+
+
+def _require_case(conn, cid: int) -> None:
+    if not _case_exists(conn, cid):
+        raise CaseworkNotFound(f"Case {cid} not found.")
+
+
+def _person_label(conn, cpid: Optional[int]) -> tuple[Optional[str], Optional[str]]:
+    if not cpid:
+        return None, None
+    with conn.cursor() as cur:
+        cur.execute('SELECT "PublicRef", COALESCE("DisplayLabel","PublicRef") '
+                    'FROM "CanonicalPerson" WHERE "CanonicalPersonID"=%s', (cpid,))
+        r = cur.fetchone()
+    return (r[0], r[1]) if r else (None, None)
+
+
+def _court_name(conn, court_id: Optional[int]) -> Optional[str]:
+    if not court_id:
+        return None
+    with conn.cursor() as cur:
+        cur.execute('SELECT "CourtName" FROM "Court" WHERE "CourtID"=%s', (court_id,))
+        r = cur.fetchone()
+    return r[0] if r else None
+
+
+# ===========================================================================
+# STATEMENTS
+# ===========================================================================
+def _statement_versions(conn, sid: int, can_see: bool, restricted: bool) -> list[S.StatementVersionOut]:
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "StatementVersionID","VersionNo","StatementText","CorrectionReason",'
+            '"Translation","Redacted","CreatedByActor","CreatedAt" '
+            'FROM "StatementVersion" WHERE "StatementID"=%s ORDER BY "VersionNo"', (sid,))
+        rows = cur.fetchall()
+    out = []
+    for r in rows:
+        hide = (restricted or bool(r[5])) and not can_see
+        out.append(S.StatementVersionOut(
+            statement_version_id=int(r[0]), version_no=int(r[1]),
+            statement_text=(REDACTED_TEXT if hide else r[2]),
+            correction_reason=r[3], translation=(None if hide else r[4]),
+            redacted=bool(r[5]), created_by_actor=r[6], created_at=_s(r[7])))
+    return out
+
+
+def _serialize_statement(conn, sid: int, role: Optional[str]) -> S.StatementOut:
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "StatementID","CaseMasterID","CanonicalPersonID","CasePartyRoleID",'
+            '"StatementType","RecordedByActor","RecordedAt","Place","Language",'
+            '"AccessClassification","State","EvidenceItemID","CreatedAt" '
+            'FROM "Statement" WHERE "StatementID"=%s', (sid,))
+        r = cur.fetchone()
+    if r is None:
+        raise CaseworkNotFound(f"Statement {sid} not found.")
+    restricted = (r[9] == "restricted")
+    can_see = _can_see_restricted(role)
+    ref, label = _person_label(conn, r[2])
+    versions = _statement_versions(conn, sid, can_see, restricted)
+    current = versions[-1] if versions else None
+    access_limited = restricted and not can_see
+    return S.StatementOut(
+        statement_id=int(r[0]), case_master_id=int(r[1]), canonical_person_id=r[2],
+        speaker_ref=ref, speaker_label=label, case_party_role_id=r[3],
+        statement_type=r[4], recorded_by_actor=r[5], recorded_at=_s(r[6]), place=r[7],
+        language=r[8], access_classification=r[9], state=r[10], evidence_item_id=r[11],
+        current_text=(current.statement_text if current else None),
+        current_version_no=(current.version_no if current else None),
+        is_restricted=restricted, access_limited=access_limited,
+        versions=versions, created_at=_s(r[12]))
+
+
+def _create_statement(conn, cid: int, req: S.StatementCreate, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if req.statement_type not in STATEMENT_TYPES:
+        raise CaseworkValidationError(f"Unknown statement type '{req.statement_type}'.")
+    if req.access_classification not in ACCESS_CLASSIFICATIONS:
+        raise CaseworkValidationError(f"Unknown access classification '{req.access_classification}'.")
+    if not req.statement_text or not req.statement_text.strip():
+        raise CaseworkValidationError("Statement text is required.")
+    if req.canonical_person_id is not None:
+        with conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM "CanonicalPerson" WHERE "CanonicalPersonID"=%s',
+                        (req.canonical_person_id,))
+            if cur.fetchone() is None:
+                raise CaseworkValidationError(f"Canonical person {req.canonical_person_id} not found.")
+    if req.evidence_item_id is not None:
+        with conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM "EvidenceItem" WHERE "EvidenceItemID"=%s', (req.evidence_item_id,))
+            if cur.fetchone() is None:
+                raise CaseworkValidationError(f"Evidence item {req.evidence_item_id} not found.")
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "Statement" ("CaseMasterID","CanonicalPersonID","CasePartyRoleID",'
+            '"StatementType","RecordedByActor","RecordedAt","Place","Language",'
+            '"AccessClassification","State","EvidenceItemID") '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING "StatementID"',
+            (cid, req.canonical_person_id, req.case_party_role_id, req.statement_type,
+             req.recorded_by_actor or (f"demo.{role}" if role else None), req.recorded_at,
+             req.place, req.language, req.access_classification, "recorded", req.evidence_item_id))
+        sid = int(cur.fetchone()[0])
+        cur.execute(
+            'INSERT INTO "StatementVersion" ("StatementID","VersionNo","StatementText",'
+            '"CorrectionReason","CreatedByActor") VALUES (%s,1,%s,%s,%s)',
+            (sid, req.statement_text.strip(), "initial statement", req.actor or (f"demo.{role}" if role else None)))
+    audit.record(audit.Action.CREATE, "statement", sid, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "type": req.statement_type,
+                         "restricted": req.access_classification == "restricted"})
+    return sid
+
+
+def _correct_statement(conn, sid: int, req: S.StatementCorrection, role: Optional[str]) -> None:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "State","AccessClassification" FROM "Statement" WHERE "StatementID"=%s', (sid,))
+        r = cur.fetchone()
+        if r is None:
+            raise CaseworkNotFound(f"Statement {sid} not found.")
+        if r[0] == "reviewed":
+            raise CaseworkConflict("A reviewed statement is locked; reopen review before correcting.")
+        cur.execute('SELECT COALESCE(MAX("VersionNo"),0), '
+                    '(SELECT "StatementText" FROM "StatementVersion" WHERE "StatementID"=%s '
+                    ' ORDER BY "VersionNo" DESC LIMIT 1) '
+                    'FROM "StatementVersion" WHERE "StatementID"=%s', (sid, sid))
+        maxv, prev_text = cur.fetchone()
+        new_no = int(maxv) + 1
+        text = (req.statement_text.strip() if req.statement_text and req.statement_text.strip()
+                else prev_text)
+        cur.execute(
+            'INSERT INTO "StatementVersion" ("StatementID","VersionNo","StatementText",'
+            '"CorrectionReason","Translation","Redacted","CreatedByActor") '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s)',
+            (sid, new_no, text, req.correction_reason, req.translation, req.redact,
+             req.actor or (f"demo.{role}" if role else None)))
+        if req.redact:
+            cur.execute('UPDATE "Statement" SET "AccessClassification"=\'restricted\' WHERE "StatementID"=%s', (sid,))
+    audit.record(audit.Action.UPDATE, "statement", sid, actor=req.actor, conn=conn,
+                 detail={"version": new_no, "redacted": req.redact})
+
+
+def _review_statement(conn, sid: int, req: S.StatementReview) -> None:
+    with conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM "Statement" WHERE "StatementID"=%s', (sid,))
+        if cur.fetchone() is None:
+            raise CaseworkNotFound(f"Statement {sid} not found.")
+        cur.execute('UPDATE "Statement" SET "State"=\'reviewed\' WHERE "StatementID"=%s', (sid,))
+    audit.record(audit.Action.UPDATE, "statement", sid, actor=req.actor, conn=conn,
+                 detail={"action": "review", "note": req.note})
+
+
+def _list_statements(conn, cid: int, role: Optional[str]) -> S.StatementListResponse:
+    _require_case(conn, cid)
+    with conn.cursor() as cur:
+        cur.execute('SELECT "StatementID" FROM "Statement" WHERE "CaseMasterID"=%s '
+                    'ORDER BY "StatementID"', (cid,))
+        ids = [int(r[0]) for r in cur.fetchall()]
+    items = [_serialize_statement(conn, sid, role) for sid in ids]
+    return S.StatementListResponse(case_master_id=cid, count=len(items), items=items)
+
+
+# ===========================================================================
+# PROPERTY / SEIZURE
+# ===========================================================================
+def _serialize_property_item(conn, r) -> S.PropertyItemOut:
+    ref, label = _person_label(conn, r[8])
+    return S.PropertyItemOut(
+        property_item_id=int(r[0]), seizure_id=r[1], case_master_id=int(r[2]),
+        item_type=r[3], synthetic_identifier=r[4], description=r[5], quantity=_f(r[6]),
+        unit=r[7], estimated_value=_f(r[9]), owner_canonical_person_id=r[8],
+        owner_label=label, status=r[10], vehicle_fields=r[11] or {}, weapon_fields=r[12] or {},
+        created_at=_s(r[13]))
+
+
+# _serialize_property_item expects this column order:
+# 0 PropertyItemID,1 SeizureID,2 CaseMasterID,3 ItemType,4 SyntheticIdentifier,
+# 5 Description,6 Quantity,7 Unit,8 OwnerCanonicalPersonID,9 EstimatedValue,
+# 10 Status,11 VehicleFields,12 WeaponFields,13 CreatedAt
+
+
+def _fetch_property_item(conn, pid: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "PropertyItemID","SeizureID","CaseMasterID","ItemType","SyntheticIdentifier",'
+            '"Description","Quantity","Unit","OwnerCanonicalPersonID","EstimatedValue","Status",'
+            '"VehicleFields","WeaponFields","CreatedAt" FROM "PropertyItem" WHERE "PropertyItemID"=%s',
+            (pid,))
+        return cur.fetchone()
+
+
+def _insert_property_item(conn, cid: int, seizure_id: Optional[int], p: S.PropertyItemInput) -> int:
+    if p.item_type not in PROPERTY_ITEM_TYPES:
+        raise CaseworkValidationError(f"Unknown property item type '{p.item_type}'.")
+    if p.status not in PROPERTY_STATUSES:
+        raise CaseworkValidationError(f"Unknown property status '{p.status}'.")
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "PropertyItem" ("SeizureID","CaseMasterID","ItemType","SyntheticIdentifier",'
+            '"Description","Quantity","Unit","EstimatedValue","OwnerCanonicalPersonID","Status",'
+            '"VehicleFields","WeaponFields") VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) '
+            'RETURNING "PropertyItemID"',
+            (seizure_id, cid, p.item_type, p.synthetic_identifier, p.description, p.quantity,
+             p.unit, p.estimated_value, p.owner_canonical_person_id, p.status,
+             Json(p.vehicle_fields or {}), Json(p.weapon_fields or {})))
+        return int(cur.fetchone()[0])
+
+
+def _create_seizure(conn, cid: int, req: S.SeizureCreate, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if req.memo_evidence_item_id is not None:
+        with conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM "EvidenceItem" WHERE "EvidenceItemID"=%s', (req.memo_evidence_item_id,))
+            if cur.fetchone() is None:
+                raise CaseworkValidationError(f"Memo evidence item {req.memo_evidence_item_id} not found.")
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "Seizure" ("CaseMasterID","SeizureType","SeizedAt","Place",'
+            '"MemoEvidenceItemID","Actor") VALUES (%s,%s,%s,%s,%s,%s) RETURNING "SeizureID"',
+            (cid, req.seizure_type, req.seized_at, req.place, req.memo_evidence_item_id,
+             req.actor or (f"demo.{role}" if role else None)))
+        seizure_id = int(cur.fetchone()[0])
+    for p in req.items:
+        _insert_property_item(conn, cid, seizure_id, p)
+    audit.record(audit.Action.CREATE, "seizure", seizure_id, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "items": len(req.items)})
+    return seizure_id
+
+
+def _change_property_status(conn, pid: int, req: S.PropertyStatusChange) -> None:
+    if req.status not in PROPERTY_STATUSES:
+        raise CaseworkValidationError(f"Unknown property status '{req.status}'.")
+    row = _fetch_property_item(conn, pid)
+    if row is None:
+        raise CaseworkNotFound(f"Property item {pid} not found.")
+    with conn.cursor() as cur:
+        cur.execute('UPDATE "PropertyItem" SET "Status"=%s WHERE "PropertyItemID"=%s', (req.status, pid))
+    audit.record(audit.Action.UPDATE, "property_item", pid, actor=req.actor, conn=conn,
+                 detail={"from": row[10], "to": req.status, "note": req.note})
+
+
+def _list_seizures(conn, cid: int) -> S.SeizureListResponse:
+    _require_case(conn, cid)
+    with conn.cursor() as cur:
+        cur.execute('SELECT "SeizureID","CaseMasterID","SeizureType","SeizedAt","Place",'
+                    '"MemoEvidenceItemID","Actor","CreatedAt" FROM "Seizure" '
+                    'WHERE "CaseMasterID"=%s ORDER BY "SeizureID"', (cid,))
+        srows = cur.fetchall()
+        cur.execute(
+            'SELECT "PropertyItemID","SeizureID","CaseMasterID","ItemType","SyntheticIdentifier",'
+            '"Description","Quantity","Unit","OwnerCanonicalPersonID","EstimatedValue","Status",'
+            '"VehicleFields","WeaponFields","CreatedAt" FROM "PropertyItem" '
+            'WHERE "CaseMasterID"=%s ORDER BY "PropertyItemID"', (cid,))
+        prows = cur.fetchall()
+    items_by_seizure: dict[Optional[int], list] = {}
+    for pr in prows:
+        items_by_seizure.setdefault(pr[1], []).append(_serialize_property_item(conn, pr))
+    seizures = [S.SeizureOut(
+        seizure_id=int(s[0]), case_master_id=int(s[1]), seizure_type=s[2], seized_at=_s(s[3]),
+        place=s[4], memo_evidence_item_id=s[5], actor=s[6], created_at=_s(s[7]),
+        items=items_by_seizure.get(int(s[0]), [])) for s in srows]
+    unlinked = items_by_seizure.get(None, [])
+    return S.SeizureListResponse(case_master_id=cid, seizures=seizures, unlinked_items=unlinked,
+                                 count=len(seizures) + len(unlinked))
+
+
+# ===========================================================================
+# LAB RESULTS
+# ===========================================================================
+def _serialize_lab(conn, r, role: Optional[str]) -> S.LabResultOut:
+    restricted = (r[11] == "restricted")
+    hide = restricted and not _can_see_restricted(role)
+    return S.LabResultOut(
+        lab_result_id=int(r[0]), case_master_id=int(r[1]), property_item_id=r[2], seizure_id=r[3],
+        test_type=r[4], lab_name=r[5], synthetic_reference=r[6], requested_at=_s(r[7]),
+        result_at=_s(r[8]), result_summary=(REDACTED_TEXT if hide else r[9]), status=r[10],
+        report_evidence_item_id=r[12], access_classification=r[11], access_limited=hide,
+        created_by_actor=r[13], created_at=_s(r[14]))
+
+
+_LAB_COLS = ('"LabResultID","CaseMasterID","PropertyItemID","SeizureID","TestType","LabName",'
+             '"SyntheticReference","RequestedAt","ResultAt","ResultSummary","Status",'
+             '"AccessClassification","ReportEvidenceItemID","CreatedByActor","CreatedAt"')
+
+
+def _create_lab(conn, cid: int, req: S.LabResultInput, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if req.status not in LAB_STATUSES:
+        raise CaseworkValidationError(f"Unknown lab status '{req.status}'.")
+    if not req.test_type or not req.test_type.strip():
+        raise CaseworkValidationError("Lab test type is required.")
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "LabResult" ("CaseMasterID","PropertyItemID","SeizureID","TestType",'
+            '"LabName","SyntheticReference","RequestedAt","ResultAt","ResultSummary","Status",'
+            '"ReportEvidenceItemID","AccessClassification","CreatedByActor") '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING "LabResultID"',
+            (cid, req.property_item_id, req.seizure_id, req.test_type.strip(), req.lab_name,
+             req.synthetic_reference, req.requested_at, req.result_at, req.result_summary,
+             req.status, req.report_evidence_item_id, req.access_classification,
+             req.actor or (f"demo.{role}" if role else None)))
+        lid = int(cur.fetchone()[0])
+    audit.record(audit.Action.CREATE, "lab_result", lid, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "test_type": req.test_type})
+    return lid
+
+
+def _update_lab(conn, lid: int, req: S.LabResultUpdate) -> None:
+    sets, params = [], []
+    if req.status is not None:
+        if req.status not in LAB_STATUSES:
+            raise CaseworkValidationError(f"Unknown lab status '{req.status}'.")
+        sets.append('"Status"=%s'); params.append(req.status)
+    if req.result_at is not None:
+        sets.append('"ResultAt"=%s'); params.append(req.result_at)
+    if req.result_summary is not None:
+        sets.append('"ResultSummary"=%s'); params.append(req.result_summary)
+    if req.report_evidence_item_id is not None:
+        sets.append('"ReportEvidenceItemID"=%s'); params.append(req.report_evidence_item_id)
+    if not sets:
+        raise CaseworkValidationError("No lab-result fields supplied to update.")
+    params.append(lid)
+    with conn.cursor() as cur:
+        cur.execute(f'UPDATE "LabResult" SET {", ".join(sets)} WHERE "LabResultID"=%s', params)
+        if cur.rowcount == 0:
+            raise CaseworkNotFound(f"Lab result {lid} not found.")
+    audit.record(audit.Action.UPDATE, "lab_result", lid, actor=req.actor, conn=conn,
+                 detail={"status": req.status})
+
+
+def _list_labs(conn, cid: int, role: Optional[str]) -> S.LabResultListResponse:
+    _require_case(conn, cid)
+    with conn.cursor() as cur:
+        cur.execute(f'SELECT {_LAB_COLS} FROM "LabResult" WHERE "CaseMasterID"=%s ORDER BY "LabResultID"',
+                    (cid,))
+        rows = cur.fetchall()
+    items = [_serialize_lab(conn, r, role) for r in rows]
+    return S.LabResultListResponse(case_master_id=cid, count=len(items), items=items)
+
+
+# ===========================================================================
+# COURT / BAIL / DISPOSITION / OUTCOME
+# ===========================================================================
+def _court_prior_types(conn, cid: int) -> set[str]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT DISTINCT "EventType" FROM "CourtEvent" WHERE "CaseMasterID"=%s', (cid,))
+        return {r[0] for r in cur.fetchall()}
+
+
+def _has_chargesheet(conn, cid: int, court_types: set[str]) -> bool:
+    if "chargesheet_filed" in court_types:
+        return True
+    with conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM "CaseEvent" WHERE "CaseMasterID"=%s '
+                    "AND \"EventType\" IN ('chargesheet_filed','court_assigned') LIMIT 1", (cid,))
+        if cur.fetchone():
+            return True
+        cur.execute('SELECT 1 FROM "ChargesheetDetails" WHERE "CaseMasterID"=%s LIMIT 1', (cid,))
+        return cur.fetchone() is not None
+
+
+def _add_court_event(conn, cid: int, req: S.CourtEventInput, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if req.event_type not in COURT_EVENT_TYPES:
+        raise CaseworkValidationError(f"Unknown court event type '{req.event_type}'.")
+    court_types = _court_prior_types(conn, cid)
+    has_cs = _has_chargesheet(conn, cid, court_types)
+    et = req.event_type
+    if et == "supplementary_chargesheet" and not has_cs:
+        raise CaseworkValidationError(
+            "A supplementary chargesheet requires a prior chargesheet.")
+    if et in ("hearing", "remand", "framing_of_charges", "adjournment") and not has_cs:
+        raise CaseworkValidationError(
+            f"A '{et}' court event requires the case to be charge-sheeted / committed to court first.")
+    if et == "judgment" and not (
+            has_cs or "hearing" in court_types or "framing_of_charges" in court_types):
+        raise CaseworkValidationError(
+            "A judgment requires a prior chargesheet or hearing.")
+    if req.court_id is not None and _court_name(conn, req.court_id) is None:
+        raise CaseworkValidationError(f"Court {req.court_id} not found.")
+    detail = dict(req.detail or {})
+    if req.evidence_item_id is not None:
+        detail["evidence_item_id"] = req.evidence_item_id
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "CourtEvent" ("CaseMasterID","CourtID","EventType","ScheduledAt",'
+            '"OccurredAt","Outcome","Detail") VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING "CourtEventID"',
+            (cid, req.court_id, et, req.scheduled_at, req.occurred_at, req.outcome, Json(detail)))
+        ceid = int(cur.fetchone()[0])
+    audit.record(audit.Action.CASE_EVENT, "court_event", ceid, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "event_type": et})
+    return ceid
+
+
+def _add_bail(conn, cid: int, req: S.BailInput, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if req.status not in BAIL_STATUSES:
+        raise CaseworkValidationError(f"Unknown bail status '{req.status}'.")
+    if req.court_id is not None and _court_name(conn, req.court_id) is None:
+        raise CaseworkValidationError(f"Court {req.court_id} not found.")
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "BailEvent" ("CaseMasterID","CanonicalPersonID","BailType","Status",'
+            '"DecidedAt","CourtID","Detail") VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING "BailEventID"',
+            (cid, req.canonical_person_id, req.bail_type, req.status, req.decided_at,
+             req.court_id, Json(req.detail or {})))
+        bid = int(cur.fetchone()[0])
+    audit.record(audit.Action.CASE_EVENT, "bail_event", bid, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "status": req.status})
+    return bid
+
+
+def _add_disposition(conn, cid: int, req: S.DispositionInput, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if req.disposition_type not in DISPOSITION_TYPES:
+        raise CaseworkValidationError(f"Unknown disposition type '{req.disposition_type}'.")
+    if req.disposition_type in DISPOSITION_NEEDS_JUDGMENT:
+        court_types = _court_prior_types(conn, cid)
+        if "judgment" not in court_types:
+            raise CaseworkValidationError(
+                f"A '{req.disposition_type}' disposition requires a prior recorded judgment.")
+    if req.court_event_id is not None:
+        with conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM "CourtEvent" WHERE "CourtEventID"=%s AND "CaseMasterID"=%s',
+                        (req.court_event_id, cid))
+            if cur.fetchone() is None:
+                raise CaseworkValidationError(f"Court event {req.court_event_id} not found on this case.")
+    is_final = req.is_final if req.is_final is not None else (req.disposition_type in FINAL_DISPOSITION_TYPES)
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "CaseDisposition" ("CaseMasterID","DispositionType","DispositionDate",'
+            '"CourtEventID","IsFinal","Detail") VALUES (%s,%s,%s,%s,%s,%s) RETURNING "CaseDispositionID"',
+            (cid, req.disposition_type, req.disposition_date, req.court_event_id, is_final,
+             Json(req.detail or {})))
+        did = int(cur.fetchone()[0])
+    audit.record(audit.Action.CASE_EVENT, "case_disposition", did, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "type": req.disposition_type, "final": is_final})
+    return did
+
+
+def _has_final_event(conn, cid: int) -> bool:
+    with conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM "CaseDisposition" WHERE "CaseMasterID"=%s AND "IsFinal"=TRUE LIMIT 1', (cid,))
+        if cur.fetchone():
+            return True
+        cur.execute("SELECT 1 FROM \"CourtEvent\" WHERE \"CaseMasterID\"=%s AND \"EventType\"='judgment' LIMIT 1", (cid,))
+        return cur.fetchone() is not None
+
+
+def _terminal_case_event_id(conn, cid: int) -> Optional[int]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "CaseEventID" FROM "CaseEvent" WHERE "CaseMasterID"=%s '
+                    'AND "ToStatus" = ANY(%s) ORDER BY "SequenceNo" DESC LIMIT 1',
+                    (cid, list(TERMINAL_STATUSES)))
+        r = cur.fetchone()
+    return int(r[0]) if r else None
+
+
+def _add_outcome(conn, cid: int, req: S.OutcomeInput, role: Optional[str]) -> int:
+    _require_case(conn, cid)
+    if not _has_final_event(conn, cid):
+        raise CaseworkConflict(
+            "No verified final event yet (a final disposition or a judgment). "
+            "An outcome observation cannot be recorded before a case is finally concluded.")
+    observed_at = req.observed_at or _now_iso()
+    if req.observation_window_end and observed_at < req.observation_window_end:
+        raise CaseworkValidationError(
+            "Observed date must be on/after the observation window end (no label leakage).")
+    src = _terminal_case_event_id(conn, cid)
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "OutcomeObservation" ("CaseMasterID","ObservationType","ObservedAt",'
+            '"ObservationWindowStart","ObservationWindowEnd","Verified","SourceEventID","Detail") '
+            'VALUES (%s,%s,%s,%s,%s,TRUE,%s,%s) RETURNING "OutcomeObservationID"',
+            (cid, req.observation_type, observed_at, req.observation_window_start,
+             req.observation_window_end, src, Json(req.detail or {})))
+        oid = int(cur.fetchone()[0])
+    audit.record(audit.Action.CASE_EVENT, "outcome_observation", oid, actor=req.actor, conn=conn,
+                 detail={"case_id": cid, "type": req.observation_type})
+    return oid
+
+
+def _court_events(conn, cid: int) -> list[S.CourtEventOut]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "CourtEventID","CaseMasterID","CourtID","EventType","ScheduledAt",'
+                    '"OccurredAt","Outcome","Detail","CreatedAt" FROM "CourtEvent" '
+                    'WHERE "CaseMasterID"=%s ORDER BY COALESCE("OccurredAt","ScheduledAt","CreatedAt"), '
+                    '"CourtEventID"', (cid,))
+        rows = cur.fetchall()
+    return [S.CourtEventOut(
+        court_event_id=int(r[0]), case_master_id=int(r[1]), court_id=r[2],
+        court_name=_court_name(conn, r[2]), event_type=r[3], scheduled_at=_s(r[4]),
+        occurred_at=_s(r[5]), outcome=r[6], detail=r[7] or {}, created_at=_s(r[8])) for r in rows]
+
+
+def _bail_events(conn, cid: int) -> list[S.BailOut]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "BailEventID","CaseMasterID","CanonicalPersonID","BailType","Status",'
+                    '"DecidedAt","CourtID","Detail","CreatedAt" FROM "BailEvent" '
+                    'WHERE "CaseMasterID"=%s ORDER BY "BailEventID"', (cid,))
+        rows = cur.fetchall()
+    out = []
+    for r in rows:
+        _, label = _person_label(conn, r[2])
+        out.append(S.BailOut(
+            bail_event_id=int(r[0]), case_master_id=int(r[1]), canonical_person_id=r[2],
+            person_label=label, bail_type=r[3], status=r[4], decided_at=_s(r[5]),
+            court_id=r[6], detail=r[7] or {}, created_at=_s(r[8])))
+    return out
+
+
+def _dispositions(conn, cid: int) -> list[S.DispositionOut]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "CaseDispositionID","CaseMasterID","DispositionType","DispositionDate",'
+                    '"CourtEventID","IsFinal","Detail","CreatedAt" FROM "CaseDisposition" '
+                    'WHERE "CaseMasterID"=%s ORDER BY "CaseDispositionID"', (cid,))
+        rows = cur.fetchall()
+    return [S.DispositionOut(
+        case_disposition_id=int(r[0]), case_master_id=int(r[1]), disposition_type=r[2],
+        disposition_date=_s(r[3]), court_event_id=r[4], is_final=bool(r[5]), detail=r[6] or {},
+        created_at=_s(r[7])) for r in rows]
+
+
+def _outcomes(conn, cid: int) -> list[S.OutcomeOut]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "OutcomeObservationID","CaseMasterID","ObservationType","ObservedAt",'
+                    '"ObservationWindowStart","ObservationWindowEnd","Verified","SourceEventID","Detail","CreatedAt" '
+                    'FROM "OutcomeObservation" WHERE "CaseMasterID"=%s ORDER BY "OutcomeObservationID"', (cid,))
+        rows = cur.fetchall()
+    return [S.OutcomeOut(
+        outcome_observation_id=int(r[0]), case_master_id=int(r[1]), observation_type=r[2],
+        observed_at=_s(r[3]), observation_window_start=_s(r[4]), observation_window_end=_s(r[5]),
+        verified=bool(r[6]), source_event_id=r[7], detail=r[8] or {}, created_at=_s(r[9])) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Case category + status derivation
+# ---------------------------------------------------------------------------
+def _legacy_category(conn, cid: int) -> Optional[str]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT cc."LookupValue" FROM "CaseMaster" cm '
+                    'JOIN "CaseCategory" cc ON cc."CaseCategoryID"=cm."CaseCategoryID" '
+                    'WHERE cm."CaseMasterID"=%s', (cid,))
+        r = cur.fetchone()
+    return r[0] if r else None
+
+
+def _legacy_status_name(conn, cid: int) -> Optional[str]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT st."CaseStatusName" FROM "CaseMaster" cm '
+                    'JOIN "CaseStatusMaster" st ON st."CaseStatusID"=cm."CaseStatusID" '
+                    'WHERE cm."CaseMasterID"=%s', (cid,))
+        r = cur.fetchone()
+    return r[0] if r else None
+
+
+def _current_version(conn, cid: int):
+    with conn.cursor() as cur:
+        cur.execute('SELECT "CaseVersionID","CaseCategoryCode","StatusCode" FROM "CaseVersion" '
+                    'WHERE "CaseMasterID"=%s AND "IsCurrent" LIMIT 1', (cid,))
+        return cur.fetchone()
+
+
+def _prior_event_types(conn, cid: int) -> list[str]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "EventType" FROM "CaseEvent" WHERE "CaseMasterID"=%s ORDER BY "SequenceNo"', (cid,))
+        return [r[0] for r in cur.fetchall()]
+
+
+def _lifecycle_view(conn, cid: int) -> S.CourtLifecycleView:
+    _require_case(conn, cid)
+    cv = _current_version(conn, cid)
+    if cv is not None:
+        category, current_status = cv[1], cv[2]
+        has_version = True
+    else:
+        category = _legacy_category(conn, cid) or "FIR"
+        legacy_name = _legacy_status_name(conn, cid)
+        current_status = LEGACY_TO_STATUS.get(legacy_name or "", wf.S_UNDER_INVESTIGATION)
+        has_version = False
+    legacy_status = wf.STATUS_TO_LEGACY.get(current_status)
+    priors = _prior_event_types(conn, cid)
+    # allowed transitions from the seeded state machine, applicable to current status
+    transitions = []
+    for t in wf.load_transitions(conn, category):
+        if t["from_status"] in (None, "", current_status):
+            transitions.append(S.TransitionMeta(
+                event_type=t["event_type"], label=wf.EVENT_LABELS.get(t["event_type"], t["event_type"]),
+                from_status=t["from_status"], to_status=t["to_status"],
+                requires_prior_event=t["requires_prior_event"], is_terminal=bool(t["is_terminal"]),
+                description=t["description"]))
+    has_final = _has_final_event(conn, cid)
+    return S.CourtLifecycleView(
+        case_master_id=cid, category=category, current_status=current_status,
+        current_status_label=wf.STATUS_LABELS.get(current_status), legacy_status=legacy_status,
+        has_case_version=has_version, prior_event_types=priors, allowed_transitions=transitions,
+        court_events=_court_events(conn, cid), bail_events=_bail_events(conn, cid),
+        dispositions=_dispositions(conn, cid), outcomes=_outcomes(conn, cid),
+        has_final_disposition=has_final, can_record_outcome=has_final)
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle events (bootstrap a CaseVersion for legacy cases, then reuse intake)
+# ---------------------------------------------------------------------------
+def _bootstrap_kind(category: str) -> wf.CaseKind:
+    for name in wf.CATEGORY_TO_KINDS.get(category, []):
+        if name != "missing_person":
+            return wf.CASE_KINDS[name]
+    return wf.CASE_KINDS["fir_standard"]
+
+
+def _ensure_case_version(conn, cid: int) -> bool:
+    """Ensure an IsCurrent CaseVersion exists so lifecycle events can be applied.
+    Legacy cases (no version) get a bootstrap version derived from their legacy
+    category/status/coords PLUS an initial lifecycle event (so later transitions
+    have their prerequisite history). Returns True iff a version was created."""
+    if _current_version(conn, cid) is not None:
+        return False
+    category = _legacy_category(conn, cid) or "FIR"
+    ck = _bootstrap_kind(category)
+    current_status = LEGACY_TO_STATUS.get(_legacy_status_name(conn, cid) or "", ck.initial_status)
+    with conn.cursor() as cur:
+        cur.execute('SELECT "latitude","longitude","PoliceStationID" FROM "CaseMaster" WHERE "CaseMasterID"=%s', (cid,))
+        lat, lon, unit = cur.fetchone()
+        district = None
+        if unit is not None:
+            cur.execute('SELECT "DistrictID" FROM "Unit" WHERE "UnitID"=%s', (unit,))
+            dr = cur.fetchone()
+            district = dr[0] if dr else None
+        cur.execute(
+            'INSERT INTO "CaseVersion" ("CaseMasterID","VersionNo","CaseCategoryCode","StatusCode",'
+            '"IsCurrent","IncidentLatitude","IncidentLongitude","AssignedDistrictID","AssignedUnitID",'
+            '"SnapshotAttributes","ChangeReason","Actor") '
+            'VALUES (%s,1,%s,%s,TRUE,%s,%s,%s,%s,%s,%s,%s)',
+            (cid, category, current_status, lat, lon, district, unit,
+             Json({"bootstrapped": True, "case_kind": ck.name}), "phase7_lifecycle_bootstrap", "phase7"))
+        # seed the initial event only if the case has no lifecycle events yet, so
+        # prerequisite-gated transitions (e.g. investigation before chargesheet)
+        # have a consistent starting point.
+        cur.execute('SELECT 1 FROM "CaseEvent" WHERE "CaseMasterID"=%s LIMIT 1', (cid,))
+        if cur.fetchone() is None:
+            cur.execute(
+                'INSERT INTO "CaseEvent" ("CaseMasterID","EventType","EventCategory","SequenceNo",'
+                '"OccurredAt","FromStatus","ToStatus","Payload","ActorRole") '
+                'VALUES (%s,%s,\'lifecycle\',1,now(),NULL,%s,%s,%s)',
+                (cid, ck.initial_event, ck.initial_status,
+                 Json({"bootstrapped": True}), "phase7"))
+    return True
+
+
+def _add_lifecycle_event(conn, cid: int, event_type: str, occurred_at: Optional[str],
+                         actor_role: Optional[str], payload: dict) -> S.LifecycleEventResult:
+    _require_case(conn, cid)
+    bootstrapped = _ensure_case_version(conn, cid)
+    try:
+        res = intake_service._add_case_event(conn, cid, event_type, occurred_at, actor_role, payload)
+    except intake_service.IntakeConflict as exc:
+        raise CaseworkConflict(str(exc))
+    except intake_service.IntakeNotFound as exc:
+        raise CaseworkNotFound(str(exc))
+    return S.LifecycleEventResult(
+        case_master_id=cid, case_event_id=res.case_event_id, from_status=res.from_status,
+        to_status=res.to_status, is_terminal=res.is_terminal, legacy_status=res.legacy_status,
+        bootstrapped_version=bootstrapped)
+
+
+# ===========================================================================
+# TIMELINE
+# ===========================================================================
+def _timeline(conn, cid: int) -> S.TimelineResponse:
+    _require_case(conn, cid)
+    entries: list[S.TimelineEntry] = []
+    event_backed = False
+    with conn.cursor() as cur:
+        # 1. append-only lifecycle events (CaseEvent)
+        cur.execute('SELECT "CaseEventID","EventType","OccurredAt","ToStatus" FROM "CaseEvent" '
+                    'WHERE "CaseMasterID"=%s ORDER BY "SequenceNo"', (cid,))
+        for r in cur.fetchall():
+            event_backed = True
+            entries.append(S.TimelineEntry(
+                date=_s(r[2]), kind="lifecycle", type=r[1],
+                label=wf.EVENT_LABELS.get(r[1], r[1]),
+                detail=(wf.STATUS_LABELS.get(r[3]) if r[3] else None), ref_id=int(r[0])))
+        # 2. court events
+        cur.execute('SELECT "CourtEventID","EventType","OccurredAt","ScheduledAt","Outcome" '
+                    'FROM "CourtEvent" WHERE "CaseMasterID"=%s', (cid,))
+        for r in cur.fetchall():
+            event_backed = True
+            entries.append(S.TimelineEntry(
+                date=_s(r[2] or r[3]), kind="court", type=r[1],
+                label=r[1].replace("_", " ").title(), detail=r[4], ref_id=int(r[0])))
+        # 3. statements
+        cur.execute('SELECT "StatementID","StatementType","RecordedAt" FROM "Statement" '
+                    'WHERE "CaseMasterID"=%s', (cid,))
+        for r in cur.fetchall():
+            entries.append(S.TimelineEntry(
+                date=_s(r[2]), kind="statement", type=r[1],
+                label=f"{r[1].title()} statement", detail=None, ref_id=int(r[0])))
+        # 4. seizures
+        cur.execute('SELECT "SeizureID","SeizureType","SeizedAt" FROM "Seizure" WHERE "CaseMasterID"=%s', (cid,))
+        for r in cur.fetchall():
+            entries.append(S.TimelineEntry(
+                date=_s(r[2]), kind="seizure", type=r[1], label="Seizure", detail=None, ref_id=int(r[0])))
+        # 5. dispositions
+        cur.execute('SELECT "CaseDispositionID","DispositionType","DispositionDate","IsFinal" '
+                    'FROM "CaseDisposition" WHERE "CaseMasterID"=%s', (cid,))
+        for r in cur.fetchall():
+            entries.append(S.TimelineEntry(
+                date=_s(r[2]), kind="disposition", type=r[1],
+                label=r[1].replace("_", " ").title(), detail=("final" if r[3] else None), ref_id=int(r[0])))
+        # 6. outcomes
+        cur.execute('SELECT "OutcomeObservationID","ObservationType","ObservedAt" FROM "OutcomeObservation" '
+                    'WHERE "CaseMasterID"=%s', (cid,))
+        for r in cur.fetchall():
+            entries.append(S.TimelineEntry(
+                date=_s(r[2]), kind="outcome", type=r[1], label="Verified outcome", detail=None, ref_id=int(r[0])))
+        # 7. derived base dates (registration / arrests / chargesheets) so the
+        #    timeline is useful even before any event rows exist.
+        cur.execute('SELECT "CrimeRegisteredDate","CrimeNo" FROM "CaseMaster" WHERE "CaseMasterID"=%s', (cid,))
+        cm = cur.fetchone()
+        if cm and cm[0]:
+            entries.append(S.TimelineEntry(date=_s(cm[0]), kind="derived", type="registered",
+                                           label="FIR registered", detail=cm[1]))
+        if not event_backed:
+            cur.execute('SELECT "ArrestSurrenderDate" FROM "ArrestSurrender" WHERE "CaseMasterID"=%s '
+                        'AND "ArrestSurrenderDate" IS NOT NULL ORDER BY "ArrestSurrenderDate" LIMIT 5', (cid,))
+            for r in cur.fetchall():
+                entries.append(S.TimelineEntry(date=_s(r[0]), kind="derived", type="arrest",
+                                               label="Arrest / surrender", detail=None))
+            cur.execute('SELECT "csdate","cstype" FROM "ChargesheetDetails" WHERE "CaseMasterID"=%s '
+                        'AND "csdate" IS NOT NULL ORDER BY "csdate" LIMIT 5', (cid,))
+            for r in cur.fetchall():
+                entries.append(S.TimelineEntry(date=_s(r[0]), kind="derived", type="chargesheet",
+                                               label="Chargesheet / final report", detail=_s(r[1])))
+    entries.sort(key=lambda e: (e.date or ""))
+    return S.TimelineResponse(case_master_id=cid, count=len(entries),
+                              event_backed=event_backed, entries=entries[:250])
+
+
+# ===========================================================================
+# Lookups
+# ===========================================================================
+def _lv(v: str) -> dict:
+    return {"value": v, "label": v.replace("_", " ").title()}
+
+
+def lookups() -> S.CaseworkLookups:
+    with db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT "CourtID","CourtName" FROM "Court" WHERE "Active" ORDER BY "CourtName" LIMIT 500')
+            courts = [{"id": int(r[0]), "name": r[1]} for r in cur.fetchall()]
+    return S.CaseworkLookups(
+        statement_types=[_lv(x) for x in STATEMENT_TYPES],
+        property_item_types=[_lv(x) for x in PROPERTY_ITEM_TYPES],
+        property_statuses=[_lv(x) for x in PROPERTY_STATUSES],
+        court_event_types=[_lv(x) for x in COURT_EVENT_TYPES],
+        bail_statuses=[_lv(x) for x in BAIL_STATUSES],
+        disposition_types=[_lv(x) for x in DISPOSITION_TYPES],
+        lab_test_types=[_lv(x) for x in LAB_TEST_TYPES],
+        lab_statuses=[_lv(x) for x in LAB_STATUSES],
+        access_classifications=[_lv(x) for x in ACCESS_CLASSIFICATIONS],
+        courts=courts)
+
+
+# ===========================================================================
+# Public API (open connections; rw_conn commits on clean exit)
+# ===========================================================================
+# --- statements ---
+def create_statement(cid: int, req: S.StatementCreate, role: Optional[str]) -> S.StatementOut:
+    with db.rw_conn() as conn:
+        sid = _create_statement(conn, cid, req, role)
+        return _serialize_statement(conn, sid, role)
+
+
+def list_statements(cid: int, role: Optional[str]) -> S.StatementListResponse:
+    with db.ro_conn() as conn:
+        return _list_statements(conn, cid, role)
+
+
+def get_statement(sid: int, role: Optional[str]) -> S.StatementOut:
+    with db.ro_conn() as conn:
+        return _serialize_statement(conn, sid, role)
+
+
+def correct_statement(sid: int, req: S.StatementCorrection, role: Optional[str]) -> S.StatementOut:
+    with db.rw_conn() as conn:
+        _correct_statement(conn, sid, req, role)
+        return _serialize_statement(conn, sid, role)
+
+
+def review_statement(sid: int, req: S.StatementReview, role: Optional[str]) -> S.StatementOut:
+    with db.rw_conn() as conn:
+        _review_statement(conn, sid, req)
+        return _serialize_statement(conn, sid, role)
+
+
+# --- property / seizure ---
+def create_seizure(cid: int, req: S.SeizureCreate, role: Optional[str]) -> S.SeizureListResponse:
+    with db.rw_conn() as conn:
+        _create_seizure(conn, cid, req, role)
+        return _list_seizures(conn, cid)
+
+
+def list_seizures(cid: int) -> S.SeizureListResponse:
+    with db.ro_conn() as conn:
+        return _list_seizures(conn, cid)
+
+
+def add_property_item(cid: int, seizure_id: Optional[int], p: S.PropertyItemInput,
+                      role: Optional[str]) -> S.PropertyItemOut:
+    with db.rw_conn() as conn:
+        _require_case(conn, cid)
+        if seizure_id is not None:
+            with conn.cursor() as cur:
+                cur.execute('SELECT 1 FROM "Seizure" WHERE "SeizureID"=%s AND "CaseMasterID"=%s',
+                            (seizure_id, cid))
+                if cur.fetchone() is None:
+                    raise CaseworkValidationError(f"Seizure {seizure_id} not found on this case.")
+        pid = _insert_property_item(conn, cid, seizure_id, p)
+        audit.record(audit.Action.CREATE, "property_item", pid, conn=conn, detail={"case_id": cid})
+        return _serialize_property_item(conn, _fetch_property_item(conn, pid))
+
+
+def change_property_status(pid: int, req: S.PropertyStatusChange) -> S.PropertyItemOut:
+    with db.rw_conn() as conn:
+        _change_property_status(conn, pid, req)
+        return _serialize_property_item(conn, _fetch_property_item(conn, pid))
+
+
+# --- lab ---
+def create_lab(cid: int, req: S.LabResultInput, role: Optional[str]) -> S.LabResultOut:
+    with db.rw_conn() as conn:
+        lid = _create_lab(conn, cid, req, role)
+        with conn.cursor() as cur:
+            cur.execute(f'SELECT {_LAB_COLS} FROM "LabResult" WHERE "LabResultID"=%s', (lid,))
+            row = cur.fetchone()
+        return _serialize_lab(conn, row, role)
+
+
+def list_labs(cid: int, role: Optional[str]) -> S.LabResultListResponse:
+    with db.ro_conn() as conn:
+        return _list_labs(conn, cid, role)
+
+
+def update_lab(lid: int, req: S.LabResultUpdate, role: Optional[str]) -> S.LabResultOut:
+    with db.rw_conn() as conn:
+        _update_lab(conn, lid, req)
+        with conn.cursor() as cur:
+            cur.execute(f'SELECT {_LAB_COLS} FROM "LabResult" WHERE "LabResultID"=%s', (lid,))
+            row = cur.fetchone()
+        return _serialize_lab(conn, row, role)
+
+
+# --- court / bail / disposition / outcome / lifecycle ---
+def court_lifecycle(cid: int) -> S.CourtLifecycleView:
+    with db.ro_conn() as conn:
+        return _lifecycle_view(conn, cid)
+
+
+def add_court_event(cid: int, req: S.CourtEventInput, role: Optional[str]) -> S.CourtLifecycleView:
+    with db.rw_conn() as conn:
+        _add_court_event(conn, cid, req, role)
+        return _lifecycle_view(conn, cid)
+
+
+def add_bail(cid: int, req: S.BailInput, role: Optional[str]) -> S.CourtLifecycleView:
+    with db.rw_conn() as conn:
+        _add_bail(conn, cid, req, role)
+        return _lifecycle_view(conn, cid)
+
+
+def add_disposition(cid: int, req: S.DispositionInput, role: Optional[str]) -> S.CourtLifecycleView:
+    with db.rw_conn() as conn:
+        _add_disposition(conn, cid, req, role)
+        return _lifecycle_view(conn, cid)
+
+
+def add_outcome(cid: int, req: S.OutcomeInput, role: Optional[str]) -> S.CourtLifecycleView:
+    with db.rw_conn() as conn:
+        _add_outcome(conn, cid, req, role)
+        return _lifecycle_view(conn, cid)
+
+
+def add_lifecycle_event(cid: int, req: S.LifecycleEventInput, role: Optional[str]) -> S.LifecycleEventResult:
+    with db.rw_conn() as conn:
+        return _add_lifecycle_event(conn, cid, req.event_type, req.occurred_at,
+                                    req.actor_role or role, req.payload)
+
+
+# --- timeline ---
+def timeline(cid: int) -> S.TimelineResponse:
+    with db.ro_conn() as conn:
+        return _timeline(conn, cid)

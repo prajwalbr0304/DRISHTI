@@ -1,0 +1,5 @@
+{
+  "table_identifier": "EntityResolutionCandidate",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

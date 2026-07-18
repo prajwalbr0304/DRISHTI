@@ -1,0 +1,21 @@
+{
+  "workflow": "feature-snapshot-and-staleness",
+  "fixture_status": "representative",
+  "idempotency_key": "snap:area:3:2026-07-18T00:00:00Z:fsv-2:svh-c1001",
+  "input": {
+    "signal": "row_inserted CaseVersion",
+    "data": { "state": "approved", "district_id": 3, "observation_cutoff": "2026-07-18T00:00:00Z",
+              "feature_schema_version": "fsv-2", "source_version_hash": "svh-c1001", "CaseVersionID": "cv-1001" }
+  },
+  "expected_output": {
+    "feature_snapshot": { "subject_kind": "area", "subject_id": "3", "immutable": true },
+    "stale_marks": ["prediction:area:3:prior"],
+    "coalesced_prediction_request": "pred-area-3-1"
+  },
+  "negative_case": {
+    "input": { "state": "approved", "person_id": "p-1" },
+    "expected": "ignored (no_aggregate_subject) — person subjects are never scored"
+  },
+  "lineage": { "source": "cv-1001", "feature_schema_version": "fsv-2" },
+  "asserts": [ "only approved/canonical aggregate subjects eligible", "draft/submitted/rejected/quarantined ineligible" ]
+}

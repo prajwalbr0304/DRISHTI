@@ -1,0 +1,23 @@
+# Reference copy of the Catalyst Slate deployment config (Phase 14 Part C).
+#
+# At deploy time this must live at `<web-build-output>/.catalyst/slate-config.toml`
+# (i.e. web/dist/.catalyst/slate-config.toml). A clean `vite build` wipes dist/,
+# so it is recreated after each build (see the pipeline `slate_deploy` stage and
+# infra/catalyst/README.md). It is kept here so the intended config is committed
+# and reviewable even though the effective file lives in the (gitignored) dist/.
+#
+# The SPA redirects duplicate web/public/_redirects so deep links + refresh work
+# regardless of which mechanism Slate honours first.
+
+framework = "react-vite"
+deployment_name = "default"
+
+[[redirects]]
+from = "/app/*"
+to = "/index.html"
+status = 200
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200

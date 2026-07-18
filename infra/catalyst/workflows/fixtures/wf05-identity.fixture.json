@@ -1,0 +1,20 @@
+{
+  "workflow": "identity-resolution-and-graph-refresh",
+  "fixture_status": "representative",
+  "idempotency_key": "idres:batch-9:svh-abc123",
+  "input": {
+    "batch_ref": "batch-9",
+    "party_records": [
+      { "party_id": "p-1", "name": "A. Kumar", "phone": "SYN-9000000001" },
+      { "party_id": "p-2", "name": "Anil Kumar", "phone": "SYN-9000000001" }
+    ]
+  },
+  "expected_output": {
+    "candidates": [ { "pair": ["p-1", "p-2"], "score": 0.86, "state": "review_queued" } ],
+    "canonical_decision": "pending_human_review",
+    "graph_version": "g-v2 (built after decision)",
+    "cache_invalidation": ["lookup:person:p-1", "lookup:person:p-2"]
+  },
+  "lineage": { "source_version_hash": "svh-abc123", "prior_graph": "g-v1" },
+  "asserts": [ "auto-merge never final without human decision", "graph is versioned; cache invalidation is safe/scoped" ]
+}

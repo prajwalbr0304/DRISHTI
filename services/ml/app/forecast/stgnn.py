@@ -32,7 +32,7 @@ def _load_series(conn, head_id, window):
     ids = [d for d in adj]
     series, last_period = {}, None
     for d in ids:
-        p, c = trends.monthly_series(conn, district_id=d, head_id=head_id)
+        p, c = trends.monthly_series(conn, district_id=d, head_id=head_id, valid_geo_only=True)
         if len(c) >= window + 2:
             series[d] = (p, c)
             last_period = p[-1]

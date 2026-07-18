@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api";
 import { ApiError, errorMessage } from "@/api/contracts";
-import type { EntityDetailResponse, RiskResponse, SubgraphResponse } from "@/api/types";
+import type { EntityDetailResponse, SubgraphResponse } from "@/api/types";
 import { cn, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { useRole } from "@/providers/RoleProvider";
 import { usePeekStore } from "@/stores/usePeekStore";
@@ -143,7 +143,7 @@ function SubPage({ tab, detail, entityId }: { tab: string; detail: EntityDetailR
     case "identity": return <IdentityTab detail={detail} />;
     case "history": return <HistoryTab detail={detail} />;
     case "network": return <NetworkTab entityId={entityId} />;
-    case "risk": return <RiskTab entityId={entityId} />;
+    case "risk": return <RiskTab />;
     case "mo": return <MoTab detail={detail} />;
     case "cases": return <CasesTab detail={detail} />;
     case "financial": return <FinancialTab entityId={entityId} />;
@@ -236,53 +236,36 @@ function NetworkTab({ entityId }: { entityId: number }) {
   );
 }
 
-/* Risk (gauge + signed factor bars) */
-function RiskTab({ entityId }: { entityId: number }) {
-  const q = useQuery({
-    queryKey: ["risk", "entity", entityId],
-    queryFn: ({ signal }) => api.risk.byEntity(entityId, false, signal),
-  });
-  const is404 = q.error instanceof ApiError && (q.error as ApiError).status === 404;
-  if (is404) return <EmptyState icon={ShieldAlert} title="No risk score" description="This entity has not been scored yet. Run the risk batch or rescore=true." />;
+/* Risk — RETIRED (Phase 13). Per-person "offender risk" scores were synthetic
+   demonstration artefacts and are no longer presented as operational truth. The
+   approved model is an AGGREGATE, area-level case-review workload band. */
+function RiskTab() {
+  const navigate = useNavigate();
   return (
-    <Widget title="Risk score" provenance={q.data?.result} loading={q.isLoading} error={q.error} onRefresh={() => q.refetch()}>
-      {q.data && <RiskGauge data={q.data} />}
-    </Widget>
-  );
-}
-
-function RiskGauge({ data }: { data: RiskResponse }) {
-  const pct = Math.round(data.risk_score * 100);
-  return (
-    <div className="space-y-4">
-      <div className="flex items-baseline gap-3">
-        <span className="tnum text-36 font-bold text-content">{pct}%</span>
-        <Badge variant={data.risk_level === "critical" ? "critical" : data.risk_level === "high" ? "high" : data.risk_level === "medium" ? "medium" : "low"} className="capitalize">
-          {data.risk_band}
-        </Badge>
-      </div>
-      {/* Gauge bar */}
-      <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-      </div>
-      {/* Signed factor bars */}
-      <div className="space-y-2">
-        {data.factors.map((f) => (
-          <div key={f.feature} className="flex items-center gap-3">
-            <span className="w-40 shrink-0 truncate text-13 text-content-dim" title={f.label}>{f.label}</span>
-            <span className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
-              <span
-                className={cn("absolute inset-y-0 rounded-full", f.contribution >= 0 ? "left-1/2 bg-severity-high" : "right-1/2 bg-severity-low")}
-                style={{ width: `${Math.min(50, Math.abs(f.contribution) * 100)}%` }}
-              />
-            </span>
-            <span className={cn("tnum w-12 shrink-0 text-right text-12 font-medium", f.contribution >= 0 ? "text-severity-high" : "text-severity-low")}>
-              {f.contribution >= 0 ? "+" : ""}{f.contribution.toFixed(2)}
-            </span>
+    <div className="rounded-card border border-severity-high/40 bg-severity-high/5 p-5">
+      <div className="flex items-start gap-3">
+        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-severity-high" />
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-14 font-semibold text-content">Individual risk scoring retired</h3>
+            <Badge variant="neutral">Synthetic demo · not operational</Badge>
           </div>
-        ))}
+          <p className="text-13 leading-relaxed text-content-dim">
+            Per-person &ldquo;offender risk&rdquo; scores were synthetic demonstration artefacts. They are
+            <span className="font-medium text-content"> not operational truth</span> and have been retired:
+            DRISHTI does not score any individual for arrest, detention, bail, guilt or any other
+            person-level criminal-justice decision.
+          </p>
+          <p className="text-13 leading-relaxed text-content-dim">
+            The approved model now supports an <span className="font-medium text-content">aggregate,
+            area-level case-review workload band</span> for supervisory resource planning — reviewed by a
+            human, never a person-level judgement.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => navigate("/analytics?mode=workload")}>
+            View aggregate workload model
+          </Button>
+        </div>
       </div>
-      <p className="text-12 text-content-dim capitalize">{data.factors[0]?.direction ?? ""} risk direction</p>
     </div>
   );
 }

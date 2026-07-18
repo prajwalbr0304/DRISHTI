@@ -1,0 +1,5 @@
+{
+  "table_identifier": "Designation",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

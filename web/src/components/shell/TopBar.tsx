@@ -4,6 +4,7 @@ import { TimeScrubber } from "@/components/shell/TimeScrubber";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { NotificationsBell } from "@/components/shell/NotificationsBell";
 import { ProfileMenu } from "@/components/shell/ProfileMenu";
+import { SyntheticBadge } from "@/components/shell/SyntheticBadge";
 
 const isMac =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -32,10 +33,11 @@ export function TopBar() {
         <TimeScrubber />
       </div>
 
-      <div className="ml-auto flex items-center gap-0.5 lg:ml-0">
+      <div className="ml-auto flex items-center gap-1.5 lg:ml-0">
         <div className="lg:hidden">
           <TimeScrubber />
         </div>
+        <SyntheticBadge />
         <ThemeToggle />
         <NotificationsBell />
         <ProfileMenu />

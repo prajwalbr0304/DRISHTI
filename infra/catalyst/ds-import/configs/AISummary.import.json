@@ -1,0 +1,5 @@
+{
+  "table_identifier": "AISummary",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

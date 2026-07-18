@@ -17,7 +17,12 @@ class Context:
     districts: List[dict] = field(default_factory=list)
     district_weights: List[float] = field(default_factory=list)
 
-    # stations[i] = {id, district_idx, lat, lon, radius}
+    # stations[i] = {id, district_idx, taluk, lat, lon, sho_ring}
+    #   lat/lon : station point, sampled inside its taluk (real KA land).
+    #   taluk   : name of the taluk the station sits in.
+    #   sho_ring: exterior ring [[lon,lat], ...] of the station's SHO jurisdiction
+    #             (Voronoi cell clipped to the district). Incidents are drawn
+    #             inside this ring, so every coordinate stays on the landmass.
     stations: List[dict] = field(default_factory=list)
     stations_by_district: Dict[int, List[int]] = field(default_factory=dict)  # dist_idx -> station indices
     officers_by_station: Dict[int, List[int]] = field(default_factory=dict)    # station_id -> officer ids

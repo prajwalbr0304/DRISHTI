@@ -1,0 +1,5 @@
+{
+  "table_identifier": "OccupationMaster",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

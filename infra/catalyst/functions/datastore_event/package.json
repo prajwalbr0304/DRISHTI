@@ -1,0 +1,10 @@
+{
+  "name": "datastore_event",
+  "version": "0.1.0",
+  "description": "DRISHTI Data Store source-change handler (feature snapshot / staleness).",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

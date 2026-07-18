@@ -1,0 +1,36 @@
+{
+  "_comment": "DRISHTI NoSQL segments (Phase 14 Part B / matrix row 7). NoSQL holds ONLY flexible/ephemeral semi-structured state that is a poor fit for the relational serving layer. It is NEVER a duplicate of authoritative Data Store records and NEVER the system of record for case/FIR/person data. Created in Console -> NoSQL (no CLI). Enabled via DRISHTI_USE_CATALYST_NOSQL.",
+  "segments": [
+    {
+      "name": "BoardLayout",
+      "purpose": "Saved investigation-board canvas layout (node positions, groupings).",
+      "authoritative": false,
+      "ttl_seconds": null,
+      "disposition": "RESERVED (disabled scaffold) — owned/enabled by Prompt 16 (Investigation Board).",
+      "owner_phase": "16"
+    },
+    {
+      "name": "UiPreferences",
+      "purpose": "Per-user UI preferences (theme, saved filters, column order).",
+      "authoritative": false,
+      "ttl_seconds": null,
+      "disposition": "flexible per-user state; safe to lose"
+    },
+    {
+      "name": "Presence",
+      "purpose": "Who-is-viewing presence markers for collaborative screens.",
+      "authoritative": false,
+      "ttl_seconds": 120,
+      "disposition": "ephemeral; TTL-backed"
+    },
+    {
+      "name": "FeedEnvelope",
+      "purpose": "Flexible envelope for heterogeneous hazard/feed payloads before normalization.",
+      "authoritative": false,
+      "ttl_seconds": 604800,
+      "disposition": "RESERVED (disabled scaffold) — owned/enabled by Prompt 17 (Disaster Response).",
+      "owner_phase": "17"
+    }
+  ],
+  "guardrail": "Any segment not listed here is rejected by app/nosql.py. Canonical records always live in Data Store."
+}

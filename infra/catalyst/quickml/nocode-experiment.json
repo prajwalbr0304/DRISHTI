@@ -1,0 +1,21 @@
+{
+  "_comment": "DRISHTI QuickML no-code ML pipeline experiment (Phase 14 Part B / matrix row 12, workflow §8 baseline). This is the eligible no-code baseline used because Zia AutoML is unavailable in the India DC. It is an OFFLINE experiment over a versioned, aggregate, leakage-checked dataset - never triggered by a raw upload or a single FIR. Configured/run in Console -> QuickML; DISABLED here until an approved dataset release.",
+  "enabled": false,
+  "experiment_name": "area-workload-band-baseline",
+  "task_type": "classification",
+  "subject": "aggregate area/period (NEVER a person / complainant / accused / FIR)",
+  "dataset": {
+    "source": "FeatureSnapshot aggregate export (area x period), versioned",
+    "target_column": "workload_band",
+    "feature_columns_note": "leakage-safe aggregate features only; observation cutoff enforced",
+    "split": "time-based holdout (train past, evaluate future)",
+    "dev_row_cap": 5000
+  },
+  "guards": {
+    "leakage_checks": true,
+    "fairness_checks": "no protected attributes as features",
+    "human_approval_required": true
+  },
+  "baseline_comparison": "reported against the prior-period heuristic baseline before any promotion",
+  "outputs": "metrics + cost/latency report -> human approval -> ModelVersion registration (no auto-promote)"
+}

@@ -11,11 +11,14 @@ from typing import Optional
 
 from .. import db
 from ..contracts import AiResult
-from . import (earlywarning, features as feat, fusion, nearrepeat, stgnn,
+from ..geo import geoscope
+from . import (backtest as backtest_mod, context as context_mod, earlywarning,
+               features as feat, fusion, governance_bridge, nearrepeat, stgnn,
                tabfm_forecast, timesfm, validation as validation_mod)
-from .schemas import (DistrictForecastResponse, ForecastMapResponse, ForecastRunResponse,
-                      FusedDistrict, LayerInfo, LayerPrediction, LayerRun, LayersResponse,
-                      MapCell, NearRepeatCell, NearRepeatTriggerResponse, ValidationResponse)
+from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapResponse,
+                      ForecastRunResponse, FreshnessResponse, FusedDistrict, GovernedPersistence,
+                      LayerInfo, LayerPrediction, LayerRun, LayersResponse, MapCell, NearRepeatCell,
+                      NearRepeatTriggerResponse, ValidationResponse)
 
 # Features->>'layer' tag -> human label (order = pipeline order)
 LAYER_ORDER = ["tabfm", "timesfm", "near_repeat", "st_gnn", "fused"]
@@ -27,7 +30,8 @@ def _p(msg: str) -> None:
     print(f"[forecast] {msg}", file=sys.stderr, flush=True)
 
 
-def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30) -> ForecastRunResponse:
+def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30,
+                 persist_governed: bool = True) -> ForecastRunResponse:
     import gc
     months = max(1, horizon_days // 30)
     with db.rw_conn() as conn:
@@ -55,6 +59,24 @@ def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30) -> Forec
         LayerRun(layer="st_gnn", model=stg.get("model"), model_version_id=stg.get("model_version_id"), written=stg.get("written", 0)),
         LayerRun(layer="fused", model="stacked-inspectable", model_version_id=fused.get("model_version_id"), written=fused.get("written", 0)),
     ]
+    # Persist the fused forecast through the governed FeatureSnapshot ->
+    # PredictionRequest -> PredictionResult contract (Phase 10/11 prerequisite).
+    # Runs in its OWN transaction AFTER the forecast committed, so a governance
+    # hiccup can never roll back the CrimePrediction/AlertHistory writes.
+    governed_summary = None
+    if persist_governed:
+        try:
+            with db.rw_conn() as gconn:
+                gv = governance_bridge.persist_forecast(
+                    gconn, districts=fused.get("districts", []), head_id=head_id,
+                    prediction_start=fused.get("prediction_start"),
+                    prediction_end=fused.get("prediction_end"), horizon_days=horizon_days,
+                    model_metrics={"layers_written": {l.layer: l.written for l in layers}})
+            governed_summary = GovernedPersistence(**gv)
+        except Exception as exc:  # noqa: BLE001 — never let governance break the forecast
+            _p(f"governed persistence skipped: {type(exc).__name__}: {exc}")
+            governed_summary = GovernedPersistence(error=f"{type(exc).__name__}: {exc}")
+
     fused_districts = [FusedDistrict(**d) for d in fused.get("districts", [])]
     high = [d for d in fused_districts if d.risk_class in ("High", "Severe")]
     mean_conf = round(sum(d.confidence for d in fused_districts) / len(fused_districts), 4) if fused_districts else 0.0
@@ -73,7 +95,8 @@ def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30) -> Forec
     return ForecastRunResponse(
         result=result, head_id=head_id, horizon_days=horizon_days,
         prediction_start=fused.get("prediction_start"), prediction_end=fused.get("prediction_end"),
-        layers=layers, alerts_written=ew["alerts_written"], fused=fused_districts)
+        layers=layers, alerts_written=ew["alerts_written"], fused=fused_districts,
+        governed=governed_summary)
 
 
 # ---- layer switcher / reads ------------------------------------------------
@@ -215,3 +238,75 @@ def validation(cutoff: Optional[dt.date] = None, horizon_months: int = 3,
     return ValidationResponse(result=result, cutoff=rep["cutoff"], horizon_months=rep["horizon_months"],
                               area_fraction=rep["area_fraction"], overall=rep.get("overall"),
                               per_crime_head=rep.get("per_crime_head", {}))
+
+
+# ---- rolling-origin backtest (MAE/RMSE/WAPE/sMAPE + coverage + baselines) ---
+def backtest(head_id: Optional[int] = None, horizon: int = 1, n_origins: int = 6,
+             per_head: bool = True, persist: bool = True) -> BacktestResponse:
+    """Rolling-origin, leakage-safe backtest with geographic holdout, baseline
+    comparison and per-dimension error. Optionally persists a ForecastBacktest."""
+    with db.rw_conn() as conn:
+        report = backtest_mod.backtest_report(conn, head_id=head_id, horizon=horizon,
+                                              n_origins=n_origins, per_head=per_head)
+        persisted_id = None
+        if persist:
+            try:
+                persisted_id = governance_bridge.persist_backtest(
+                    conn, report, head_id=head_id, actor="forecast-batch")
+            except Exception as exc:  # noqa: BLE001 — reporting must not fail on a write hiccup
+                _p(f"backtest persistence skipped: {type(exc).__name__}: {exc}")
+
+    m = report.get("model") or {}
+    skill = report.get("skill_vs_baselines") or {}
+    naive_skill = (skill.get("seasonal_naive") or {}).get("mae_skill")
+    result = AiResult(
+        answer=(f"Rolling-origin backtest over {report.get('scored_points', 0)} held-out "
+                f"district-months: MAE {m.get('mae')}, RMSE {m.get('rmse')}, WAPE {m.get('wape')}, "
+                f"sMAPE {m.get('smape')}%, 80% interval coverage {m.get('coverage_80')}. "
+                f"Beats all simple baselines: {report.get('beats_all_baselines')}."),
+        confidence=round(float(m.get("coverage_80") or 0.0), 4),
+        source_record_ids=["CaseMaster", "ForecastBacktest"
+                           + (f":{persisted_id}" if persisted_id else "")],
+        reasoning_summary=("Walk-forward origins: the forecaster sees only pre-cutoff months and "
+                           "predicts the next horizon; held-out actuals score MAE/RMSE/WAPE/sMAPE "
+                           "and interval coverage, versus seasonal-naive + moving-average baselines, "
+                           "with a geographic holdout. Valid geography only; aggregate, never "
+                           "person-level."),
+        model_version=f"{m.get('name', 'drishti-forecast')}@1.0.0"
+                      + (f" (mae_skill vs naive {naive_skill})" if naive_skill is not None else ""))
+    return BacktestResponse(
+        result=result, scope=report.get("scope", {}), n_series=report.get("n_series", 0),
+        origins=report.get("origins", []), scored_points=report.get("scored_points", 0),
+        cells_considered=report.get("cells_considered", 0),
+        abstained_cells=report.get("abstained_cells", 0),
+        abstention_rate=report.get("abstention_rate", 0.0), model=m,
+        baselines=report.get("baselines", {}), skill_vs_baselines=skill,
+        beats_all_baselines=report.get("beats_all_baselines"),
+        error_by_district=report.get("error_by_district", []),
+        error_by_season=report.get("error_by_season", {}),
+        error_by_head=report.get("error_by_head", {}),
+        geo_holdout=report.get("geo_holdout", {}), persisted_backtest_id=persisted_id)
+
+
+# ---- data freshness + approved external context -----------------------------
+def freshness() -> FreshnessResponse:
+    """Data-as-of per source, approved external-context versions, and the
+    valid-geography scope applied to every forecast."""
+    with db.ro_conn() as conn:
+        fr = context_mod.data_freshness(conn)
+        scope = geoscope.scope_summary(conn)
+    stale = fr.get("case_data_stale_days")
+    result = AiResult(
+        answer=(f"Forecast inputs as of {fr['as_of'].get('cases')} "
+                + (f"({stale} day(s) old); " if stale is not None else "; ")
+                + f"{len(fr.get('approved_sources', []))} approved external-context source(s); "
+                f"valid-geography filter {scope.get('valid_geography_filter')}."),
+        confidence=1.0,
+        source_record_ids=["CaseMaster", "ExternalSourceVersion", "JurisdictionBoundary"],
+        reasoning_summary=("Data-as-of drives the freshness banner; forecasts use only approved, "
+                           "versioned weather/holiday/event/area context up to the observation "
+                           "cutoff, and exclude incidents outside the state polygon."),
+        model_version="drishti-forecast@1.0.0")
+    return FreshnessResponse(
+        result=result, as_of=fr.get("as_of", {}), case_data_stale_days=stale,
+        approved_sources=fr.get("approved_sources", []), valid_geography=scope)

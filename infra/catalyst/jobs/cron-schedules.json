@@ -1,0 +1,83 @@
+{
+  "_comment": "DRISHTI Job Scheduling / Cron descriptors (Phase 14 Part B / matrix row 20). Catalyst crons are created via the Job Scheduling SDK or the Console (there is no standalone CLI-deployed cron config file), so this is the single reviewed source of the intended schedules, consumed by a setup step at enable time. EVERY cron below is enabled=false so it never fires and incurs no charge until its owning phase turns it on. Cron expression format is Quartz-like: 'sec min hour day-of-month month day-of-week'. Times are the project timezone (Asia/Kolkata).",
+  "timezone": "Asia/Kolkata",
+  "crons": [
+    {
+      "name": "drishti-reconcile-nightly",
+      "function": "cron_reconcile",
+      "type": "cron",
+      "cron_expression": "0 30 2 ? * *",
+      "description": "Nightly Data Store/Stratus reconciliation, backup/export, failed-job replay, stale temp cleanup, temporary AWS GPU/Batch shutdown checks, budget/health evidence.",
+      "workflow": "17",
+      "owner_phase": "14 (ops)",
+      "enable_flag": "DRISHTI_RECONCILE_ENABLED",
+      "enabled": false
+    },
+    {
+      "name": "drishti-forecast-daily",
+      "function": "cron_forecast",
+      "type": "cron",
+      "cron_expression": "0 0 3 ? * *",
+      "description": "Scheduled aggregate/spatiotemporal forecast + backfill dispatch to the protected AWS adapter (baseline/TimesFM/ST-GNN/hotspot/near-repeat).",
+      "workflow": "9",
+      "owner_phase": "14 (scaffold) / later-phase enablement",
+      "enable_flag": "DRISHTI_FORECAST_CRON_ENABLED",
+      "enabled": false
+    },
+    {
+      "name": "drishti-embeddings-refresh-weekly",
+      "function": "cron_reconcile",
+      "type": "cron",
+      "cron_expression": "0 0 4 ? * SUN",
+      "description": "Approved-source embeddings + similarity index shadow-build/eval/atomic-switch (routed through AppSail/AWS Batch). Reuses the ops cron entrypoint until a dedicated function is enabled.",
+      "workflow": "18",
+      "owner_phase": "14 (scaffold)",
+      "enable_flag": "DRISHTI_EMBEDDINGS_REFRESH_ENABLED",
+      "enabled": false
+    },
+    {
+      "name": "drishti-board-export (RESERVED)",
+      "function": null,
+      "type": "cron",
+      "cron_expression": null,
+      "description": "Investigation Board locked-snapshot/export housekeeping. RESERVED — the owning function is created and enabled by Prompt 16.",
+      "workflow": "13",
+      "owner_phase": "16",
+      "enable_flag": null,
+      "enabled": false
+    },
+    {
+      "name": "drishti-hazard-feed (RESERVED)",
+      "function": null,
+      "type": "cron",
+      "cron_expression": null,
+      "description": "Hazard feed ingestion + freshness heartbeat. RESERVED — created and enabled by Prompt 17.",
+      "workflow": "14",
+      "owner_phase": "17",
+      "enable_flag": null,
+      "enabled": false
+    },
+    {
+      "name": "drishti-hazard-forecast (RESERVED)",
+      "function": null,
+      "type": "cron",
+      "cron_expression": null,
+      "description": "Hazard forecast review + alert. RESERVED — created and enabled by Prompt 17. Never auto-warns or issues an all-clear.",
+      "workflow": "15",
+      "owner_phase": "17",
+      "enable_flag": null,
+      "enabled": false
+    },
+    {
+      "name": "drishti-resource-allocation (RESERVED)",
+      "function": null,
+      "type": "cron",
+      "cron_expression": null,
+      "description": "Resource allocation + routing planning. RESERVED — created and enabled by Prompt 17. Never auto-dispatches.",
+      "workflow": "16",
+      "owner_phase": "17",
+      "enable_flag": null,
+      "enabled": false
+    }
+  ]
+}

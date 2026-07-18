@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CrimeHead",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

@@ -6,6 +6,10 @@
 *.local
 !.env.example
 !**/.env.example
+# Web build config is public, non-secret and environment-specific — commit it
+# (real secrets stay in .env / *.local, still ignored above). See web/.gitignore.
+!web/.env.development
+!web/.env.production
 
 # ---------------------------------------------------------------------------
 # Machine learning model weights (large binaries - keep out of git)
@@ -117,3 +121,5 @@ infra/catalyst/secrets/
 infra/**/serving-export/
 infra/**/*.export.jsonl
 infra/**/*.import-config.local.json
+# Generated migration/reconciliation/fixture-copy reports (underscore-prefixed).
+infra/catalyst/**/_*-report.json

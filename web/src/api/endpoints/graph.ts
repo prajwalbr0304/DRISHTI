@@ -65,4 +65,24 @@ export const graphApi = {
 
   proofPath: (association_id: number, signal?: AbortSignal) =>
     apiClient.get<ProofPathResponse>("/graph/proof-path", { association_id }, signal),
+
+  /* --- Phase 11: canonical-space isolation, rebuild, reviewer disposition --- */
+  /** GET /graph/archive-status — old-vs-new graph isolation (archived/live + clean). */
+  archiveStatus: (signal?: AbortSignal) =>
+    apiClient.get<import("@/api/types").GraphArchiveStatus>("/graph/archive-status", undefined, signal),
+  /** POST /graph/archive-legacy — isolate (archive, never delete) legacy rows. */
+  archiveLegacy: (signal?: AbortSignal) =>
+    apiClient.post<import("@/api/types").GraphArchiveStatus>("/graph/archive-legacy", undefined, undefined, signal),
+  /** POST /graph/rebuild — rebuild communities/centrality/hidden from the canonical graph. */
+  rebuild: (opts: { communities?: boolean; centrality?: boolean; hidden?: boolean } = {}, signal?: AbortSignal) =>
+    apiClient.post<import("@/api/types").GraphRebuildResult>("/graph/rebuild", undefined,
+      { communities: true, centrality: true, hidden: true, ...opts }, signal),
+  /** POST /graph/edges/{id}/review — confirm|reject|reset a graph edge. */
+  reviewEdge: (edgeId: number, decision: "confirm" | "reject" | "reset", reason?: string, signal?: AbortSignal) =>
+    apiClient.post<import("@/api/types").GraphReviewResult>(`/graph/edges/${edgeId}/review`, undefined,
+      { decision, reason }, signal),
+  /** POST /graph/hidden-associations/{id}/review — confirm|reject|reset a hidden association. */
+  reviewHidden: (associationId: number, decision: "confirm" | "reject" | "reset", reason?: string, signal?: AbortSignal) =>
+    apiClient.post<import("@/api/types").GraphReviewResult>(
+      `/graph/hidden-associations/${associationId}/review`, undefined, { decision, reason }, signal),
 };

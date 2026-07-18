@@ -66,8 +66,11 @@ def case_filters(_role: str = Depends(require_case_read)):
 # --- AI decision-support (Phase 10) -----------------------------------------
 @router.get("/{case_id}/similar", response_model=SimilarResponse)
 def similar(case_id: int, k: int = Query(5, ge=1, le=20, description="neighbours to return"),
+            scope: str = Query("district", pattern="^(district|all)$",
+                               description="demo case/unit context filter applied before ANN"),
+            district_id: Optional[int] = Query(None, ge=1, description="override the demo-context district"),
             _role: str = Depends(require_case_read)):
-    resp = service.similar_cases(case_id, k=k)
+    resp = service.similar_cases(case_id, k=k, scope=scope, district_id=district_id)
     if resp is None:
         raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
     if resp is service.NO_CORPUS:

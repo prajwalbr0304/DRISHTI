@@ -1,0 +1,15 @@
+{
+  "workflow": "catalyst-ci-cd",
+  "fixture_status": "runnable",
+  "idempotency_key": "cicd:9f2a1c7:development",
+  "input": { "commit_sha": "9f2a1c7", "branch": "main", "actor": "prajwalbr0304@gmail.com" },
+  "expected_output": {
+    "stages": ["validate", "scan", "build", "deploy_dev", "release"],
+    "smoke_report": { "health_live": 200, "health_ready": 200, "internal_ping_unsigned": 401, "internal_ping_signed": 200 },
+    "prod_promoted": false,
+    "note": "prod promote requires the email approval gate + main branch"
+  },
+  "lineage": { "artifact_refs": ["stratus://drishti-cicd/artifacts/web", "stratus://drishti-cicd/artifacts/appsail"] },
+  "runnable_via": "python infra/catalyst/pipelines/smoke_test.py --base-url <dev-appsail-url>",
+  "notes": "Smoke stage is locally verified against the signed-context boundary."
+}

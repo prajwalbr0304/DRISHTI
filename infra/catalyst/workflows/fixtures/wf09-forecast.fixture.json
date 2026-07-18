@@ -1,0 +1,20 @@
+{
+  "workflow": "aggregate-and-spatiotemporal-forecast",
+  "fixture_status": "representative",
+  "idempotency_key": "forecast:2026-W29:hotspot:mv-hotspot-0.1",
+  "input": { "window": "2026-W29", "area_scope": "district:3", "layers": ["baseline", "timesfm", "stgnn", "hotspot", "near_repeat"] },
+  "expected_output": {
+    "per_layer": {
+      "baseline": { "status": "ok", "calibrated": true },
+      "timesfm": { "status": "ok", "calibrated": true },
+      "stgnn": { "status": "ok", "calibrated": true },
+      "hotspot": { "status": "ok", "calibrated": true },
+      "near_repeat": { "status": "failed", "excluded_from_fusion": true }
+    },
+    "fusion": { "fused_layers": ["baseline", "timesfm", "stgnn", "hotspot"], "reason_excluded_near_repeat": "layer failed validation" },
+    "signal": "map/dashboard update",
+    "compute": "temporary AWS job stopped after run"
+  },
+  "lineage": { "window": "2026-W29", "per_layer_model_version": true },
+  "asserts": [ "fuse only cutoff/schema/geography-compatible layers", "no operational auto-publish", "stop temporary compute" ]
+}

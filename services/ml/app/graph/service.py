@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from .. import db
 from ..contracts import AiResult
-from . import algorithms, hidden, queries
-from .schemas import (CentralityResponse, CommunitiesResponse, GraphEdge,
-                      GraphNode, HiddenAssociationCard, HiddenFeedResponse,
-                      PathResponse, PersonOfInterest, ProofPathResponse,
-                      SubgraphResponse)
+from . import algorithms, archive, hidden, queries
+from .schemas import (ArchiveStatusResponse, ArchiveTableStatus, CentralityResponse,
+                      CommunitiesResponse, GraphEdge, GraphNode, HiddenAssociationCard,
+                      HiddenFeedResponse, PathResponse, PersonOfInterest, ProofPathResponse,
+                      RebuildResponse, ReviewResponse, SubgraphResponse)
 
 GRAPH_MODEL = "drishti-graph@1.0.0"
 
@@ -163,5 +163,116 @@ def proof_path(association_id: int) -> ProofPathResponse | None:
     )
     return ProofPathResponse(result=result, entity_a=p["entity_a"], entity_b=p["entity_b"],
                              link_kinds=p["link_kinds"],
+                             review_status=p.get("review_status", "candidate"),
+                             independent_evidence_kinds=p.get("independent_evidence_kinds", []),
                              nodes=[GraphNode(**n) for n in p["nodes"]],
                              edges=[GraphEdge(**e) for e in p["edges"]])
+
+
+# ===========================================================================
+# Phase 11 — canonical-space isolation, rebuild, reviewer disposition
+# ===========================================================================
+_CANON_MODEL = "drishti-graph-canonical@1.1.0"
+
+
+def _canonical_counts(conn) -> tuple[int, int, int]:
+    with conn.cursor() as cur:
+        cur.execute('SELECT count(*) FROM "vw_canonical_graph_node"')
+        nodes = int(cur.fetchone()[0])
+        cur.execute('SELECT count(*) FROM "vw_canonical_graph_edge"')
+        edges = int(cur.fetchone()[0])
+        cur.execute('SELECT count(*) FROM "vw_canonical_graph_edge" WHERE "ReviewStatus"=\'confirmed\'')
+        confirmed = int(cur.fetchone()[0])
+    return nodes, edges, confirmed
+
+
+def archive_status() -> ArchiveStatusResponse:
+    st = archive.archive_status()
+    tables = {k: ArchiveTableStatus(**v) for k, v in st.items() if k != "clean"}
+    clean = bool(st["clean"])
+    result = AiResult(
+        answer=("Canonical graph space is clean — no legacy rows remain live."
+                if clean else "Legacy graph rows are still live; run archive-legacy to isolate them."),
+        confidence=1.0,
+        source_record_ids=[f"{t}" for t in tables],
+        reasoning_summary="Counts of archived vs live rows per derived-intelligence table; "
+                          "'legacy_still_live' must be zero (old/new spaces never mix).",
+        model_version=_CANON_MODEL)
+    return ArchiveStatusResponse(result=result, clean=clean, tables=tables)
+
+
+def archive_legacy(actor: str = None) -> ArchiveStatusResponse:
+    archive.archive_legacy(actor)
+    return archive_status()
+
+
+def rebuild(actor: str = None, run_communities: bool = True, run_centrality: bool = True,
+            run_hidden: bool = True) -> RebuildResponse:
+    """Idempotently rebuild derived graph analytics from the CANONICAL graph only
+    (archives any legacy rows first, so old/new spaces never mix)."""
+    arch = archive.archive_legacy(actor)
+    communities = modularity = nodes_scored = hidden_candidates = None
+    with db.rw_conn() as conn:
+        if run_communities:
+            c = algorithms.detect_communities(conn)
+            communities, modularity = c["num_communities"], c["modularity"]
+        if run_centrality:
+            cen = algorithms.compute_centrality(conn)
+            nodes_scored = cen["nodes_scored"]
+        if run_hidden:
+            h = hidden.materialize(conn)
+            hidden_candidates = h["materialized"]
+    with db.ro_conn() as conn:
+        nodes, edges, confirmed = _canonical_counts(conn)
+    result = AiResult(
+        answer=(f"Rebuilt derived graph analytics over {nodes:,} canonical nodes and "
+                f"{edges:,} provenanced edges."),
+        confidence=1.0, source_record_ids=["vw_canonical_graph_node", "vw_canonical_graph_edge"],
+        reasoning_summary="Communities/centrality/hidden-associations recomputed from the canonical, "
+                          "non-archived, provenanced graph only. Idempotent.",
+        model_version=_CANON_MODEL)
+    return RebuildResponse(result=result, canonical_nodes=nodes, canonical_edges=edges,
+                           confirmed_edges=confirmed, communities=communities, modularity=modularity,
+                           nodes_scored=nodes_scored, hidden_candidates=hidden_candidates,
+                           archived=arch["archived"])
+
+
+def review_edge(edge_id: int, decision: str, actor: str = None, reason: str = None) -> ReviewResponse:
+    status = {"confirm": "confirmed", "reject": "rejected", "reset": "candidate"}.get(decision)
+    if status is None:
+        raise ValueError("decision must be confirm|reject|reset")
+    from .. import audit
+    with db.rw_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('UPDATE "NetworkEdge" SET "ReviewStatus"=%s, "ReviewedByActor"=%s, '
+                        '"ReviewedAt"=now() WHERE "EdgeID"=%s RETURNING "EdgeID"',
+                        (status, actor, edge_id))
+            found = cur.fetchone() is not None
+        if found:
+            audit.record(audit.Action.ENTITY_CHANGE, "network_edge_review", edge_id,
+                         actor=actor, conn=conn, detail={"decision": decision, "status": status})
+    result = AiResult(
+        answer=(f"Edge {edge_id} marked {status}." if found else f"Edge {edge_id} not found."),
+        confidence=1.0 if found else 0.0, source_record_ids=[f"NetworkEdge:{edge_id}"],
+        reasoning_summary="Reviewer disposition on a graph edge (candidate -> confirmed/rejected).",
+        model_version=_CANON_MODEL)
+    return ReviewResponse(result=result, id=edge_id, kind="network_edge",
+                          review_status=status, found=found)
+
+
+def review_hidden(association_id: int, decision: str, actor: str = None,
+                  reason: str = None) -> ReviewResponse:
+    with db.rw_conn() as conn:
+        r = hidden.review(conn, association_id, decision, actor=actor, reason=reason)
+    found = r.get("found", False)
+    status = r.get("review_status", "candidate")
+    result = AiResult(
+        answer=(f"Hidden association {association_id} marked {status}." if found
+                else f"Association {association_id} not found."),
+        confidence=1.0 if found else 0.0,
+        source_record_ids=[f"drishti_hidden_associations:{association_id}"],
+        reasoning_summary="Reviewer disposition on a hidden association; a confirmed/rejected "
+                          "pair is preserved across re-materialisation.",
+        model_version="drishti-graph-hidden@1.0.0")
+    return ReviewResponse(result=result, id=association_id, kind="hidden_association",
+                          review_status=status, found=found)

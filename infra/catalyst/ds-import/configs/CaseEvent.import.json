@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CaseEvent",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

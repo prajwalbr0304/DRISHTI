@@ -222,6 +222,74 @@ export function hotspotOutlines(hotspots: HotspotFeature[]): Layer {
   });
 }
 
+/* --- Optional admin boundary overlays (state / district / taluk / SHO) -----
+   Reference geography, not data encoding: distinct hue + line weight per level
+   (and a labelled toggle) so each reads clearly on dark, light and satellite
+   basemaps. Drawn beneath the incident/forecast layers. ``data`` may be a
+   GeoJSON FeatureCollection or a URL. */
+type BoundaryData = GeoJSON.FeatureCollection | string;
+
+export function stateBoundary(data: BoundaryData): Layer {
+  return new GeoJsonLayer({
+    id: "bnd-state",
+    data,
+    stroked: true,
+    filled: false,
+    getLineColor: [245, 158, 11, 235], // amber — high contrast on any basemap
+    lineWidthUnits: "pixels",
+    getLineWidth: 2.6,
+    lineWidthMinPixels: 2,
+    lineJointRounded: true,
+    pickable: false,
+  });
+}
+
+export function districtBoundaries(data: BoundaryData): Layer {
+  return new GeoJsonLayer({
+    id: "bnd-districts",
+    data,
+    stroked: true,
+    filled: false,
+    getLineColor: [56, 189, 248, 225], // sky
+    lineWidthUnits: "pixels",
+    getLineWidth: 1.5,
+    lineWidthMinPixels: 1.2,
+    lineJointRounded: true,
+    pickable: true,
+  });
+}
+
+export function talukBoundaries(data: BoundaryData): Layer {
+  return new GeoJsonLayer({
+    id: "bnd-taluks",
+    data,
+    stroked: true,
+    filled: false,
+    getLineColor: [148, 163, 184, 175], // slate, thin
+    lineWidthUnits: "pixels",
+    getLineWidth: 0.7,
+    lineWidthMinPixels: 0.6,
+    lineJointRounded: true,
+    pickable: true,
+  });
+}
+
+export function shoRegionsLayer(data: BoundaryData): Layer {
+  return new GeoJsonLayer({
+    id: "bnd-sho",
+    data,
+    stroked: true,
+    filled: true,
+    getFillColor: [59, 130, 246, 26], // faint jurisdiction wash
+    getLineColor: [96, 165, 250, 155],
+    lineWidthUnits: "pixels",
+    getLineWidth: 0.6,
+    lineWidthMinPixels: 0.5,
+    lineJointRounded: true,
+    pickable: true,
+  });
+}
+
 /* --- Forecast: fine cell surface; radius by count, opacity by confidence -- */
 export function forecastCells(cells: MapCell[], horizonScale = 1): Layer {
   const maxPred = Math.max(1, ...cells.map((c) => (c.predicted_count ?? 0) * horizonScale));

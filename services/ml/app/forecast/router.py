@@ -16,8 +16,9 @@ import datetime as dt
 from fastapi import APIRouter, HTTPException, Query
 
 from . import service
-from .schemas import (DistrictForecastResponse, ForecastMapResponse, ForecastRunResponse,
-                      LayersResponse, NearRepeatTriggerResponse, ValidationResponse)
+from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapResponse,
+                      ForecastRunResponse, FreshnessResponse, LayersResponse,
+                      NearRepeatTriggerResponse, ValidationResponse)
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
 
@@ -70,3 +71,18 @@ def forecast_validation(cutoff: str | None = Query(None, description="YYYY-MM-DD
         except ValueError:
             raise HTTPException(status_code=400, detail="cutoff must be YYYY-MM-DD")
     return service.validation(cutoff=cut, horizon_months=horizon_months, area_fraction=area_fraction)
+
+
+@router.get("/backtest", response_model=BacktestResponse)
+def forecast_backtest(head_id: int | None = Query(None, ge=1),
+                      horizon: int = Query(1, ge=1, le=6),
+                      n_origins: int = Query(6, ge=2, le=24),
+                      per_head: bool = Query(True),
+                      persist: bool = Query(False, description="persist a ForecastBacktest row")):
+    return service.backtest(head_id=head_id, horizon=horizon, n_origins=n_origins,
+                            per_head=per_head, persist=persist)
+
+
+@router.get("/freshness", response_model=FreshnessResponse)
+def forecast_freshness():
+    return service.freshness()

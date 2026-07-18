@@ -7,13 +7,26 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
+from ..intake.guards import require_write_allowed
 from . import explorer, service
-from .schemas import (CentralityResponse, CommunitiesResponse, HiddenFeedResponse,
-                      PathResponse, ProofPathResponse, SubgraphResponse)
+from .schemas import (ArchiveStatusResponse, CentralityResponse, CommunitiesResponse,
+                      HiddenFeedResponse, PathResponse, ProofPathResponse, RebuildResponse,
+                      ReviewResponse, SubgraphResponse)
 
 router = APIRouter(prefix="/graph", tags=["graph"])
+
+# Graph rebuild / archival / edge review are analyst+ governance actions.
+_GRAPH_WRITE_ROLES = {"analyst", "investigator", "supervisor", "super_admin"}
+
+
+def require_graph_write(x_role: Optional[str] = Header(default=None)) -> str:
+    role = _resolve_role(x_role)
+    if role not in _GRAPH_WRITE_ROLES:
+        raise HTTPException(status_code=403,
+                            detail=f"Role '{role}' cannot rebuild/curate the intelligence graph.")
+    return role
 
 
 # --- Policymaker gate (individual profiles = de-anonymisation risk) ----------
@@ -120,3 +133,44 @@ def proof_path(association_id: int = Query(..., ge=1)):
     if resp is None:
         raise HTTPException(status_code=404, detail=f"association {association_id} not found")
     return resp
+
+
+# --- Phase 11: canonical-space isolation, rebuild, reviewer disposition -----
+@router.get("/archive-status", response_model=ArchiveStatusResponse)
+def archive_status(_role: str = Depends(require_entity_read)):
+    """Old-vs-new graph-space isolation: archived/live counts + a 'clean' flag."""
+    return service.archive_status()
+
+
+@router.post("/archive-legacy", response_model=ArchiveStatusResponse)
+def archive_legacy(request: Request, role: str = Depends(require_graph_write)):
+    """Isolate (archive, never delete) legacy non-canonical/unprovenanced rows."""
+    require_write_allowed(request)
+    return service.archive_legacy(f"demo.{role}")
+
+
+@router.post("/rebuild", response_model=RebuildResponse)
+def rebuild(request: Request, role: str = Depends(require_graph_write),
+            communities: bool = Query(True), centrality: bool = Query(True),
+            hidden: bool = Query(True)):
+    """Rebuild communities/centrality/hidden-associations from the CANONICAL graph."""
+    require_write_allowed(request)
+    return service.rebuild(f"demo.{role}", run_communities=communities,
+                           run_centrality=centrality, run_hidden=hidden)
+
+
+@router.post("/edges/{edge_id}/review", response_model=ReviewResponse)
+def review_edge(edge_id: int, request: Request, decision: str = Query(..., pattern="^(confirm|reject|reset)$"),
+                reason: Optional[str] = Query(None), role: str = Depends(require_graph_write)):
+    """Reviewer disposition on a graph edge (candidate -> confirmed/rejected)."""
+    require_write_allowed(request)
+    return service.review_edge(edge_id, decision, actor=f"demo.{role}", reason=reason)
+
+
+@router.post("/hidden-associations/{association_id}/review", response_model=ReviewResponse)
+def review_hidden(association_id: int, request: Request,
+                  decision: str = Query(..., pattern="^(confirm|reject|reset)$"),
+                  reason: Optional[str] = Query(None), role: str = Depends(require_graph_write)):
+    """Reviewer disposition on a hidden association (preserved across re-materialise)."""
+    require_write_allowed(request)
+    return service.review_hidden(association_id, decision, actor=f"demo.{role}", reason=reason)

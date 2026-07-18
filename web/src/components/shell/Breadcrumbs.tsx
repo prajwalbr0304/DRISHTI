@@ -7,15 +7,15 @@ import { cn } from "@/lib/utils";
 export function Breadcrumbs() {
   const { pathname } = useLocation();
   const dest = destinationByPath(pathname);
-  const isHome = pathname === "/";
+  const isHome = pathname === "/command";
 
   // extra path segments beyond the destination root (e.g. /cases/1024)
-  const rest = dest && dest.path !== "/" ? pathname.slice(dest.path.length).split("/").filter(Boolean) : [];
+  const rest = dest ? pathname.slice(dest.path.length).split("/").filter(Boolean) : [];
 
   return (
     <div className="flex h-breadcrumb shrink-0 items-center gap-1.5 border-b border-hairline bg-bg px-4 text-12">
       <Link
-        to="/"
+        to="/command"
         className="inline-flex items-center gap-1 text-content-dim transition-colors hover:text-content"
       >
         <Home className="size-3.5" />

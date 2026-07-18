@@ -1,0 +1,25 @@
+{
+  "_comment": "DRISHTI API Gateway route design (Phase 14 Part B / matrix row 18). The canonical CLI file is `catalyst-user-rules.json`, which `catalyst pull` generates from the Console API Gateway configuration after `catalyst apig:enable`. This descriptor is the reviewed intent an operator applies in the Console. Enabling API Gateway disables the default Security Rules, so every public route the app needs MUST be declared. AppSail is not a native gateway target, so the gateway fronts the gateway_api function, which securely invokes AppSail.",
+  "enable_command": "catalyst apig:enable",
+  "pull_canonical_file": "catalyst pull   # generates catalyst-user-rules.json",
+  "throttle_algorithm": "sliding_window",
+  "cors": "Configured via Console -> Authentication -> Authorized Domains (CORS toggle) for the exact deployed frontend origin. NOT set in function code for production origins.",
+  "routes": [
+    {
+      "path": "/api/*",
+      "target": { "type": "function", "name": "gateway_api" },
+      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      "authentication": "required",
+      "throttle": { "general_per_min": 600, "per_ip_per_min": 120 },
+      "note": "Authenticated public API. gateway_api derives identity server-side and invokes AppSail with a signed context."
+    },
+    {
+      "path": "/api/public/health",
+      "target": { "type": "function", "name": "gateway_api" },
+      "methods": ["GET"],
+      "authentication": "optional",
+      "throttle": { "general_per_min": 120, "per_ip_per_min": 60 },
+      "note": "Unauthenticated health/liveness passthrough only."
+    }
+  ]
+}

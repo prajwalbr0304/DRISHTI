@@ -1,0 +1,5 @@
+{
+  "table_identifier": "BailEvent",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

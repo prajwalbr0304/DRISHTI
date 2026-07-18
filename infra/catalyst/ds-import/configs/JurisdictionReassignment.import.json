@@ -1,0 +1,5 @@
+{
+  "table_identifier": "JurisdictionReassignment",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

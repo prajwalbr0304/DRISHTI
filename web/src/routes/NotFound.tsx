@@ -11,7 +11,7 @@ export function NotFound() {
       title="Page not found"
       description="That destination doesn't exist. Head back to the Command Center."
       action={
-        <Button variant="secondary" onClick={() => navigate("/")}>
+        <Button variant="secondary" onClick={() => navigate("/command")}>
           Go to Command Center
         </Button>
       }

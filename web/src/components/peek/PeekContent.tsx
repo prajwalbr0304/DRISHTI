@@ -49,10 +49,6 @@ export function PeekContent({ entry }: { entry: PeekEntry }) {
 function PersonPeek({ id }: { id: number }) {
   const navigate = useNavigate();
   const push = usePeekStore((s) => s.push);
-  const risk = useQuery({
-    queryKey: ["risk", "entity", id],
-    queryFn: ({ signal }) => api.risk.byEntity(id, false, signal),
-  });
   const nb = useQuery({
     queryKey: ["graph", "neighbourhood", id, 1],
     queryFn: ({ signal }) => api.graph.neighbourhood(id, 1, 10, signal),
@@ -61,33 +57,17 @@ function PersonPeek({ id }: { id: number }) {
   return (
     <div className="space-y-4">
       <PeekSection title="Risk" icon={<ShieldAlert className="size-4" />}>
-        {risk.isLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : risk.error ? (
-          <PeekError error={risk.error} onRetry={() => risk.refetch()} />
-        ) : risk.data ? (
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <span className="text-13 text-content-dim">
-                {risk.data.offender_name ?? `Entity ${id}`}
-              </span>
-              <Badge variant={riskBadge(risk.data.risk_level)} className="capitalize">
-                {risk.data.risk_band}
-              </Badge>
-            </div>
-            <Meter value={risk.data.risk_score} label="Risk score" />
-            {risk.data.factors.slice(0, 3).map((f) => (
-              <div key={f.feature} className="flex items-center justify-between text-12">
-                <span className="truncate text-content-dim">{f.label}</span>
-                <span className={cn("tnum font-medium", f.contribution >= 0 ? "text-severity-high" : "text-severity-low")}>
-                  {f.contribution >= 0 ? "+" : ""}
-                  {f.contribution.toFixed(2)}
-                </span>
-              </div>
-            ))}
-            <Provenance result={risk.data.result} />
-          </div>
-        ) : null}
+        <div className="rounded-control border border-severity-high/40 bg-severity-high/5 p-2.5">
+          <Badge variant="neutral" className="mb-1.5">Retired · synthetic demo</Badge>
+          <p className="text-12 leading-relaxed text-content-dim">
+            Individual offender-risk scoring is retired and <span className="font-medium text-content">not
+            operational</span>. DRISHTI does not score a person for any criminal-justice action. The
+            approved model is an aggregate, area-level case-review workload band, reviewed by a human.
+          </p>
+          <Button variant="link" size="sm" onClick={() => navigate("/analytics?mode=workload")} className="h-auto px-0 text-12">
+            View aggregate workload model
+          </Button>
+        </div>
       </PeekSection>
 
       <PeekSection title="Immediate network" icon={<NetworkIcon className="size-4" />}>
@@ -138,7 +118,7 @@ function CasePeek({ id }: { id: number }) {
   const push = usePeekStore((s) => s.push);
   const sim = useQuery({
     queryKey: ["cases", "similar", id],
-    queryFn: ({ signal }) => api.cases.similar(id, 5, signal),
+    queryFn: ({ signal }) => api.cases.similar(id, { k: 5 }, signal),
   });
 
   return (
@@ -361,20 +341,6 @@ function PeekSection({
   );
 }
 
-function Meter({ value, label }: { value: number; label: string }) {
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-12">
-        <span className="text-content-dim">{label}</span>
-        <span className="tnum font-semibold text-content">{formatPercent(value, 0)}</span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round(value * 100)}%` }} />
-      </div>
-    </div>
-  );
-}
-
 function Provenance({ result }: { result: AiResult }) {
   const [open, setOpen] = useState(false);
   return (
@@ -419,21 +385,6 @@ function OpenIn({ label, onClick }: { label: string; onClick: () => void }) {
       <ArrowUpRight />
     </Button>
   );
-}
-
-function riskBadge(level: string): "critical" | "high" | "medium" | "low" | "neutral" {
-  switch (level.toLowerCase()) {
-    case "critical":
-      return "critical";
-    case "high":
-      return "high";
-    case "medium":
-      return "medium";
-    case "low":
-      return "low";
-    default:
-      return "neutral";
-  }
 }
 
 const KIND_BY_ENTITY_TYPE: Record<string, EntityKind> = {

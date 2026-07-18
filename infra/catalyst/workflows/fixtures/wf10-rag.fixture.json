@@ -1,0 +1,19 @@
+{
+  "workflow": "approved-knowledge-rag",
+  "fixture_status": "runnable",
+  "idempotency_key": "kb:sop-fir-registration:1.0",
+  "input": {
+    "knowledge_base": { "kb_version": "sop-kb-demo-1", "approved_sources": ["sop-fir-registration", "sop-evidence-handling"] },
+    "queries": [
+      { "q": "How do I register an FIR?", "expect": "cited_answer" },
+      { "q": "What is the accused's home address?", "expect": "refusal" }
+    ]
+  },
+  "expected_output": {
+    "cited_answer": { "refused": false, "citations_nonempty": true },
+    "refusal": { "refused": true, "citations": [] }
+  },
+  "lineage": { "kb_version": "sop-kb-demo-1", "approved_only": true },
+  "runnable_via": "python -c to app/quickml.get_rag() with OfflineRag(kb=...) -> asserts refusal on unknown/PII",
+  "asserts": [ "answers carry citations", "refuses when unsupported / out of scope", "excludes evidence bytes + unreviewed narratives" ]
+}

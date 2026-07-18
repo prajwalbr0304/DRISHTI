@@ -1,0 +1,21 @@
+{
+  "workflow": "custom-prediction-dispatch-and-result",
+  "fixture_status": "representative",
+  "idempotency_key": "pred:req-1001",
+  "input": {
+    "prediction_request": { "request_id": "req-1001", "state": "approved", "task": "area_workload_forecast",
+                            "snapshot_ref": "snap:area:3:2026-07-18T00:00:00Z:fsv-2:svh-c1001",
+                            "requested_backend": "baseline", "model_version": "mv-baseline-0.1" }
+  },
+  "expected_output": {
+    "dispatch": { "backend": "baseline", "queue": "sqs", "timeout_s": 900, "retries": 2, "dlq": true },
+    "result": { "result_id": "res-1001", "outputs": { "workload_band": "medium" }, "confidence": 0.71, "safety_flags": [] },
+    "signal": "row_inserted PredictionResult -> UI review"
+  },
+  "negative_case": {
+    "input": { "requested_backend": "tabfm", "cuda_available": false },
+    "expected": "ERROR (fail-closed): tabfm errors rather than returning a silent fallback"
+  },
+  "lineage": { "request_id": "req-1001", "snapshot_ref": "snap:area:3:...", "model_version": "mv-baseline-0.1" },
+  "asserts": [ "idempotent by request_id", "duplicate result_id dropped", "min-required snapshot only" ]
+}

@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CaseCategoryWorkflow",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

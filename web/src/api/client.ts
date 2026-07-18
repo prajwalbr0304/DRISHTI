@@ -1,41 +1,83 @@
 import { ApiError, type HealthReport } from "@/api/contracts";
 import type { UserRole } from "@/config/roles";
+import { runtime } from "@/config/runtime";
 
 /* ============================================================================
    Typed API client for the Wave-B services. Live only — every call hits the
-   real FastAPI service; there are no mocks or synthetic fallbacks.
+   real service; there are no mocks or synthetic fallbacks.
 
-   - Base URL from VITE_API_BASE_URL (default http://localhost:8000).
-   - Sends the active role as `X-Role` (money-trail + scoping read it).
-   - Normalises failures into ApiError so the UI can render honest states.
+   Base URL (src/config/runtime.ts):
+     - dev      → the FastAPI service directly (http://localhost:8000)
+     - deployed → the Catalyst API Gateway origin, route `/api/*` → gateway_api
+                  function → signed context → AppSail. One public base URL.
+
+   Identity/auth:
+     - Real authentication is Catalyst Authentication (see src/auth/). The
+       gateway derives the user + role SERVER-SIDE from the Catalyst session and
+       STRIPS any client-supplied identity headers. So `X-Role` / `X-Demo-Actor`
+       here are DISPLAY/AUDIT hints only (used by the local FastAPI dev server for
+       UX simulation); they are never a security boundary and are dropped at the
+       gateway. Never trust a client-supplied role.
+     - When configured (deployed / cross-origin), requests are sent with
+       credentials so the Catalyst session cookie reaches the API Gateway, and an
+       optional bearer token is attached if the auth layer provides one.
    ========================================================================== */
 
-const DEFAULT_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const DEFAULT_BASE = runtime.apiBaseUrl;
 
 export interface ApiClientConfig {
   baseUrl: string;
+  /** Send credentials (cookies) with requests — required cross-origin. */
+  withCredentials: boolean;
 }
 
 type RoleGetter = () => UserRole;
+type ActorGetter = () => string;
+type TokenGetter = () => Promise<string | undefined> | string | undefined;
 
 export type QueryValue = string | number | boolean | undefined | null;
 export type QueryParams = Record<string, QueryValue | (string | number)[]>;
 
+/** RFC4122-ish request id; prefers crypto.randomUUID, falls back for old envs. */
+function makeRequestId(): string {
+  const c = (globalThis as { crypto?: Crypto }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return "req-" + Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+
 export class ApiClient {
   baseUrl: string;
+  withCredentials: boolean;
   private roleGetter: RoleGetter = () => "investigator";
+  // Demo actor is DISPLAY/AUDIT ONLY (UX simulation), never a security boundary.
+  private actorGetter: ActorGetter = () => "demo.investigator";
+  // Cross-domain auth token from the auth layer (Catalyst generateAuthToken).
+  // Undefined in dev/offline; then the session is cookie-based (credentials).
+  private tokenGetter: TokenGetter = () => undefined;
 
   constructor(config?: Partial<ApiClientConfig>) {
     this.baseUrl = config?.baseUrl ?? DEFAULT_BASE;
+    this.withCredentials = config?.withCredentials ?? runtime.withCredentials;
   }
 
   configure(config: Partial<ApiClientConfig>) {
     if (config.baseUrl !== undefined) this.baseUrl = config.baseUrl;
+    if (config.withCredentials !== undefined) this.withCredentials = config.withCredentials;
   }
 
-  /** RoleProvider wires this so every request carries the active role. */
+  /** RoleProvider wires this so every request carries the active role (display/audit). */
   setRoleGetter(getter: RoleGetter) {
     this.roleGetter = getter;
+  }
+
+  /** RoleProvider wires this so every request carries the demo actor (audit/display only). */
+  setActorGetter(getter: ActorGetter) {
+    this.actorGetter = getter;
+  }
+
+  /** Auth layer wires this to attach a cross-domain token when available. */
+  setTokenGetter(getter: TokenGetter) {
+    this.tokenGetter = getter;
   }
 
   private buildUrl(path: string, params?: QueryParams) {
@@ -60,15 +102,27 @@ export class ApiClient {
     } = {},
   ): Promise<T> {
     const { method = "GET", params, body, signal } = opts;
+    const token = await this.tokenGetter();
     let res: Response;
     try {
       res = await fetch(this.buildUrl(path, params), {
         method,
         signal,
+        // Cross-origin (Slate → API Gateway): carry the Catalyst session cookie.
+        credentials: this.withCredentials ? "include" : "same-origin",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          // Presentation state only (UX simulation) — the server treats these as
+          // display/audit inputs, NOT authentication. The API Gateway strips them
+          // and derives the real role from the Catalyst identity.
           "X-Role": this.roleGetter(),
+          "X-Demo-Actor": this.actorGetter(),
+          // Correlation id echoed back by the API and recorded in the audit trail.
+          "X-Request-ID": makeRequestId(),
+          // Catalyst cross-domain token is a RAW Authorization value (no
+          // "Bearer " prefix). Absent in dev/offline (cookie-based session).
+          ...(token ? { Authorization: token } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });

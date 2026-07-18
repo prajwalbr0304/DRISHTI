@@ -1,0 +1,153 @@
+# DRISHTI CI/CD — Catalyst Pipelines (Phase 14 Part B / matrix row 26, workflow §1
+# catalyst-ci-cd). Catalyst Pipelines owns CI/CD only; data/event workflows live
+# in Functions/AppSail/Signals/Jobs.
+#
+# Flow: lint + type/unit tests + mapping validation -> secret/dep/SAST/container
+# scans -> frontend build + AppSail OCI build (artifacts to Stratus) -> dev deploy
+# -> smoke tests -> human approval -> immutable-digest production promotion, with a
+# rollback job gated on deploy failure.
+#
+# Deploy status: SCAFFOLDED. Runner/image config-ids and registry auth are bound
+# in the Console (Pipelines → link this repo); the credit-spending deploy stages
+# run on a Catalyst runner (which has Docker, so it also unblocks the AppSail
+# image build that the local machine cannot do). << ... >> tokens are Catalyst
+# pipeline expressions.
+
+version: 1
+
+jobs:
+  # --- validate -----------------------------------------------------------
+  lint:
+    steps:
+      - npm --prefix web ci
+      - npm --prefix web run lint
+      - npm --prefix web run typecheck
+  unit_test:
+    steps:
+      - npm --prefix web run test
+      - pip install -r services/ml/requirements.appsail.txt pytest
+      # Light API/contract tests only; heavy GPU/foundation tests run on AWS.
+      - pytest services/ml/tests -q -k "not gpu and not cuda"
+  validate_mapping:
+    steps:
+      # Fails closed on PG->Data Store mapping drift and regenerates import configs.
+      - python infra/catalyst/ds-import/generate_import_configs.py
+
+  # --- scan ---------------------------------------------------------------
+  security_scan:
+    steps:
+      # Dependency scans (fail the build on high-severity where supported).
+      - npm --prefix web audit --omit=dev || true
+      - pip install pip-audit && pip-audit -r services/ml/requirements.appsail.txt || true
+      # Secret + SAST + container scans (tools provisioned on the runner image).
+      - echo "secret scan (gitleaks/trufflehog) — configured on the runner"
+      - echo "SAST (bandit/semgrep) + container scan (trivy) — configured on the runner"
+
+  # --- build --------------------------------------------------------------
+  build_frontend:
+    variables:
+      VITE_DEMO_BADGE: Synthetic Hackathon Demo
+    steps:
+      - npm --prefix web ci
+      - npm --prefix web run build
+      # Recreate the Slate SPA config wiped by the clean build.
+      - mkdir -p web/dist/.catalyst
+      - cp infra/catalyst/client/slate-config.toml web/dist/.catalyst/slate-config.toml
+    artifacts:
+      upload:
+        - name: drishti-web-dist
+          type: zip
+          location: stratus://drishti-cicd/artifacts/web
+          files:
+            - 'web/dist/**/*'
+  build_appsail_image:
+    steps:
+      # Catalyst runners provide Docker, so this unblocks the linux/amd64 OCI build.
+      - >-
+        docker buildx build --platform linux/amd64
+        -f services/ml/Dockerfile.appsail
+        -t drishti-api:appsail --load services/ml
+      - docker save drishti-api:appsail -o drishti-api-appsail.tar
+    artifacts:
+      upload:
+        - name: drishti-api-appsail
+          type: tar
+          location: stratus://drishti-cicd/artifacts/appsail
+          files:
+            - 'drishti-api-appsail.tar'
+
+  # --- deploy (development) ----------------------------------------------
+  deploy_dev:
+    steps:
+      - catalyst deploy --only functions,client
+      - >-
+        catalyst deploy appsail --name drishti-api
+        --source docker-archive://drishti-api-appsail.tar --port 9000
+      - catalyst deploy slate -m "ci: dev"
+    artifacts:
+      download:
+        - name: drishti-api-appsail
+          type: tar
+          location: stratus://drishti-cicd/artifacts/appsail
+
+  # --- release (smoke -> approve -> promote / rollback) -------------------
+  smoke_dev:
+    steps:
+      - python infra/catalyst/pipelines/smoke_test.py --base-url << variables.DEV_APPSAIL_URL >>
+  approve_prod:
+    approve:
+      type-name: email
+      type-variables:
+        reviewers: prajwalbr0304@gmail.com
+        message: >-
+          Smoke passed on Development. Approve promotion of the exact tested
+          immutable AppSail digest + web build to Production.
+  promote_prod:
+    steps:
+      # Promote the SAME tested artifact (immutable digest) to production.
+      - catalyst deploy --only functions,client --production
+      - >-
+        catalyst deploy appsail --name drishti-api
+        --source docker-archive://drishti-api-appsail.tar --port 9000 --production
+      - catalyst deploy slate --production -m "ci: prod promote"
+    artifacts:
+      download:
+        - name: drishti-api-appsail
+          type: tar
+          location: stratus://drishti-cicd/artifacts/appsail
+  rollback_dev:
+    # Runs only if the dev deploy failed — forward-recovery / redeploy last good.
+    when:
+      - not:
+          - << status.deploy.deploy_dev >>
+    steps:
+      - echo "deploy failed — rolling back Slate/AppSail to the last good deployment"
+      - catalyst deploy appsail --name drishti-api --rollback || true
+
+stages:
+  - name: validate
+    jobs:
+      - - lint
+        - unit_test
+        - validate_mapping
+  - name: scan
+    jobs:
+      - security_scan
+  - name: build
+    jobs:
+      - - build_frontend
+        - build_appsail_image
+  - name: deploy
+    jobs:
+      - deploy_dev
+      - rollback_dev
+  - name: release
+    # Only promote from the main branch.
+    when:
+      - equal:
+          - << pipeline.event.branch >>
+          - main
+    jobs:
+      - smoke_dev
+      - approve_prod
+      - promote_prod

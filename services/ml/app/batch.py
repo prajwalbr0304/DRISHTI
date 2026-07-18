@@ -187,6 +187,59 @@ def _cmd_forecast_validate(args) -> int:
     return 0
 
 
+def _cmd_forecast_backtest(args) -> int:
+    from .forecast import service
+    resp = service.backtest(head_id=args.head_id, horizon=args.horizon,
+                            n_origins=args.n_origins, per_head=not args.no_per_head,
+                            persist=not args.no_persist)
+    print(json.dumps({"model": resp.model, "beats_all_baselines": resp.beats_all_baselines,
+                      "baselines": resp.baselines, "skill_vs_baselines": resp.skill_vs_baselines,
+                      "scored_points": resp.scored_points, "abstained_cells": resp.abstained_cells,
+                      "abstention_rate": resp.abstention_rate, "geo_holdout": resp.geo_holdout,
+                      "error_by_season": resp.error_by_season, "error_by_head": resp.error_by_head,
+                      "persisted_backtest_id": resp.persisted_backtest_id,
+                      "answer": resp.result.answer}, default=str))
+    return 0
+
+
+def _cmd_workload_eval(args) -> int:
+    from .workload import evaluation
+    with db.ro_conn() as conn:
+        report = evaluation.evaluate(conn, foundation_kind=args.foundation)
+    print(json.dumps({
+        "summary": evaluation.summarize(report),
+        "beats_all_baselines": report["beats_all_baselines"],
+        "model_qwk": report["model"]["calibrated"]["qwk"],
+        "baselines": {k: {"qwk": v["qwk"], "accuracy": v["accuracy"]}
+                      for k, v in report["baselines"].items()},
+        "skill_vs_baselines": report["skill_vs_baselines"],
+        "geo_holdout": report["geo_holdout"].get("metrics"),
+        "abstention_rate": report["abstention"]["abstention_rate"],
+        "splits": report["splits"], "leakage": report["leakage"],
+        "band_thresholds": report["band_thresholds"]}, default=str))
+    return 0
+
+
+def _cmd_workload_run(args) -> int:
+    from .workload import service
+    result = service.run_governed(foundation_kind=args.foundation, limit=args.limit,
+                                  lifecycle=args.lifecycle, actor="batch")
+    print(json.dumps(result, default=str))
+    return 0
+
+
+def _cmd_workload_benchmark(args) -> int:
+    from .workload import service
+    result = service.run_benchmark_and_persist(include_heavy=args.heavy, actor="batch")
+    cols = ("model_name", "family", "scale_label", "row_scale", "device", "total_seconds",
+            "latency_ms_per_row", "throughput_rows_per_sec", "peak_rss_mb", "gpu_mem_mb",
+            "accuracy", "qwk", "ece", "available", "note")
+    print(json.dumps({"device": result["device"], "test_rows": result["test_rows"],
+                      "train_rows_full": result["train_rows_full"],
+                      "rows": [{k: r.get(k) for k in cols} for r in result["rows"]]}, default=str))
+    return 0
+
+
 def _cmd_geo_validate(args) -> int:
     import datetime as dt
     from .geo import validation
@@ -205,6 +258,25 @@ def _cmd_apply_sql(args) -> int:
         with conn.cursor() as cur:
             cur.execute(sql)
     print(json.dumps({"applied": args.file}))
+    return 0
+
+
+def _cmd_load_boundaries(_args) -> int:
+    """Idempotently persist state/district/taluk jurisdiction boundaries (Phase 9)."""
+    from .geo import persist
+    with db.rw_conn() as conn:
+        inserted = persist.ensure_boundaries(conn)
+        summary = persist.summary(conn)
+    print(json.dumps({"inserted": inserted, "summary": summary}))
+    return 0
+
+
+def _cmd_geo_scan(args) -> int:
+    """Scan canonical geography for containment failures -> DataQualityIssue (Phase 9)."""
+    from .geo import jurisdiction
+    with db.rw_conn() as conn:
+        result = jurisdiction.scan_containment(conn, scope=args.scope, actor="batch")
+    print(json.dumps(result, default=str))
     return 0
 
 
@@ -251,6 +323,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap = sub.add_parser("apply-sql", help="apply a .sql migration file")
     ap.add_argument("--file", required=True)
     ap.set_defaults(func=_cmd_apply_sql)
+
+    lb = sub.add_parser("load-boundaries", help="persist state/district/taluk jurisdiction boundaries")
+    lb.set_defaults(func=_cmd_load_boundaries)
+
+    gs = sub.add_parser("geo-scan", help="scan canonical geography for containment failures -> DataQualityIssue")
+    gs.add_argument("--scope", default="all", choices=["caseversion", "location_observation", "all"])
+    gs.set_defaults(func=_cmd_geo_scan)
 
     # ---- graph jobs (Phase 6) ----
     eg = sub.add_parser("enrich-graph", help="add intermediary nodes + seeded hidden associations")
@@ -329,6 +408,39 @@ def build_parser() -> argparse.ArgumentParser:
     fv.add_argument("--horizon-months", type=int, default=3)
     fv.add_argument("--area-fraction", type=float, default=0.25)
     fv.set_defaults(func=_cmd_forecast_validate)
+
+    fb = sub.add_parser("forecast-backtest",
+                        help="rolling-origin backtest: MAE/RMSE/WAPE/sMAPE + coverage + baselines "
+                             "+ geographic holdout -> ForecastBacktest")
+    fb.add_argument("--head-id", type=int, default=None)
+    fb.add_argument("--horizon", type=int, default=1)
+    fb.add_argument("--n-origins", type=int, default=6)
+    fb.add_argument("--no-per-head", action="store_true", help="skip the per-crime-head breakdown")
+    fb.add_argument("--no-persist", action="store_true", help="do not write a ForecastBacktest row")
+    fb.set_defaults(func=_cmd_forecast_backtest)
+
+    # ---- aggregate station-workload band (Phase 13) ----
+    we = sub.add_parser("workload-eval",
+                        help="held-out evaluation of the aggregate station case-review workload "
+                             "band task: metrics + calibration + baselines + geo holdout + leakage")
+    we.add_argument("--foundation", default="incontext", help="incontext|tabpfn|tabfm|auto")
+    we.set_defaults(func=_cmd_workload_eval)
+
+    wr = sub.add_parser("workload-run",
+                        help="persist a governed workload run: FeatureSnapshot + PredictionResult "
+                             "per station, register the approved model + training snapshot")
+    wr.add_argument("--foundation", default="incontext", help="incontext|tabpfn|tabfm|auto")
+    wr.add_argument("--limit", type=int, default=None, help="cap stations persisted")
+    wr.add_argument("--lifecycle", default="staged",
+                    choices=["staged", "shadow", "active", "retired"])
+    wr.set_defaults(func=_cmd_workload_run)
+
+    wb = sub.add_parser("workload-benchmark",
+                        help="500/5,000/full-row benchmark grid (runtime/memory/latency/cost/"
+                             "metrics vs baselines) -> ModelBenchmark")
+    wb.add_argument("--heavy", action="store_true",
+                    help="include the real TabFM/TabPFN weights (slow on CPU)")
+    wb.set_defaults(func=_cmd_workload_benchmark)
     return p
 
 

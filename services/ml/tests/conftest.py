@@ -19,3 +19,45 @@ def has_db() -> bool:
 
 
 requires_db = pytest.mark.skipif(not has_db(), reason="DATABASE_URL not configured")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _disable_global_rate_limit():
+    """The full suite makes many requests from one TestClient IP; disable the
+    main app's per-IP rate limiter for the session so functional tests are not
+    throttled. The dedicated Phase-3 rate-limit test enables it on an isolated
+    app via the middleware constructor override."""
+    s = get_settings()
+    original = s.rate_limit_enabled
+    s.rate_limit_enabled = False
+    yield
+    s.rate_limit_enabled = original
+
+
+@pytest.fixture
+def rw_rollback():
+    """A read-write DB connection that ALWAYS rolls back.
+
+    Phase 2 write-path tests exercise real SQL, constraints and the full
+    create -> validate -> submit -> approve canonicalisation against the live
+    schema, then discard everything — nothing is persisted to the (over-quota)
+    synthetic development database. Mirrors app.db.rw_conn's read-only override
+    so writes are permitted, but never commits."""
+    from app import db  # noqa: E402
+
+    conn = db._connect()
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            try:
+                cur.execute("SET SESSION default_transaction_read_only = off")
+            except Exception:  # noqa: BLE001
+                pass
+        conn.autocommit = False
+        yield conn
+    finally:
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        conn.close()

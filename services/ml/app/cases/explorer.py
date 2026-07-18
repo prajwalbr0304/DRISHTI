@@ -188,7 +188,7 @@ def case_detail(case_id: int) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Case network (co-accused + name-linked cases)
+# Case network (cases linked through a SHARED CANONICAL accused person)
 # ---------------------------------------------------------------------------
 
 def case_network(case_id: int) -> Optional[dict]:
@@ -200,17 +200,21 @@ def case_network(case_id: int) -> Optional[dict]:
             cur.execute('SELECT "AccusedMasterID","AccusedName" FROM "Accused" '
                         'WHERE "CaseMasterID"=%s ORDER BY "AccusedMasterID"', (case_id,))
             accused = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
-            # Other cases sharing an accused NAME (Accused.PersonID is only an intra-
-            # case sort key, so name is the honest cross-case link here).
+            # Other cases sharing a CANONICAL accused person (Phase 4). Canonical
+            # identity is the honest cross-case link; duplicate names never join.
             cur.execute(
-                'SELECT DISTINCT a2."CaseMasterID", cm2."CrimeNo", ch."CrimeGroupName", a1."AccusedName" '
-                'FROM "Accused" a1 '
-                'JOIN "Accused" a2 ON lower(trim(a2."AccusedName")) = lower(trim(a1."AccusedName")) '
-                '                  AND a2."CaseMasterID" <> a1."CaseMasterID" '
-                'JOIN "CaseMaster" cm2 ON cm2."CaseMasterID" = a2."CaseMasterID" '
+                'SELECT DISTINCT r2."CaseMasterID", cm2."CrimeNo", ch."CrimeGroupName", '
+                ' COALESCE(p."DisplayLabel", p."PublicRef") '
+                'FROM "CasePartyRole" r1 '
+                'JOIN "CasePartyRole" r2 ON r2."CanonicalPersonID" = r1."CanonicalPersonID" '
+                '                        AND r2."CaseMasterID" <> r1."CaseMasterID" '
+                '                        AND r2."RoleType" = \'accused\' '
+                'JOIN "CanonicalPerson" p ON p."CanonicalPersonID" = r1."CanonicalPersonID" '
+                'JOIN "CaseMaster" cm2 ON cm2."CaseMasterID" = r2."CaseMasterID" '
                 'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm2."CrimeMajorHeadID" '
-                'WHERE a1."CaseMasterID"=%s '
-                'ORDER BY a2."CaseMasterID" LIMIT 30', (case_id,))
+                'WHERE r1."CaseMasterID"=%s AND r1."RoleType"=\'accused\' '
+                '  AND r1."CanonicalPersonID" IS NOT NULL AND p."IsUnknown"=FALSE '
+                'ORDER BY r2."CaseMasterID" LIMIT 30', (case_id,))
             linked = [{"case_id": r[0], "crime_no": r[1], "crime_group": r[2], "via": r[3]}
                       for r in cur.fetchall()]
 

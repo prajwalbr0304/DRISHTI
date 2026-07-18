@@ -64,17 +64,32 @@ docker buildx build --platform linux/amd64 `
 
 # 2. Scaffold Catalyst components (creates catalyst.json).
 catalyst functions:add        # Gateway facade + event functions
-catalyst client:setup         # React hosting (or: catalyst slate:create / slate:link)
-catalyst apig:enable          # API Gateway in front of Functions
+#   Frontend (Part C): Slate is preferred (Web Client Hosting is legacy). One-time
+#   Console activation: project -> Slate -> Start Exploring. Then:
+npm --prefix ../../web run build          # -> web/dist (+ SPA config + secret scan)
+catalyst slate:create --name drishti-web --framework react-vite -ni   # writes slate block
+catalyst apig:enable          # API Gateway in front of Functions (currently DISABLED)
+
+# 2a. Set the ONE public API base URL for the production build to the API Gateway
+#     origin from Console -> API Gateway (route /api/* -> gateway_api). Rebuild so
+#     it is inlined, then add the exact Slate origin to Console -> Authentication
+#     -> Authorized Domains (CORS on). Never point at AppSail or an AWS URL.
+#     $env:VITE_API_BASE_URL = "https://<project-domain>/api"; npm --prefix ../../web run build
 
 # 3. Deploy to the Development environment.  $
 catalyst deploy appsail --name drishti-api --source docker://drishti-api:appsail --port 9000
-catalyst deploy slate         # or the current Web Client deploy command
-catalyst deploy --only functions,client
+catalyst deploy slate -m "drishti web (dev)"   # Slate frontend (or --only client fallback)
+catalyst deploy --only functions
 
-# 4. Migrate the curated serving subset (upsert by ExternalID, <=5000/table dev cap).  $
-catalyst ds:import --table Case --config ./ds-import/Case.import-config.json
-#   ... repeat per table; capture job ids / row counts / rejected rows.
+# 4. Migrate the curated serving subset (idempotent upsert by ExternalID, <=5000/table dev
+#    cap) with the real `catalyst ds:import` CLI.  $
+catalyst ds:import ds-import/serving-export/Case.csv --config ds-import/configs/CaseMaster.import.json
+catalyst ds:status import <job_id>
+#   Offline/CI equivalent (SDK bulk_upsert):
+#   $env:DRISHTI_USE_CATALYST_DATASTORE = "true"
+#   python ds-import/import_serving_subset.py --source-table CaseMaster `
+#     --export ds-import/serving-export/CaseMaster.export.jsonl --commit
+#   ... repeat per table; each run reports job counts / rejected rows / content hash.
 
 # 5. Smoke tests (see docs/phase-reports/PHASE_14_REPORT.md §10), then promote
 #    the exact tested immutable digests to production (may need console/payment).

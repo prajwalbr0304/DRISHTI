@@ -1,0 +1,98 @@
+{
+  "_comment": "DRISHTI Catalyst Signals registry (Phase 14 Part B / matrix rows 21 + 22, workflows §3/§4/§6/§7/§11/§12). Signals is CONSOLE-ONLY - there is no SDK/API to create publishers, rules or webhooks - so this file is the reviewed source that an operator recreates in Console -> Signals. Rules whose enable_flag is listed stay Inactive until the owning phase enables them (and the matching AppSail DRISHTI_*_ENABLED flag is set), so they process no events and cost nothing.",
+  "publishers": [
+    { "api_name": "drishti_stratus", "type": "catalyst", "service": "stratus", "event_ordering": false },
+    { "api_name": "drishti_datastore", "type": "catalyst", "service": "datastore", "event_ordering": true },
+    { "api_name": "drishti_auth", "type": "catalyst", "service": "authentication", "event_ordering": false },
+    {
+      "api_name": "drishti_app",
+      "type": "custom",
+      "event_ordering": false,
+      "events": ["report.ready", "notify.requested", "prediction.requested"]
+    }
+  ],
+  "retry_policy": { "mode": "auto", "max_attempts": 20, "backoff": "exponential(1,2,4,8,cap 10)min" },
+  "ttl_hours": 24,
+  "dlq_equivalent": "Undelivered events move to Dropped after TTL; monitored in Console -> Signals -> Logs.",
+  "rules": [
+    {
+      "name": "evidence-uploaded",
+      "publisher": "drishti_stratus",
+      "event": "stratus_object_uploaded",
+      "filter": "$.key startsWith 'evidence/'",
+      "target": { "type": "function", "name": "evidence_event" },
+      "dispatch": "instant",
+      "workflow": "4",
+      "enable_flag": "DRISHTI_EVIDENCE_SCAN_ENABLED",
+      "active": false
+    },
+    {
+      "name": "canonical-version-committed",
+      "publisher": "drishti_datastore",
+      "event": "row_inserted",
+      "filter": "$.table IN ('CaseVersion','CaseEvent') AND $.state == 'approved'",
+      "target": { "type": "function", "name": "datastore_event" },
+      "dispatch": "instant",
+      "workflow": "6",
+      "enable_flag": "DRISHTI_FEATURE_SNAPSHOT_ENABLED",
+      "active": false
+    },
+    {
+      "name": "prediction-requested",
+      "publisher": "drishti_datastore",
+      "event": "row_inserted",
+      "filter": "$.table == 'PredictionRequest' AND $.state == 'approved'",
+      "target": { "type": "function", "name": "prediction_event" },
+      "dispatch": "instant",
+      "workflow": "7",
+      "enable_flag": "DRISHTI_PREDICTION_DISPATCH_ENABLED",
+      "active": false
+    },
+    {
+      "name": "prediction-result-ready",
+      "publisher": "drishti_datastore",
+      "event": "row_inserted",
+      "filter": "$.table == 'PredictionResult'",
+      "target": { "type": "function", "name": "prediction_event" },
+      "dispatch": "instant",
+      "workflow": "7",
+      "enable_flag": null,
+      "active": false
+    },
+    {
+      "name": "report-ready",
+      "publisher": "drishti_app",
+      "event": "report.ready",
+      "target": { "type": "function", "name": "report_event" },
+      "dispatch": "instant",
+      "workflow": "11",
+      "enable_flag": "DRISHTI_REPORT_DELIVERY_ENABLED",
+      "active": false
+    },
+    {
+      "name": "notify-requested",
+      "publisher": "drishti_app",
+      "event": "notify.requested",
+      "target": { "type": "function", "name": "notify_dispatch" },
+      "dispatch": "instant",
+      "workflow": "12",
+      "enable_flag": "DRISHTI_NOTIFY_ENABLED",
+      "active": false
+    },
+    {
+      "name": "user-signedup-onboarding",
+      "publisher": "drishti_auth",
+      "event": "user_signedup",
+      "target": { "type": "function", "name": "notify_dispatch" },
+      "dispatch": "instant",
+      "workflow": "12",
+      "enable_flag": "DRISHTI_NOTIFY_ENABLED",
+      "active": false
+    }
+  ],
+  "reserved_rules_later_phases": [
+    { "name": "board-activity (RESERVED)", "workflow": "13", "owner_phase": "16", "active": false },
+    { "name": "hazard-reading-ingested (RESERVED)", "workflow": "14", "owner_phase": "17", "active": false },
+    { "name": "hazard-window-ready (RESERVED)", "workflow": "15", "owner_phase": "17", "active": false }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "report_event",
+  "version": "0.1.0",
+  "description": "DRISHTI report.ready Signals event handler (delivery notice).",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

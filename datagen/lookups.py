@@ -11,6 +11,7 @@ from typing import List
 
 import numpy as np
 
+from . import boundaries as B
 from . import reference as ref
 from .config import GenConfig
 from .context import Context
@@ -99,23 +100,36 @@ def _load_units(cur, cfg: GenConfig, ctx: Context, rng: RNG, unit_type_ids: dict
     while alloc.sum() < cfg.n_stations:
         alloc[int(rng.weighted_index(weights))] += 1
 
+    # Place stations on the real map: seed each station inside a taluk (chosen
+    # area-weighted so larger taluks host more stations), then derive the SHO
+    # jurisdictions as the Voronoi tessellation of those seeds clipped to the
+    # district. Both the station point and its jurisdiction lie on the real
+    # Karnataka landmass, so no coordinate can fall in the sea / across a border.
+    bnd = B.load_boundaries()
     for di, d in enumerate(ctx.districts):
         count = int(alloc[di])
-        spread = 0.04 if "metro" in d["tags"] else (0.18 if "rural" in d["tags"] else 0.10)
+        st_idx_list: List[int] = []
+        ctx.stations_by_district[di] = st_idx_list
+        if count <= 0:
+            continue
         hq = ctx.district_hq_unit[di]
-        st_idx_list = []
-        for k in range(count):
+        district_region = bnd.district(d["name"])
+        taluks = bnd.taluks(d["name"])
+        if district_region is None or not taluks:
+            raise RuntimeError(
+                f"no boundary polygon for district {d['name']!r} - "
+                "rebuild datagen/geo (see datagen/geo/SOURCES.md)")
+
+        taluk_serial: dict = {}
+        for lon, lat, tn, ring in B.plan_stations(district_region, taluks, count, rng.g):
             uid += 1
-            clat = d["lat"] + float(rng.gaussian(0, spread))
-            clon = d["lon"] + float(rng.gaussian(0, spread))
-            radius = 0.008 if "metro" in d["tags"] else 0.02
-            rows.append((uid, f"{d['name']} PS-{k + 1}", ps_type, hq,
+            taluk_serial[tn] = taluk_serial.get(tn, 0) + 1
+            rows.append((uid, f"{tn} PS-{taluk_serial[tn]}", ps_type, hq,
                          1, ctx.state_id, d["id"], True))
             st_index = len(ctx.stations)
-            ctx.stations.append({"id": uid, "district_idx": di,
-                                 "lat": clat, "lon": clon, "radius": radius})
+            ctx.stations.append({"id": uid, "district_idx": di, "taluk": tn,
+                                 "lat": lat, "lon": lon, "sho_ring": ring})
             st_idx_list.append(st_index)
-        ctx.stations_by_district[di] = st_idx_list
 
     copy_rows(cur, "Unit",
               ["UnitID", "UnitName", "TypeID", "ParentUnit", "NationalityID",

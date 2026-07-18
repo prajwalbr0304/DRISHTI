@@ -37,7 +37,7 @@ export const ROLES: Record<UserRole, RoleDef> = {
     label: "Crime Analyst",
     blurb: "Patterns, networks, hotspots and forecasts.",
     scope: "District · read-across",
-    home: "/",
+    home: "/command",
     admin: false,
   },
   supervisor: {
@@ -45,7 +45,7 @@ export const ROLES: Record<UserRole, RoleDef> = {
     label: "Supervisor",
     blurb: "Oversees units, workloads and outcomes.",
     scope: "Sub-division · all stations",
-    home: "/",
+    home: "/command",
     admin: false,
   },
   policymaker: {
@@ -61,7 +61,7 @@ export const ROLES: Record<UserRole, RoleDef> = {
     label: "Super Admin",
     blurb: "Full access, model registry and governance.",
     scope: "All data · all districts",
-    home: "/",
+    home: "/command",
     admin: true,
   },
 };

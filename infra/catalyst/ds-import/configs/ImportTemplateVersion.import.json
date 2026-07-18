@@ -1,0 +1,5 @@
+{
+  "table_identifier": "ImportTemplateVersion",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

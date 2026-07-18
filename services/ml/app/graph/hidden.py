@@ -75,6 +75,10 @@ WITH pe AS (
     JOIN "EntityGraph" pg ON pg."EntityID" = e."Source"
     WHERE ig."EntityType"::text = ANY(%(kinds)s)
       AND pg."EntityType"::text = 'person'
+      -- CANONICAL, provenanced, non-archived only (never the old graph space)
+      AND e."IsArchived" = FALSE AND e."ProvenanceStatus" IS NOT NULL
+      AND ig."IsArchived" = FALSE AND pg."IsArchived" = FALSE
+      AND pg."CanonicalEntityID" IS NOT NULL
 ),
 shared AS (
     SELECT p1.person AS a, p2.person AS b, p1.inter, p1.kind
@@ -95,7 +99,7 @@ SELECT a, b, independent_links, link_kinds, shared_inters, n_intermediaries
 FROM agg
 WHERE NOT EXISTS (
     SELECT 1 FROM "NetworkEdge" ce
-    WHERE ce."RelationshipType" = 'co_accused'
+    WHERE ce."RelationshipType" = 'co_accused' AND ce."IsArchived" = FALSE
       AND ((ce."Source" = agg.a AND ce."Target" = agg.b)
         OR (ce."Source" = agg.b AND ce."Target" = agg.a))
 )
@@ -113,26 +117,31 @@ def materialize(conn, min_links: int = 2, max_rows: int = 20000) -> dict:
         cur.execute(_CANDIDATES, {"kinds": list(INTERMEDIARY_KINDS), "min_links": min_links})
         rows = cur.fetchall()
 
-        cur.execute('TRUNCATE "drishti_hidden_associations" RESTART IDENTITY')
+        # Preserve reviewer decisions: only refresh the still-CANDIDATE rows; a
+        # confirmed/rejected association keeps its human disposition.
+        cur.execute("DELETE FROM \"drishti_hidden_associations\" WHERE \"ReviewStatus\" = 'candidate'")
 
         payload = []
         for a, b, links, kinds, inters, n_inter in rows:
             # score: distinct kinds dominate, extra shared intermediaries add a little
             score = round(float(links) + 0.1 * float(n_inter), 5)
             proof = [f"EntityGraph:{i}" for i in inters]
+            # the DISTINCT indirect link kinds ARE the independent evidence kinds
             payload.append((int(a), int(b), int(links), list(kinds),
-                            [int(i) for i in inters], proof, score, 0, mv_id))
+                            [int(i) for i in inters], proof, score, 0, mv_id, list(kinds)))
         # keep the strongest if extremely large
         payload.sort(key=lambda r: (-r[6], -r[2]))
         payload = payload[:max_rows]
 
         if payload:
+            # ON CONFLICT DO NOTHING: never overwrite a confirmed/rejected pair.
             execute_values(
                 cur,
                 'INSERT INTO "drishti_hidden_associations" '
                 '("EntityA","EntityB","IndependentLinks","LinkKinds",'
-                '"SharedIntermediaries","ProofRecordIds","Score","SharedCaseCount","ModelVersionID") '
-                "VALUES %s",
+                '"SharedIntermediaries","ProofRecordIds","Score","SharedCaseCount","ModelVersionID",'
+                '"IndependentEvidenceKinds") '
+                'VALUES %s ON CONFLICT ("EntityA","EntityB") DO NOTHING',
                 payload, page_size=5000,
             )
         # audit
@@ -157,17 +166,18 @@ def feed(conn, page: int = 1, page_size: int = 20, min_links: int = 2):
     page_size = max(1, min(int(page_size), 100))
     offset = (page - 1) * page_size
     with conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "drishti_hidden_associations" WHERE "IndependentLinks" >= %s',
-                    (min_links,))
+        cur.execute('SELECT COUNT(*) FROM "drishti_hidden_associations" '
+                    'WHERE "IndependentLinks" >= %s AND "IsArchived" = FALSE', (min_links,))
         total = int(cur.fetchone()[0])
         cur.execute(
             'SELECT h."AssociationID", h."EntityA", h."EntityB", ea."Label", eb."Label", '
             '       h."IndependentLinks", h."LinkKinds", h."ProofRecordIds", '
-            '       h."SharedIntermediaries", h."SharedCaseCount", h."Score" '
+            '       h."SharedIntermediaries", h."SharedCaseCount", h."Score", '
+            '       h."ReviewStatus", h."IndependentEvidenceKinds" '
             'FROM "drishti_hidden_associations" h '
             'JOIN "EntityGraph" ea ON ea."EntityID" = h."EntityA" '
             'JOIN "EntityGraph" eb ON eb."EntityID" = h."EntityB" '
-            'WHERE h."IndependentLinks" >= %s '
+            'WHERE h."IndependentLinks" >= %s AND h."IsArchived" = FALSE '
             'ORDER BY h."Score" DESC, h."IndependentLinks" DESC, h."AssociationID" ASC '
             'LIMIT %s OFFSET %s',
             (min_links, page_size, offset),
@@ -177,10 +187,32 @@ def feed(conn, page: int = 1, page_size: int = 20, min_links: int = 2):
              "label_a": r[3], "label_b": r[4], "independent_links": int(r[5]),
              "link_kinds": list(r[6]), "proof_record_ids": list(r[7]),
              "shared_intermediaries": [int(x) for x in r[8]],
-             "shared_case_count": int(r[9]), "score": float(r[10])}
+             "shared_case_count": int(r[9]), "score": float(r[10]),
+             "review_status": r[11], "independent_evidence_kinds": list(r[12] or [])}
             for r in cur.fetchall()
         ]
     return total, items
+
+
+def review(conn, association_id: int, decision: str, actor: str = None,
+           reason: str = None) -> dict:
+    """Reviewer disposition for a hidden association: confirm|reject|reset.
+    A confirmed/rejected row is preserved across re-materialisation."""
+    status = {"confirm": "confirmed", "reject": "rejected", "reset": "candidate"}.get(decision)
+    if status is None:
+        raise ValueError(f"unknown decision '{decision}' (confirm|reject|reset)")
+    with conn.cursor() as cur:
+        cur.execute('UPDATE "drishti_hidden_associations" SET "ReviewStatus"=%s, '
+                    '"ReviewerActor"=%s, "ReviewedAt"=now() WHERE "AssociationID"=%s '
+                    'RETURNING "EntityA","EntityB"', (status, actor, association_id))
+        row = cur.fetchone()
+    if row is None:
+        return {"association_id": association_id, "found": False}
+    from .. import audit
+    audit.record(audit.Action.ENTITY_CHANGE, "hidden_association_review", association_id,
+                 actor=actor, conn=conn, detail={"decision": decision, "status": status})
+    return {"association_id": association_id, "found": True, "review_status": status,
+            "reviewer_actor": actor}
 
 
 def proof_path(conn, association_id: int):
@@ -188,7 +220,8 @@ def proof_path(conn, association_id: int):
     edges) that proves a hidden association."""
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "EntityA","EntityB","LinkKinds","SharedIntermediaries" '
+            'SELECT "EntityA","EntityB","LinkKinds","SharedIntermediaries","ReviewStatus",'
+            '"IndependentEvidenceKinds" '
             'FROM "drishti_hidden_associations" WHERE "AssociationID"=%s',
             (association_id,),
         )
@@ -196,6 +229,7 @@ def proof_path(conn, association_id: int):
         if not row:
             return None
         a, b, kinds, inters = int(row[0]), int(row[1]), list(row[2]), [int(x) for x in row[3]]
+        review_status, evidence_kinds = row[4], list(row[5] or [])
         node_ids = [a, b] + inters
         cur.execute(
             'SELECT "EntityID","EntityType"::text,"Label","RefTable" '
@@ -212,4 +246,5 @@ def proof_path(conn, association_id: int):
         )
         edges = [{"edge_id": int(r[0]), "source": int(r[1]), "target": int(r[2]),
                   "relationship_type": r[3], "weight": r[4]} for r in cur.fetchall()]
-    return {"entity_a": a, "entity_b": b, "link_kinds": kinds, "nodes": nodes, "edges": edges}
+    return {"entity_a": a, "entity_b": b, "link_kinds": kinds, "nodes": nodes, "edges": edges,
+            "review_status": review_status, "independent_evidence_kinds": evidence_kinds}

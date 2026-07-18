@@ -1,0 +1,5 @@
+{
+  "table_identifier": "SavedQuery",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

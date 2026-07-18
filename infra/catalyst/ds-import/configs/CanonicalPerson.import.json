@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CanonicalPerson",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

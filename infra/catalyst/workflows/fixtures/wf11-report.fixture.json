@@ -1,0 +1,14 @@
+{
+  "workflow": "report-generation-and-delivery",
+  "fixture_status": "runnable",
+  "idempotency_key": "report:rep-500:v1",
+  "input": { "report_type": "case_summary", "source_snapshot_ref": "snap:case:1001:v3", "actor": "supervisor:emp-3" },
+  "expected_output": {
+    "render": { "content_type": "application/pdf", "watermark": "Synthetic Hackathon Demo", "sha256_present": true, "version": "v1" },
+    "stratus_object": { "bucket": "report", "key": "reports/pdf/rep-500.v1.pdf", "private": true, "versioned": true },
+    "signal": "report.ready"
+  },
+  "lineage": { "source_snapshot": "snap:case:1001:v3", "renderer": "smartbrowz", "sha256": "computed" },
+  "runnable_via": "app/smartbrowz.get_smartbrowz().render_pdf(html) -> RenderResult(sha256,size,watermark)",
+  "asserts": [ "immutable source snapshot", "synthetic watermark + hash + version", "private Stratus object" ]
+}

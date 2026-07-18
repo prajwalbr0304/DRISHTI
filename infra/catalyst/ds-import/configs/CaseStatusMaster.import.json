@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CaseStatusMaster",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

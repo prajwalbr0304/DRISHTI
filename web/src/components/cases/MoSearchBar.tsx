@@ -23,7 +23,7 @@ export function MoSearchBar() {
 
   const q = useQuery({
     queryKey: ["cases", "similar", caseId],
-    queryFn: ({ signal }) => api.cases.similar(caseId!, 8, signal),
+    queryFn: ({ signal }) => api.cases.similar(caseId!, { k: 8 }, signal),
     enabled: caseId != null,
   });
 

@@ -104,16 +104,19 @@ def build(conn, seed: int = 42) -> dict:
         cur.execute('SELECT e, COUNT(*) FROM (SELECT "EntityA" e FROM "drishti_hidden_associations" '
                     'UNION ALL SELECT "EntityB" FROM "drishti_hidden_associations") t GROUP BY e')
         hidden = {int(r[0]): int(r[1]) for r in cur.fetchall()}
-        # unique entity -> accused mapping (rank-match on name)
+        # entity -> representative accused via CANONICAL identity (Phase 4; no name
+        # matching): EntityGraph.CanonicalEntityID -> CanonicalEntity.CanonicalPersonID
+        # -> CasePartyRole(accused) -> Accused (LegacyRefID). One representative
+        # AccusedMasterID per person node is enough for the explain/provenance link.
         cur.execute("""
-            WITH ent AS (SELECT "EntityID","Label",
-                    ROW_NUMBER() OVER (PARTITION BY "Label" ORDER BY "EntityID") rn
-                 FROM "EntityGraph" WHERE "EntityType"='person'),
-                 acc AS (SELECT "AccusedMasterID","AccusedName",
-                    ROW_NUMBER() OVER (PARTITION BY "AccusedName" ORDER BY "AccusedMasterID") rn
-                 FROM "Accused")
-            SELECT ent."EntityID", acc."AccusedMasterID"
-            FROM ent LEFT JOIN acc ON acc."AccusedName"=ent."Label" AND acc.rn=ent.rn""")
+            SELECT eg."EntityID", MIN(r."LegacyRefID") AS accused_master_id
+            FROM "EntityGraph" eg
+            JOIN "CanonicalEntity" ce ON ce."CanonicalEntityID" = eg."CanonicalEntityID"
+            JOIN "CasePartyRole" r ON r."CanonicalPersonID" = ce."CanonicalPersonID"
+                AND r."RoleType" = 'accused' AND r."LegacyRefTable" = 'Accused'
+                AND r."LegacyRefID" IS NOT NULL
+            WHERE eg."EntityType" = 'person'
+            GROUP BY eg."EntityID" """)
         accused_map = {int(r[0]): (int(r[1]) if r[1] is not None else None) for r in cur.fetchall()}
         # the offenders themselves
         cur.execute("""

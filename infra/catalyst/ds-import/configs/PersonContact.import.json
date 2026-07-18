@@ -1,0 +1,5 @@
+{
+  "table_identifier": "PersonContact",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

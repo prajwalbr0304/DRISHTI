@@ -1,0 +1,39 @@
+# DRISHTI FastAPI — Catalyst AppSail custom-runtime dependencies (Phase 14).
+#
+# DELIBERATELY LIGHTWEIGHT. This is the public API runtime image. It EXCLUDES
+# every heavy GPU / foundation-model package (torch, tabfm, tabpfn, timesfm,
+# torch-geometric, sentence-transformers, xgboost). Those live ONLY in
+# services/gpu-worker and run on external AWS SageMaker / AWS Batch GPU compute.
+#
+# The AppSail service NEVER loads model weights in-process; it validates input,
+# persists FeatureSnapshot/PredictionRequest to Catalyst Data Store, and
+# dispatches to the protected AWS adapter (see app/aws_adapter contract).
+#
+# The lighter scientific stack (numpy/scipy/scikit-learn/networkx/shapely) is
+# retained because deterministic CPU analytics (hotspots, near-repeat, graph,
+# in-context fallback) run inside the API without a GPU.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+
+# Catalyst SDK for Data Store / Stratus / NoSQL / Cache / Job Scheduling.
+# (Deployed operational data path; installed in the AppSail image only.)
+zcatalyst-sdk>=1.0.0
+
+# AWS SDK — used only to call the protected AWS adapter / SQS from the server
+# side. No AWS keys are baked in; the adapter is reached over HTTPS.
+boto3>=1.34
+
+# Deterministic CPU analytics (no GPU, no foundation-model weights).
+numpy>=1.26
+networkx==3.4.2
+scipy>=1.11
+scikit-learn>=1.4
+shapely>=2.0
+
+# HTTP client for the AWS adapter calls + tests.
+httpx==0.28.1

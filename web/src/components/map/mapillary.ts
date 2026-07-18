@@ -1,10 +1,13 @@
 /* ============================================================================
    Mapillary integration (street-level imagery). Uses a public client read
-   token (VITE_MAPILLARY_TOKEN) — safe to run client-side. Provides the vector
-   coverage tiles and a nearest-image lookup for the street-view viewer.
+   token (VITE_MAPILLARY_TOKEN, via src/config/runtime) — safe to run
+   client-side. Provides the vector coverage tiles and a nearest-image lookup
+   for the street-view viewer.
    ========================================================================== */
 
-export const MAPILLARY_TOKEN = import.meta.env.VITE_MAPILLARY_TOKEN ?? "";
+import { runtime } from "@/config/runtime";
+
+export const MAPILLARY_TOKEN = runtime.mapillaryToken;
 
 export function hasMapillary(): boolean {
   return MAPILLARY_TOKEN.length > 0;

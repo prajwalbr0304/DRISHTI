@@ -77,10 +77,15 @@ export function EntityExplorer() {
 
   return (
     <div>
-      <PageHeader
-        title="People & Entities"
-        description="Search and browse persons, phones, vehicles, gangs and accounts in the intelligence graph."
-      />
+      <div className="flex items-start justify-between gap-2">
+        <PageHeader
+          title="People & Entities"
+          description="Search and browse persons, phones, vehicles, gangs and accounts in the intelligence graph."
+        />
+        <Button variant="outline" size="sm" className="mt-1 shrink-0" onClick={() => navigate("/review/entities")}>
+          <Users className="size-3.5" /> Entity resolution
+        </Button>
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[240px] flex-1">

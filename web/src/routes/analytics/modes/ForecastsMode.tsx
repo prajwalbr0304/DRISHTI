@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Gauge, Layers, Radar, Sparkles, TrendingUp } from "lucide-react";
-import type { LayerPrediction } from "@/api/types";
+import {
+  Activity, AlertTriangle, CalendarClock, CheckCircle2, Gauge, Layers, Radar,
+  ShieldCheck, Sparkles, Target, TrendingUp, XCircle,
+} from "lucide-react";
+import type { BacktestResponse, ForecastMetric, FreshnessResponse, LayerPrediction } from "@/api/types";
 import { errorMessage } from "@/api/contracts";
 import { api } from "@/api";
 import { useUIStore } from "@/stores/useUIStore";
@@ -16,6 +19,8 @@ import { FanChart, type TrajectoryStep } from "@/components/charts/FanChart";
 import {
   useDistrictForecast,
   useFilterOptions,
+  useForecastBacktest,
+  useForecastFreshness,
   useForecastFused,
 } from "@/routes/analytics/useAnalyticsData";
 
@@ -52,6 +57,8 @@ export function ForecastsMode() {
   const qc = useQueryClient();
   const filters = useFilterOptions();
   const fused = useForecastFused();
+  const backtest = useForecastBacktest();
+  const fresh = useForecastFreshness();
   const [selected, setSelected] = useState<string>("");
 
   const districtName = (id: number) =>
@@ -122,6 +129,7 @@ export function ForecastsMode() {
 
   return (
     <div className="space-y-4">
+      <FreshnessBanner q={fresh} />
       {/* Controls */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="flex flex-col gap-1">
@@ -230,7 +238,193 @@ export function ForecastsMode() {
       >
         <LayerTable layers={layers} />
       </Widget>
+
+      {/* Backtest: how wrong is it usually, and does it beat simple baselines? */}
+      <BacktestPanel q={backtest} onExplain={askAbout} />
+
+      <p className="rounded-card border border-hairline bg-surface/60 p-3 text-12 text-content-dim">
+        <AlertTriangle className="mr-1 inline size-3.5 -translate-y-px text-severity-medium" />
+        Limitations: forecasts are aggregate area/period decision support with visible uncertainty —
+        not certainty and never a person-level prediction. They use only canonical valid geography
+        (incidents outside the state boundary are excluded) and approved, versioned context up to the
+        data cutoff. Every result is reproducible from an immutable feature snapshot and requires
+        human review before any operational use.
+      </p>
     </div>
+  );
+}
+
+/* ---- data freshness banner ------------------------------------------------ */
+function FreshnessBanner({ q }: { q: { data?: FreshnessResponse; isLoading: boolean; error: unknown } }) {
+  const f = q.data;
+  if (q.isLoading || q.error || !f) return null;
+  const asOf = f.as_of?.cases ? String(f.as_of.cases).slice(0, 10) : "unknown";
+  const stale = f.case_data_stale_days;
+  const vg = (f.valid_geography?.valid_geography_filter as string | undefined) ?? "";
+  const geoActive = vg === "active";
+  const excluded = Number(f.valid_geography?.out_of_state_excluded ?? 0);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-card border border-hairline bg-surface px-3.5 py-2 text-12">
+      <span className="flex items-center gap-1.5 text-content-dim">
+        <CalendarClock className="size-3.5" /> Data as of{" "}
+        <span className="tnum font-medium text-content">{asOf}</span>
+        {stale != null && <span className="text-content-dim">({stale}d old)</span>}
+      </span>
+      <span className="flex items-center gap-1.5 text-content-dim">
+        <ShieldCheck className={cn("size-3.5", geoActive ? "text-severity-low" : "text-content-dim")} />
+        Valid-geography filter{" "}
+        <Badge variant={geoActive ? "low" : "neutral"}>{geoActive ? "active" : "inactive"}</Badge>
+        {geoActive && <span className="text-content-dim">· {formatNumber(excluded)} out-of-state excluded</span>}
+      </span>
+      <span className="text-content-dim">
+        {(f.approved_sources?.length ?? 0)} approved context source(s)
+      </span>
+    </div>
+  );
+}
+
+/* ---- rolling-origin backtest + baseline comparison ------------------------ */
+const _METRIC_COLS: { key: keyof ForecastMetric; label: string; pct?: boolean }[] = [
+  { key: "mae", label: "MAE" },
+  { key: "rmse", label: "RMSE" },
+  { key: "wape", label: "WAPE", pct: true },
+  { key: "smape", label: "sMAPE" },
+  { key: "coverage_80", label: "80% cov.", pct: true },
+];
+
+function _fmtMetric(m: ForecastMetric | null | undefined, key: keyof ForecastMetric, pct?: boolean): string {
+  const v = m?.[key];
+  if (v == null || typeof v !== "number") return "—";
+  if (key === "smape") return `${v.toFixed(1)}%`;
+  if (pct) return formatPercent(v, key === "wape" ? 1 : 0);
+  return formatNumber(Math.round(v * 100) / 100);
+}
+
+function BacktestPanel({
+  q,
+  onExplain,
+}: {
+  q: { data?: BacktestResponse; isLoading: boolean; error: unknown; refetch: () => void };
+  onExplain: (seed: string) => void;
+}) {
+  const bt = q.data;
+  const model = bt?.model;
+  const baselines = bt?.baselines ?? {};
+  const beats = bt?.beats_all_baselines;
+  const naiveSkill = bt?.skill_vs_baselines?.seasonal_naive?.mae_skill;
+  const geo = (bt?.geo_holdout ?? {}) as Record<string, ForecastMetric | number | number[] | undefined>;
+  const rows: { name: string; label: string; m?: ForecastMetric | null; kind: "model" | "baseline" }[] = model
+    ? [
+        { name: "model", label: `${model.name ?? "forecast model"} (model)`, m: model, kind: "model" },
+        ...Object.entries(baselines).map(([k, m]) => ({
+          name: k,
+          label: `${m?.name ?? k} (baseline)`,
+          m,
+          kind: "baseline" as const,
+        })),
+      ]
+    : [];
+
+  return (
+    <Widget
+      title="Backtest & baselines"
+      contextChip={bt ? `${bt.scored_points} held-out district-months` : undefined}
+      provenance={bt?.result}
+      loading={q.isLoading}
+      error={q.error}
+      empty={!q.isLoading && !q.error && !model}
+      emptyLabel="No backtest available yet."
+      onRefresh={() => q.refetch()}
+      menuItems={[
+        {
+          label: "Explain this in Ask DRISHTI",
+          icon: <Sparkles />,
+          onSelect: () =>
+            onExplain(
+              "Explain the crime-forecast backtest: rolling-origin MAE/RMSE/WAPE/sMAPE, prediction-" +
+                "interval coverage, and whether the model beats the seasonal-naive and moving-average baselines.",
+            ),
+        },
+      ]}
+      info={
+        <p className="text-content-dim">
+          Walk-forward (rolling-origin) evaluation: the forecaster only sees months on/before each
+          cutoff and predicts the next horizon; held-out actuals score error + interval coverage,
+          against seasonal-naive and moving-average baselines, with a geographic holdout.
+        </p>
+      }
+      flush
+    >
+      {model && (
+        <div className="space-y-3 p-3.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {beats != null && (
+              <Badge variant={beats ? "low" : "high"}>
+                {beats ? <CheckCircle2 className="size-3" /> : <XCircle className="size-3" />}
+                {beats ? "Beats all baselines" : "Does not beat every baseline"}
+              </Badge>
+            )}
+            {naiveSkill != null && (
+              <Badge variant="neutral">
+                <Target className="size-3" /> {formatPercent(naiveSkill, 0)} MAE skill vs seasonal-naive
+              </Badge>
+            )}
+            {bt && bt.abstention_rate > 0 && (
+              <Badge variant="medium">
+                <Activity className="size-3" /> {formatPercent(bt.abstention_rate, 0)} sparse cells abstained
+              </Badge>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-13">
+              <thead>
+                <tr className="border-b border-hairline text-left text-12 text-content-dim">
+                  <th className="px-3 py-2 font-medium">Forecaster</th>
+                  {_METRIC_COLS.map((c) => (
+                    <th key={c.key} className="px-3 py-2 text-right font-medium">{c.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.name} className="border-b border-hairline/60 last:border-0">
+                    <td className="px-3 py-2">
+                      <span className={cn("font-medium", r.kind === "model" ? "text-primary" : "text-content-dim")}>
+                        {r.label}
+                      </span>
+                    </td>
+                    {_METRIC_COLS.map((c) => (
+                      <td key={c.key} className="tnum px-3 py-2 text-right text-content">
+                        {_fmtMetric(r.m, c.key, c.pct)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* geographic holdout */}
+          {geo && (geo.train || geo.holdout) && (
+            <div className="flex flex-wrap gap-4 text-12 text-content-dim">
+              <span className="font-medium text-content">Geographic holdout:</span>
+              <span>
+                train MAE{" "}
+                <span className="tnum text-content">{_fmtMetric(geo.train as ForecastMetric, "mae")}</span>
+              </span>
+              <span>
+                held-out MAE{" "}
+                <span className="tnum text-content">{_fmtMetric(geo.holdout as ForecastMetric, "mae")}</span>
+              </span>
+              {Array.isArray(geo.holdout_districts) && (
+                <span>{(geo.holdout_districts as number[]).length} held-out district(s)</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </Widget>
   );
 }
 

@@ -28,6 +28,7 @@ from typing import List, Tuple
 
 import numpy as np
 
+from . import boundaries as B
 from . import reference as ref
 from .config import GenConfig, ID_BLOCK
 from .context import Context
@@ -50,6 +51,13 @@ class Planner:
         self.cfg = cfg
         self.ctx = ctx
         self.rng = RNG(cfg.seed * 31 + 7)
+
+        # Real-geography incident placement. Each station carries its SHO
+        # jurisdiction ring; rebuild it into a prepared Region once and cache a
+        # clustering sigma so incidents sit near the station yet inside the ring.
+        self.bnd = B.load_boundaries()
+        self._sho_cache: dict = {}
+        self._sho_sigma: dict = {}
 
         # date axis
         self.dates = _date_range(cfg.start_date, cfg.end_date)
@@ -124,6 +132,25 @@ class Planner:
         ids = self.spec_idx[pi]
         return int(ids[int(np.searchsorted(cdf, self.rng.g.random()))])
 
+    def _incident_point(self, station: dict) -> Tuple[float, float]:
+        """One incident coordinate: clustered around the station but guaranteed
+        inside its SHO jurisdiction (hence on real Karnataka land). Returns
+        ``(lat, lon)``."""
+        sid = station["id"]
+        region = self._sho_cache.get(sid)
+        if region is None:
+            ring = station.get("sho_ring")
+            if ring and len(ring) >= 4:
+                region = B.region_from_ring(f"sho-{sid}", ring)
+            else:  # defensive: fall back to the whole district
+                d = self.ctx.districts[station["district_idx"]]
+                region = self.bnd.district(d["name"])
+            self._sho_cache[sid] = region
+            self._sho_sigma[sid] = B.sigma_for_area(region.area)
+        lon, lat = B.sample_near(region, station["lon"], station["lat"],
+                                 self._sho_sigma[sid], self.rng.g)
+        return lat, lon
+
     def plan(self) -> List[tuple]:
         cfg, ctx, rng = self.cfg, self.ctx, self.rng
         plans: List[tuple] = []
@@ -154,8 +181,8 @@ class Planner:
             st_index = st_list[int(rng.g.integers(0, len(st_list)))]
             station = ctx.stations[st_index]
             station_id = station["id"]
-            lat = float(np.clip(station["lat"] + rng.g.normal(0, station["radius"]), -90, 90))
-            lon = float(np.clip(station["lon"] + rng.g.normal(0, station["radius"]), -180, 180))
+            # incident coordinate inside the station's SHO jurisdiction (real land)
+            lat, lon = self._incident_point(station)
 
             # officer (zipf -> some officers handle many FIRs)
             officers = ctx.officers_by_station[station_id]

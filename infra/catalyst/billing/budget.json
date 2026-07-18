@@ -1,0 +1,23 @@
+{
+  "_comment": "DRISHTI Catalyst billing Budget/Report descriptor (Phase 14 Part B credit monitoring). Catalyst exposes NO CLI billing/usage command and the CLI login carries no billing scope (verified Part A, report §9), so budget alerts + usage reports are configured in Console -> Billing/Budget. This file is the reviewed source of the thresholds an operator applies there. No monetary values are secret; amounts are the hackathon plan baseline.",
+  "monitoring": "console-only (no CLI/API on this login)",
+  "plan_baseline": {
+    "period": "2026-07-17 to 2026-08-17",
+    "free_credit_inr": 300,
+    "basic_plan_inr": 1500,
+    "envelope_inr": 1800,
+    "source": "console screenshot (Part A, report §9)"
+  },
+  "budget_alerts_inr": [
+    {"threshold_pct": 50, "amount_inr": 900, "action": "email owner; review usage report"},
+    {"threshold_pct": 75, "amount_inr": 1350, "action": "email owner; pause non-essential enable flags (DRISHTI_*_ENABLED)"},
+    {"threshold_pct": 90, "amount_inr": 1620, "action": "email owner; stop temporary AWS GPU/Batch; freeze new deploys"}
+  ],
+  "cost_controls": [
+    "AppSail instances capped 1-2 (appsail/appsail.deploy.json)",
+    "all event/cron/RAG/notify scaffolds default OFF (DRISHTI_*_ENABLED)",
+    "cron_reconcile stops temporary AWS GPU/Batch + emits budget/health evidence (workflow §17)",
+    "development Data Store imports capped at 5000 rows/table"
+  ],
+  "review_cadence": "cron_reconcile nightly attaches a budget/health evidence line; operator reviews the Console usage report weekly."
+}

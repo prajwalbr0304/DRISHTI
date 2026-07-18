@@ -1,0 +1,11 @@
+# DRISHTI SPA deep-link fallback for Catalyst Slate (Phase 14 Part C/Part B row 4).
+# Vite copies files in public/ verbatim into dist/, so this lands in the Slate
+# build output and makes every client-side route serve index.html with HTTP 200
+# (not a 302), letting React Router handle navigation and refreshes.
+
+# Legacy Catalyst SDK /app/ path (from Web Client Hosting) -> root, so the
+# embedded-auth redirect does not 404 on Slate (which serves from /).
+/app/*    /index.html   200
+
+# SPA catch-all: all paths render the app shell.
+/*        /index.html   200

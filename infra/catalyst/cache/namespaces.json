@@ -1,0 +1,29 @@
+{
+  "_comment": "DRISHTI Catalyst Cache segments (Phase 14 Part B / matrix row 9). Cache holds ONLY bounded-TTL, reconstructable state - never a system of record. Created in Console -> Cache (no CLI). Enabled via DRISHTI_USE_CATALYST_CACHE. TTLs mirror app/cache.py DEFAULT_TTL_S.",
+  "segments": [
+    {
+      "name": "idempotency",
+      "purpose": "Dedupe prediction/import/report/notify requests by idempotency key.",
+      "ttl_seconds": 86400,
+      "notes": "add_if_absent(key) -> False means duplicate; prevents double-dispatch."
+    },
+    {
+      "name": "ratelimit",
+      "purpose": "Per-IP / per-role sliding-window counters in front of the gateway facade.",
+      "ttl_seconds": 60,
+      "notes": "Complements API Gateway throttling; incr() per request window."
+    },
+    {
+      "name": "nonce",
+      "purpose": "Signed-context nonce replay guard across AppSail instances (app/gateway_context.py).",
+      "ttl_seconds": 180,
+      "notes": "Cross-instance replay protection; the in-process cache is the local fallback."
+    },
+    {
+      "name": "lookup",
+      "purpose": "Short reference lookups / dashboard summaries.",
+      "ttl_seconds": 300,
+      "notes": "Always reconstructable from Data Store; safe to evict."
+    }
+  ]
+}

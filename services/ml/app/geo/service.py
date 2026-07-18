@@ -229,8 +229,9 @@ def stations(bbox: Optional[tuple] = None, limit: int = 1500):
 
 
 def case_links(case_id: int, limit: int = 60):
-    """Geo-located cases linked to a source case by a shared accused (co-offending
-    footprint). Powers the Live Map arc view. Point-level -> router blocks policymaker."""
+    """Geo-located cases linked to a source case by a shared CANONICAL accused
+    person (co-offending footprint, Phase 4 — never a name match). Powers the Live
+    Map arc view. Point-level -> router blocks policymaker."""
     from .schemas import CaseLinkNode, CaseLinksResponse
     limit = max(1, min(int(limit), 200))
     with db.ro_conn() as conn:
@@ -242,15 +243,19 @@ def case_links(case_id: int, limit: int = 60):
             if src is None:
                 return None
             cur.execute(
-                'SELECT DISTINCT a2."CaseMasterID", ST_X(cm2."geom"), ST_Y(cm2."geom"), '
-                'cm2."CrimeNo", ch."CrimeGroupName", a1."AccusedName" '
-                'FROM "Accused" a1 '
-                'JOIN "Accused" a2 ON lower(trim(a2."AccusedName")) = lower(trim(a1."AccusedName")) '
-                '                  AND a2."CaseMasterID" <> a1."CaseMasterID" '
-                'JOIN "CaseMaster" cm2 ON cm2."CaseMasterID" = a2."CaseMasterID" '
+                'SELECT DISTINCT r2."CaseMasterID", ST_X(cm2."geom"), ST_Y(cm2."geom"), '
+                'cm2."CrimeNo", ch."CrimeGroupName", COALESCE(p."DisplayLabel", p."PublicRef") '
+                'FROM "CasePartyRole" r1 '
+                'JOIN "CasePartyRole" r2 ON r2."CanonicalPersonID" = r1."CanonicalPersonID" '
+                '                        AND r2."CaseMasterID" <> r1."CaseMasterID" '
+                '                        AND r2."RoleType" = \'accused\' '
+                'JOIN "CanonicalPerson" p ON p."CanonicalPersonID" = r1."CanonicalPersonID" '
+                'JOIN "CaseMaster" cm2 ON cm2."CaseMasterID" = r2."CaseMasterID" '
                 'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm2."CrimeMajorHeadID" '
-                'WHERE a1."CaseMasterID" = %s AND cm2."geom" IS NOT NULL '
-                'ORDER BY a2."CaseMasterID" LIMIT %s', (case_id, limit))
+                'WHERE r1."CaseMasterID" = %s AND r1."RoleType"=\'accused\' '
+                '  AND r1."CanonicalPersonID" IS NOT NULL AND p."IsUnknown"=FALSE '
+                '  AND cm2."geom" IS NOT NULL '
+                'ORDER BY r2."CaseMasterID" LIMIT %s', (case_id, limit))
             links = [CaseLinkNode(
                 case_id=int(r[0]), lon=float(r[1]), lat=float(r[2]),
                 crime_no=r[3], crime_group=r[4], via=r[5]) for r in cur.fetchall()]

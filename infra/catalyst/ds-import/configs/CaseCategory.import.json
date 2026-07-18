@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CaseCategory",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

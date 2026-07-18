@@ -1,0 +1,21 @@
+{
+  "workflow": "model-training-evaluation-and-release",
+  "fixture_status": "representative",
+  "idempotency_key": "train:area-workload-band-baseline:ds-v1:split-h1",
+  "input": {
+    "experiment": "area-workload-band-baseline",
+    "dataset_version": "ds-v1",
+    "split": "time-based-holdout",
+    "candidates": ["prior_period_baseline", "quickml_nocode", "tabfm_incontext", "timesfm_incontext"]
+  },
+  "expected_output": {
+    "leakage_check": "pass",
+    "fairness_check": "pass (no protected attributes as features)",
+    "baseline_comparison": { "quickml_nocode": { "auc": 0.74 }, "prior_period_baseline": { "auc": 0.68 } },
+    "foundation_eval": { "tabfm": "zero-shot (no weight update)", "timesfm": "in-context (no weight update)" },
+    "human_approval_required": true,
+    "auto_promoted": false
+  },
+  "lineage": { "dataset_version": "ds-v1", "registered_model_version": "mv-baseline-0.2 (on approval only)" },
+  "asserts": [ "never triggered by a raw upload or single FIR", "TabFM/TimesFM weights never updated", "no auto-promote" ]
+}

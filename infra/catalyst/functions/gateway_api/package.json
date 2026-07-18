@@ -1,0 +1,10 @@
+{
+  "name": "gateway_api",
+  "version": "0.1.0",
+  "description": "DRISHTI authenticated API Gateway facade -> signed context -> AppSail FastAPI.",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

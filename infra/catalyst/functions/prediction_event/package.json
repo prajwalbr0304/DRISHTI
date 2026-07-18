@@ -1,0 +1,10 @@
+{
+  "name": "prediction_event",
+  "version": "0.1.0",
+  "description": "DRISHTI prediction dispatch/result Signals event handler.",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

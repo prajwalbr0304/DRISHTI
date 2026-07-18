@@ -1,0 +1,5 @@
+{
+  "table_identifier": "ActSectionAssociation",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

@@ -1,0 +1,12 @@
+{
+  "deployment": {
+    "name": "gateway_api",
+    "stack": "node20",
+    "type": "advancedio",
+    "memory": 256,
+    "env_variables": {}
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}

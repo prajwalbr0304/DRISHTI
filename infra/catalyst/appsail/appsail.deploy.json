@@ -1,0 +1,68 @@
+{
+  "_comment": "DRISHTI AppSail deploy descriptor (Phase 14 Part D / matrix rows 2,3). NOT the CLI app-config.json: Catalyst custom OCI (Docker) runtimes do NOT use app-config.json - config is supplied via `catalyst deploy appsail` flags and the Console. This file is the single reviewed source of those intended values, consumed by the CI/CD pipeline and the runbook. No secret VALUES are stored here - only the KEYS that must be set server-side in the Console/AppSail configuration.",
+  "service_name": "drishti-api",
+  "runtime": "custom-oci-docker",
+  "platform": "linux/amd64",
+  "image": "docker://drishti-api:appsail",
+  "dockerfile": "../../services/ml/Dockerfile.appsail",
+  "build_context": "../../services/ml",
+  "listen_port": 9000,
+  "listen_port_env": "X_ZOHO_CATALYST_LISTEN_PORT",
+  "memory_mb": 512,
+  "disk_mb": 256,
+  "instances": { "min": 1, "max": 2, "scale_up_threshold_pct": 80 },
+  "catalyst_auth": false,
+  "health_check_path": "/health/ready",
+  "liveness_path": "/health/live",
+  "deploy_command": "catalyst deploy appsail --name drishti-api --source docker://drishti-api:appsail --port 9000",
+  "notes": [
+    "catalyst_auth=false: DRISHTI uses its own gateway facade + signed context; the Catalyst SSO wrapper would break that flow.",
+    "instances.max is capped at 2 for hackathon credit control (scale-to-low).",
+    "Public access is via the API Gateway -> gateway_api function -> AppSail. With DRISHTI_REQUIRE_GATEWAY_CONTEXT=true the app ACTIVELY REJECTS (401) any non-health request that lacks a valid signed context, so direct unauthenticated browser CRUD against the AppSail URL is refused (items 10/12).",
+    "The image excludes torch/CUDA/TabFM/TabPFN/TimesFM/torch-geometric; model compute is on external AWS GPU (services/gpu-worker).",
+    "Build + deploy via infra/catalyst/appsail/deploy.ps1 (CLI-driven; `catalyst deploy appsail --name --source --port` — note: CLI 1.27.0 has NO 'standalone' subcommand). Deploy is credit-spending and opt-in (-Deploy)."
+  ],
+  "env_var_keys": {
+    "required": [
+      "ZOHO_APPSAIL_SIGNING_SECRET",
+      "DRISHTI_REQUIRE_GATEWAY_CONTEXT",
+      "DRISHTI_CONTEXT_AUDIENCE",
+      "DRISHTI_USE_CATALYST_DATASTORE",
+      "DRISHTI_USE_CATALYST_STRATUS",
+      "DRISHTI_STRATUS_EVIDENCE_BUCKET",
+      "DRISHTI_STRATUS_IMPORT_BUCKET",
+      "DRISHTI_STRATUS_REPORT_BUCKET"
+    ],
+    "optional": [
+      "DRISHTI_ACCESS_LOG_ENABLED",
+      "DRISHTI_USE_CATALYST_NOSQL",
+      "DRISHTI_USE_CATALYST_CACHE",
+      "DRISHTI_AWS_ADAPTER_URL",
+      "DRISHTI_AWS_ADAPTER_SECRET",
+      "DRISHTI_AWS_CONNECTION_ID",
+      "DRISHTI_USE_CATALYST_CONNECTIONS",
+      "DRISHTI_NOTIFY_FROM_EMAIL",
+      "DRISHTI_EVIDENCE_SCAN_ENABLED",
+      "DRISHTI_FEATURE_SNAPSHOT_ENABLED",
+      "DRISHTI_PREDICTION_DISPATCH_ENABLED",
+      "DRISHTI_REPORT_DELIVERY_ENABLED",
+      "DRISHTI_NOTIFY_ENABLED",
+      "DRISHTI_RECONCILE_ENABLED",
+      "DRISHTI_FORECAST_CRON_ENABLED"
+    ],
+    "key_notes": {
+      "DRISHTI_REQUIRE_GATEWAY_CONTEXT": "true in deployment: AppSail verifies the signed gateway/service context (signature/audience/scope/expiry/replay) before handling any non-health request and rejects unauthenticated browser CRUD (items 10/12). Unset/false locally.",
+      "DRISHTI_CONTEXT_AUDIENCE": "Expected audience the signed context is minted for; must equal the value embedded by the Node signers (default 'drishti-appsail'). Empty string disables the audience check.",
+      "DRISHTI_USE_CATALYST_STRATUS": "true so evidence/import/report objects use Catalyst Stratus (not the in-memory fake).",
+      "DRISHTI_ACCESS_LOG_ENABLED": "true to emit structured, redacted JSON access logs (method/path/status/latency/request_id/role/scope) to stdout."
+    },
+    "must_not_set_for_crud": [
+      "DATABASE_URL"
+    ],
+    "auto_injected_by_catalyst": [
+      "X_ZOHO_CATALYST_LISTEN_PORT",
+      "CATALYST_PROJECT_ID",
+      "CATALYST_USER_ENVIRONMENT"
+    ]
+  }
+}

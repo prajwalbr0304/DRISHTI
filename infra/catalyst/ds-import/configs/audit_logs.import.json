@@ -1,0 +1,5 @@
+{
+  "table_identifier": "AuditEvent",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

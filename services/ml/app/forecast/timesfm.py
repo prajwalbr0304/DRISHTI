@@ -162,7 +162,8 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
     trajectories, rows = [], []
     start = end = None
     for d in district_ids:
-        periods, counts = trends.monthly_series(conn, district_id=d, head_id=head_id)
+        periods, counts = trends.monthly_series(conn, district_id=d, head_id=head_id,
+                                                valid_geo_only=True)
         if len(counts) < _SEASON + 2:
             continue
         traj = fc.forecast(counts, periods, horizon)

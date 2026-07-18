@@ -1,0 +1,5 @@
+{
+  "table_identifier": "StatementVersion",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

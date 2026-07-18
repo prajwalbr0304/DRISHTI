@@ -1,0 +1,5 @@
+{
+  "table_identifier": "PublicEvent",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

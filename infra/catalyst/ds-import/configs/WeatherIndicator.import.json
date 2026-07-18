@@ -1,0 +1,5 @@
+{
+  "table_identifier": "WeatherIndicator",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

@@ -1,0 +1,5 @@
+{
+  "table_identifier": "DemoActor",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

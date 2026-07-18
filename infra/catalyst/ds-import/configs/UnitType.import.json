@@ -1,0 +1,5 @@
+{
+  "table_identifier": "UnitType",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

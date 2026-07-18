@@ -1,0 +1,5 @@
+{
+  "table_identifier": "FinancialTransaction",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

@@ -1,20 +1,24 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/api/contracts";
 import { api } from "@/api";
-import { formatPercent } from "@/lib/utils";
+import { cn, formatPercent } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Widget } from "@/components/widget/Widget";
 import { EmptyState } from "@/components/common/EmptyState";
 import { GitCompareArrows } from "lucide-react";
 
 /* Similar Cases sub-page (doc 01 §4.2, doc 03 §2.11): ranked by embedding
-   similarity with similarity bars + outcomes. */
+   similarity with similarity bars + outcomes. Phase 11: a demo case/unit
+   CONTEXT filter is applied before the ANN search, and each hit shows WHY it
+   matched (shared context/MO — never outcome). */
 export function SimilarPage({ caseId }: { caseId: number }) {
   const navigate = useNavigate();
+  const [scope, setScope] = useState<"district" | "all">("district");
   const q = useQuery({
-    queryKey: ["cases", "similar", caseId],
-    queryFn: ({ signal }) => api.cases.similar(caseId, 10, signal),
+    queryKey: ["cases", "similar", caseId, scope],
+    queryFn: ({ signal }) => api.cases.similar(caseId, { k: 10, scope }, signal),
   });
 
   // 409 = corpus not embedded yet — an honest, actionable state.
@@ -42,10 +46,23 @@ export function SimilarPage({ caseId }: { caseId: number }) {
       onRefresh={() => q.refetch()}
       info={
         <p className="text-content-dim">
-          Nearest neighbours by case embedding (pgvector, cosine). Similarity = 1 − cosine distance.
+          Nearest neighbours by case embedding (pgvector, cosine) in one model-version space,
+          filtered to the selected demo context first. {q.data?.limitations}
         </p>
       }
     >
+      {/* demo case/unit CONTEXT filter (applied before the ANN search) */}
+      <div className="mb-2 flex items-center gap-1.5 text-12">
+        <span className="text-content-dim">Context:</span>
+        {(["district", "all"] as const).map((s) => (
+          <button key={s} type="button" onClick={() => setScope(s)}
+            className={cn("rounded-full border px-2.5 py-0.5 capitalize transition-colors",
+              scope === s ? "border-primary bg-primary/10 text-content" : "border-hairline text-content-dim hover:text-content")}>
+            {s === "district" ? "This district" : "All districts"}
+          </button>
+        ))}
+      </div>
+
       {q.data && results.length > 0 && (
         <div className="space-y-1">
           {results.map((c) => (
@@ -62,6 +79,13 @@ export function SimilarPage({ caseId }: { caseId: number }) {
                 <span className="block truncate text-12 text-content-dim">
                   {[c.crime_group, c.crime_subhead, c.district].filter(Boolean).join(" · ")}
                 </span>
+                {c.why_match && c.why_match.length > 0 && (
+                  <span className="mt-0.5 flex flex-wrap gap-1">
+                    {c.why_match.map((w) => (
+                      <Badge key={w} variant="low" className="text-[11px]">{w}</Badge>
+                    ))}
+                  </span>
+                )}
               </span>
               {c.disposition && (
                 <Badge variant="neutral" className="shrink-0">

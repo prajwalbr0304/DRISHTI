@@ -31,8 +31,15 @@ def _iter_months(first: str, last: str):
 
 def monthly_series(conn, district_id: Optional[int] = None, head_id: Optional[int] = None,
                    sub_head_id: Optional[int] = None,
-                   start: Optional[dt.date] = None, end: Optional[dt.date] = None):
-    """Return (periods, counts) monthly, zero-filled, for the given scope."""
+                   start: Optional[dt.date] = None, end: Optional[dt.date] = None,
+                   valid_geo_only: bool = False):
+    """Return (periods, counts) monthly, zero-filled, for the given scope.
+
+    ``valid_geo_only`` (Phase 12) restricts the series to canonical, valid
+    geography: incidents whose coordinates fall outside the state polygon are
+    excluded. It is a safe no-op when no jurisdiction boundary is loaded, so the
+    descriptive-analytics callers (which pass the default False) are unaffected.
+    """
     where = ['cm."CrimeRegisteredDate" IS NOT NULL']
     params: list = []
     joins = ""
@@ -52,6 +59,9 @@ def monthly_series(conn, district_id: Optional[int] = None, head_id: Optional[in
     if end is not None:
         where.append('cm."CrimeRegisteredDate" < %s')
         params.append(end)
+    if valid_geo_only:
+        from . import geoscope
+        geoscope.apply_exclusion(conn, where, params, valid_geo_only=True)
     sql = (
         'SELECT to_char(date_trunc(\'month\', cm."CrimeRegisteredDate"), \'YYYY-MM\') AS ym, COUNT(*) '
         'FROM "CaseMaster" cm' + joins +

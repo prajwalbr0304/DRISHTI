@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CanonicalOrganisation",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

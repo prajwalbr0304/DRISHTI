@@ -1,0 +1,5 @@
+{
+  "table_identifier": "DigitalImportBatch",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

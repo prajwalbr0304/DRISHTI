@@ -18,22 +18,34 @@ from psycopg2.extras import execute_values
 from .. import models
 
 
-def _load_graph(conn) -> nx.Graph:
+def _load_graph(conn, confirmed_only: bool = False) -> nx.Graph:
+    """Load the CANONICAL, non-archived graph only (Phase 11): nodes must be
+    canonical entities and edges must be provenanced — the old synthetic identity
+    graph (archived / non-canonical / NULL-provenance) is never mixed in.
+    ``confirmed_only`` further restricts to reviewer-confirmed edges."""
     g = nx.Graph()
     with conn.cursor() as cur:
-        cur.execute('SELECT "EntityID","EntityType"::text FROM "EntityGraph"')
+        # canonical, non-archived nodes (the vw_canonical_graph_node contract)
+        cur.execute('SELECT "EntityID","EntityType"::text FROM "EntityGraph" '
+                    'WHERE "CanonicalEntityID" IS NOT NULL AND "IsArchived" = FALSE')
         for eid, etype in cur.fetchall():
             g.add_node(int(eid), etype=etype)
-        cur.execute('SELECT "Source","Target",COALESCE("Weight",0.1)::float FROM "NetworkEdge"')
+        # provenanced, non-archived edges between those nodes
+        edge_sql = ('SELECT "Source","Target",COALESCE("Weight",0.1)::float FROM "NetworkEdge" '
+                    'WHERE "IsArchived" = FALSE AND "ProvenanceStatus" IS NOT NULL')
+        if confirmed_only:
+            edge_sql += " AND \"ReviewStatus\" = 'confirmed'"
+        cur.execute(edge_sql)
         for s, t, w in cur.fetchall():
-            if s == t:
-                continue
+            s, t = int(s), int(t)
+            if s == t or not (g.has_node(s) and g.has_node(t)):
+                continue  # skip self-loops + edges to any non-canonical/archived node
             # collapse multi-edges, keep the strongest weight
-            if g.has_edge(int(s), int(t)):
-                if w > g[int(s)][int(t)]["weight"]:
-                    g[int(s)][int(t)]["weight"] = w
+            if g.has_edge(s, t):
+                if w > g[s][t]["weight"]:
+                    g[s][t]["weight"] = w
             else:
-                g.add_edge(int(s), int(t), weight=max(w, 0.01))
+                g.add_edge(s, t, weight=max(w, 0.01))
     return g
 
 

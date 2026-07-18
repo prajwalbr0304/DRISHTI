@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  FilePlus2,
   FolderKanban,
   LayoutDashboard,
   Map,
@@ -35,7 +36,7 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   {
     id: "command",
-    path: "/",
+    path: "/command",
     label: "Command Center",
     short: "Home",
     icon: LayoutDashboard,
@@ -50,6 +51,16 @@ export const DESTINATIONS: Destination[] = [
     icon: FolderKanban,
     description: "Case decision-support: summaries, similar cases, leads.",
     keywords: ["fir", "investigation", "summary", "leads", "similar"],
+  },
+  {
+    id: "intake",
+    path: "/intake",
+    label: "Intake",
+    short: "Intake",
+    icon: FilePlus2,
+    description: "Register FIRs/cases: guided intake, bulk import and supervisory review.",
+    roles: ["investigator", "supervisor", "super_admin"],
+    keywords: ["fir", "intake", "new case", "register", "draft", "import", "review", "inbox"],
   },
   {
     id: "people",
@@ -118,6 +129,5 @@ export function visibleDestinations(role: UserRole, isAdmin: boolean): Destinati
 }
 
 export function destinationByPath(path: string): Destination | undefined {
-  if (path === "/") return DESTINATIONS[0];
-  return DESTINATIONS.find((d) => d.path !== "/" && path.startsWith(d.path));
+  return DESTINATIONS.find((d) => path.startsWith(d.path));
 }

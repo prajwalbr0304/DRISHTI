@@ -54,9 +54,14 @@ export const casesApi = {
   addEvidence: (caseId: number, body: EvidenceCreateRequest, signal?: AbortSignal) =>
     apiClient.post<EvidenceCreateResponse>(`/cases/${caseId}/evidence`, body, undefined, signal),
 
-  /** GET /cases/{id}/similar — semantic similar-case search (read-only). */
-  similar: (caseId: number, k = 5, signal?: AbortSignal) =>
-    apiClient.get<SimilarResponse>(`/cases/${caseId}/similar`, { k }, signal),
+  /** GET /cases/{id}/similar — semantic similar-case search (read-only).
+   *  `scope` applies the demo case/unit context filter before the ANN search. */
+  similar: (
+    caseId: number,
+    opts: { k?: number; scope?: "district" | "all"; district_id?: number } = {},
+    signal?: AbortSignal,
+  ) => apiClient.get<SimilarResponse>(`/cases/${caseId}/similar`,
+    { k: 5, scope: "district", ...opts }, signal),
 
   /** POST /cases/{id}/summary — generate + persist a fully-cited AISummary. */
   summary: (caseId: number, signal?: AbortSignal) =>

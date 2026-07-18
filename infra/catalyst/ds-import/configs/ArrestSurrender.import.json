@@ -1,0 +1,5 @@
+{
+  "table_identifier": "ArrestSurrender",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

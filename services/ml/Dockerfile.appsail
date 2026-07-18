@@ -1,0 +1,57 @@
+# DRISHTI FastAPI — Catalyst AppSail custom-runtime (OCI) image (Phase 14).
+#
+# This is the PUBLIC API runtime deployed to Catalyst AppSail. It is separate
+# from services/ml/Dockerfile (dev/all-in-one) and from services/gpu-worker
+# (external AWS GPU). It is deliberately lightweight:
+#
+#   * NO torch / CUDA / TabFM / TabPFN / TimesFM / torch-geometric.
+#   * The service dispatches prediction work to the protected AWS adapter and
+#     never loads model weights in-process.
+#   * Runs as a non-root user, binds Uvicorn to 0.0.0.0 on the AppSail port
+#     (9000 by default, matching `catalyst deploy appsail --port 9000`).
+#   * Provides /health/live (liveness) and /health/ready (readiness).
+#
+# Build (requires Docker + buildx; see infra/catalyst/README.md):
+#   docker buildx build --platform linux/amd64 \
+#     -f services/ml/Dockerfile.appsail -t drishti-api:appsail --load services/ml
+#
+# Deploy (from infra/catalyst, project bound to DHRISTI):
+#   catalyst deploy appsail --name drishti-api \
+#     --source docker://drishti-api:appsail --port 9000
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    APP_PORT=9000
+
+WORKDIR /app
+
+# Install the lightweight API dependency set only (no GPU/foundation packages).
+COPY requirements.appsail.txt .
+RUN pip install --no-cache-dir -r requirements.appsail.txt
+
+# App code + SQL migrations. NO secrets baked in — all config comes from the
+# AppSail environment configuration at runtime.
+COPY app ./app
+COPY sql ./sql
+
+# Run as a non-root user.
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+
+# AppSail routes traffic to this port (must match the deploy --port value).
+EXPOSE 9000
+
+# Liveness-based container healthcheck (dependency-free; no restart loops).
+# Catalyst AppSail injects X_ZOHO_CATALYST_LISTEN_PORT at runtime; fall back to
+# APP_PORT then 9000 for local docker runs.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import os,urllib.request,sys; p=os.getenv('X_ZOHO_CATALYST_LISTEN_PORT') or os.getenv('APP_PORT','9000'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/health/live').getcode()==200 else 1)"
+
+# Bind to 0.0.0.0 on the AppSail-assigned port. Catalyst sets
+# X_ZOHO_CATALYST_LISTEN_PORT and verifies the process is listening on it within
+# 10s of instance start; APP_PORT (9000) is only a local-run fallback. EXPOSE
+# above is Docker documentation only and does NOT set the AppSail port.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-${APP_PORT:-9000}}"]

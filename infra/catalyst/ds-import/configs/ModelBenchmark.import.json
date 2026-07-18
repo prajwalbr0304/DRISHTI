@@ -1,0 +1,5 @@
+{
+  "table_identifier": "ModelBenchmark",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

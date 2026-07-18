@@ -1,0 +1,10 @@
+{
+  "name": "evidence_event",
+  "version": "0.1.0",
+  "description": "DRISHTI evidence-ingestion Signals event handler (security path only).",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

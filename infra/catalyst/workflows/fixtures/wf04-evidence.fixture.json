@@ -1,0 +1,20 @@
+{
+  "workflow": "digital-evidence-ingestion",
+  "fixture_status": "representative",
+  "idempotency_key": "evidence:evidence/quarantine/case-1001/photo1.jpg:v1",
+  "input": {
+    "signal": "stratus_object_uploaded",
+    "data": { "bucket": "evidence", "key": "evidence/quarantine/case-1001/photo1.jpg", "version_id": "v1",
+              "size": 20481, "content_type": "image/jpeg", "sha256": "d1f9...synthetic" }
+  },
+  "expected_output": {
+    "state_transitions": ["quarantine", "validated(mime/size/hash)", "scanned(clean)", "available"],
+    "evidence_object": { "state": "available", "case_link": "case:1001" },
+    "audit_id": "aud-evd-1"
+  },
+  "lineage": { "object_key": "evidence/quarantine/case-1001/photo1.jpg", "version_id": "v1", "sha256": "d1f9...synthetic" },
+  "asserts": [
+    "security path only: MIME/size/hash + isolated malware scan",
+    "NO OCR, transcription, semantic media analysis or canonical-field extraction"
+  ]
+}

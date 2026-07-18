@@ -8,10 +8,14 @@ import {
   FileText,
   Gavel,
   GitBranch,
+  Landmark,
   Lock,
+  MessageSquareText,
   Network,
+  Package,
   Paperclip,
   Scale,
+  Smartphone,
   Sparkles,
   UserCheck,
   Users,
@@ -38,6 +42,10 @@ import { SimilarPage } from "@/routes/cases/subpages/SimilarPage";
 import { SummaryPage } from "@/routes/cases/subpages/SummaryPage";
 import { LeadsPage } from "@/routes/cases/subpages/LeadsPage";
 import { EvidencePage } from "@/routes/cases/subpages/EvidencePage";
+import { StatementsPage } from "@/routes/cases/subpages/StatementsPage";
+import { PropertyPage } from "@/routes/cases/subpages/PropertyPage";
+import { CourtLifecyclePage } from "@/routes/cases/subpages/CourtLifecyclePage";
+import { DigitalPage } from "@/routes/cases/subpages/DigitalPage";
 
 /* ============================================================================
    Case file shell (doc 01 §4.2): AWS-style object page with a left sub-nav.
@@ -62,6 +70,10 @@ const SUB_NAV: SubNavItem[] = [
   { key: "arrests", label: "Arrests", icon: UserCheck },
   { key: "chargesheet", label: "Chargesheet", icon: Gavel },
   { key: "evidence", label: "Evidence", icon: Paperclip },
+  { key: "statements", label: "Statements", icon: MessageSquareText },
+  { key: "property", label: "Property & seizures", icon: Package },
+  { key: "digital", label: "Digital & financial", icon: Smartphone },
+  { key: "court", label: "Court & lifecycle", icon: Landmark },
   { key: "network", label: "Network", icon: Network },
   { key: "similar", label: "Similar cases", icon: GitBranch },
   { key: "summary", label: "AI Summary", icon: Sparkles },
@@ -189,7 +201,7 @@ function SubPage({
     case "overview":
       return <OverviewPage detail={detail} goTo={goTo} />;
     case "timeline":
-      return <TimelinePage detail={detail} />;
+      return <TimelinePage caseId={caseId} detail={detail} />;
     case "complainant":
       return <ComplainantPage detail={detail} />;
     case "victims":
@@ -204,6 +216,14 @@ function SubPage({
       return <ChargesheetPage detail={detail} />;
     case "evidence":
       return <EvidencePage caseId={caseId} />;
+    case "statements":
+      return <StatementsPage caseId={caseId} />;
+    case "property":
+      return <PropertyPage caseId={caseId} />;
+    case "digital":
+      return <DigitalPage caseId={caseId} />;
+    case "court":
+      return <CourtLifecyclePage caseId={caseId} />;
     case "network":
       return <NetworkPage caseId={caseId} />;
     case "similar":

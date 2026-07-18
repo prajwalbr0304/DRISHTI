@@ -1,0 +1,13 @@
+{
+  "_comment": "DRISHTI Catalyst Connections (Phase 14 Part B / matrix row 19). Connections manages OAuth/OIDC token lifecycle for a compatible third-party/AWS integration. Created in Console -> Connections (no CLI). Enabled via DRISHTI_USE_CATALYST_CONNECTIONS + DRISHTI_AWS_CONNECTION_ID.",
+  "connections": [
+    {
+      "name": "aws-model-adapter",
+      "connection_id_env_key": "DRISHTI_AWS_CONNECTION_ID",
+      "current_auth_mode": "signed-service-auth",
+      "oauth_ready": false,
+      "gap_note": "The protected AWS model adapter (app/predict/adapter.py) currently authenticates with an HMAC-signed service request, NOT OAuth/OIDC. Per the matrix, Connections is USED only when the integration exposes OAuth/OIDC; until then this signed-service-auth gap is recorded honestly rather than claiming an unused OAuth connection.",
+      "activate_when": "the AWS API Gateway adapter is fronted by an OAuth/OIDC authorizer (e.g., Cognito) — then set oauth_ready=true, provision the Connection, and app/connections.py returns a real bearer token."
+    }
+  ]
+}

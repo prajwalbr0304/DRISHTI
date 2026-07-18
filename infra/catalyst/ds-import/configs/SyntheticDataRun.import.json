@@ -1,0 +1,5 @@
+{
+  "table_identifier": "SyntheticDataRun",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

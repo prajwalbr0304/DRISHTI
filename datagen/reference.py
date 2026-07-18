@@ -406,6 +406,12 @@ CASE_STATUSES = [
     "Under Investigation", "Charge Sheeted", "Closed - Convicted",
     "Closed - Acquitted", "Undetected / B-Report", "False / C-Report",
     "Pending Trial", "Transferred",
+    # --- Datagen v2 lifecycle statuses (appended; legacy indices unchanged) ---
+    # Needed so category-specific lifecycles (missing person / UDR / NCR / PAR)
+    # map to an FK-valid CaseStatusMaster row instead of being forced into a
+    # cognizable-FIR status. See datagen/scenario_registry.py:EXTRA_STATUS_NAMES.
+    "Missing - Under Trace", "Missing - Recovered", "Closed - Untraced",
+    "Enquiry Closed", "Inquest Closed", "Converted / Reclassified",
 ]
 
 RELIGIONS = ["Hindu", "Muslim", "Christian", "Jain", "Sikh", "Buddhist", "Other"]

@@ -91,6 +91,31 @@ export function useDistrictForecast(districtId: number | null, headId?: number) 
   });
 }
 
+/** Rolling-origin backtest: model error vs baselines, coverage, geographic
+ *  holdout. Read-only (persist=false) so the analytics screen never mutates. */
+export function useForecastBacktest(headId?: number, horizon = 1, nOrigins = 6) {
+  return useQuery({
+    queryKey: ["forecast", "backtest", headId ?? null, horizon, nOrigins],
+    queryFn: ({ signal }) =>
+      api.forecast.backtest(
+        { head_id: headId, horizon, n_origins: nOrigins, per_head: true, persist: false },
+        signal,
+      ),
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+}
+
+/** Data-as-of per source + approved external context + valid-geography scope. */
+export function useForecastFreshness() {
+  return useQuery({
+    queryKey: ["forecast", "freshness"],
+    queryFn: ({ signal }) => api.forecast.freshness(signal),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
 /** Model registry: calibration + inference stats per ModelVersion. */
 export function useModels() {
   return useQuery({

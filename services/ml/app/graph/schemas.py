@@ -89,6 +89,8 @@ class HiddenAssociationCard(BaseModel):
     shared_intermediaries: list[int]
     shared_case_count: int
     score: float
+    review_status: str = "candidate"
+    independent_evidence_kinds: list[str] = []
 
 
 class HiddenFeedResponse(BaseModel):
@@ -104,5 +106,41 @@ class ProofPathResponse(BaseModel):
     entity_a: int
     entity_b: int
     link_kinds: list[str]
+    review_status: str = "candidate"
+    independent_evidence_kinds: list[str] = []
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+# --- Phase 11: canonical-space isolation + rebuild + reviewer disposition ---
+class ArchiveTableStatus(BaseModel):
+    total: int
+    archived: int
+    live: int
+    legacy_still_live: int
+
+
+class ArchiveStatusResponse(BaseModel):
+    result: AiResult
+    clean: bool
+    tables: dict[str, ArchiveTableStatus]
+
+
+class RebuildResponse(BaseModel):
+    result: AiResult
+    canonical_nodes: int
+    canonical_edges: int
+    confirmed_edges: int
+    communities: Optional[int] = None
+    modularity: Optional[float] = None
+    nodes_scored: Optional[int] = None
+    hidden_candidates: Optional[int] = None
+    archived: dict[str, int] = {}
+
+
+class ReviewResponse(BaseModel):
+    result: AiResult
+    id: int
+    kind: str
+    review_status: str
+    found: bool = True

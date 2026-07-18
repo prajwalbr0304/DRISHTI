@@ -1,0 +1,12 @@
+{
+  "deployment": {
+    "name": "cron_forecast",
+    "stack": "node20",
+    "type": "cron",
+    "memory": 256,
+    "env_variables": {}
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}

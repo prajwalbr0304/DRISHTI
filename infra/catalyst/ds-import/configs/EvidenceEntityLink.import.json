@@ -1,0 +1,5 @@
+{
+  "table_identifier": "EvidenceEntityLink",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

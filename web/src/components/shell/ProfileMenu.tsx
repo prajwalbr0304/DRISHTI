@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsUpDown, Layers, ShieldQuestion } from "lucide-react";
+import { ChevronsUpDown, Layers, LogOut, ShieldQuestion } from "lucide-react";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import { ROLE_LIST } from "@/config/roles";
+import { useAuth } from "@/auth";
 import { useRole } from "@/providers/RoleProvider";
 import { useUIStore } from "@/stores/useUIStore";
 import { Button } from "@/components/ui/button";
@@ -18,13 +19,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 /* ============================================================================
-   Profile + role. Auth arrives in Phase 14, so identity is the active role
-   (real UI state driving the sidebar + X-Role scope) rather than a stand-in
-   person. Switching role re-scopes the whole shell. Service health is live.
+   Profile + demo view. This is a UX simulation for presenting role-specific
+   screens — it is NOT authentication or a security boundary (real auth is
+   deferred post-hackathon). Switching the demo view re-scopes the shell and
+   sets the X-Role / X-Demo-Actor headers used only for display + audit.
+   Service health is live.
    ========================================================================== */
 
 export function ProfileMenu() {
   const { role, def, setRole } = useRole();
+  const { user, signOut } = useAuth();
   const density = useUIStore((s) => s.density);
   const setDensity = useUIStore((s) => s.setDensity);
 
@@ -53,6 +57,16 @@ export function ProfileMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72">
+        {user && (
+          <>
+            <div className="px-2 pt-1.5">
+              <div className="truncate text-13 font-semibold text-content">{user.fullName}</div>
+              <div className="truncate text-11 text-content-dim">{user.email}</div>
+            </div>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
         <div className="px-2 py-1.5">
           <div className="text-13 font-semibold text-content">{def.label}</div>
           <div className="text-12 text-content-dim">{def.blurb}</div>
@@ -64,8 +78,12 @@ export function ProfileMenu() {
         <DropdownMenuSeparator />
 
         <DropdownMenuLabel className="flex items-center gap-1.5">
-          <ShieldQuestion className="size-3.5" /> Switch role (preview)
+          <ShieldQuestion className="size-3.5" /> Demo view
         </DropdownMenuLabel>
+        <div className="px-2 pb-1 text-[11px] text-content-dim">
+          Presentation only — switches the role-specific screens. The server re-derives the
+          real role from your identity; it never trusts this choice.
+        </div>
         <DropdownMenuRadioGroup value={role} onValueChange={(v) => setRole(v as typeof role)}>
           {ROLE_LIST.map((r) => (
             <DropdownMenuRadioItem key={r.id} value={r.id}>
@@ -109,6 +127,12 @@ export function ProfileMenu() {
             </span>
             {health.data?.version && <span className="tnum"> · v{health.data.version}</span>}
           </span>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem onSelect={() => signOut()}>
+          <LogOut className="size-3.5" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

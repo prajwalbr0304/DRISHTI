@@ -1,0 +1,5 @@
+{
+  "table_identifier": "CrimePatternCase",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

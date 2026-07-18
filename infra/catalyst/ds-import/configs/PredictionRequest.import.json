@@ -1,0 +1,5 @@
+{
+  "table_identifier": "PredictionRequest",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

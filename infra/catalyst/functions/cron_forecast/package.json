@@ -1,0 +1,10 @@
+{
+  "name": "cron_forecast",
+  "version": "0.1.0",
+  "description": "DRISHTI scheduled forecast/backfill dispatch cron (DISABLED scaffold).",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

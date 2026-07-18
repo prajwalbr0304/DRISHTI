@@ -1,10 +1,17 @@
 node_modules
 dist
 dist-ssr
+
+# Env files.
+#   Committed (public, non-secret build config): .env.example, .env.development,
+#   .env.production.
+#   NEVER committed (real secrets): .env and any *.local file (.env.local,
+#   .env.production.local, …) — e.g. .env.local holds the personal map token.
 *.local
 .env
-.env.*
 !.env.example
+!.env.development
+!.env.production
 
 # editor / os
 .vscode/*

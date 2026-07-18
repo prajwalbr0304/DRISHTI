@@ -1,0 +1,5 @@
+{
+  "table_identifier": "EvidenceItem",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

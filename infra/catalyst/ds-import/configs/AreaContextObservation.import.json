@@ -1,0 +1,5 @@
+{
+  "table_identifier": "AreaContextObservation",
+  "operation": "upsert",
+  "find_by": "ExternalID"
+}

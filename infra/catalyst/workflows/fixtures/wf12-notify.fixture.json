@@ -1,0 +1,14 @@
+{
+  "workflow": "notification-delivery",
+  "fixture_status": "representative",
+  "idempotency_key": "notify:report:rep-500:v1",
+  "input": { "signal": "notify.requested", "data": { "template": "report.ready", "subject_ref": "Report:rep-500",
+             "recipients_role": "supervisor", "idempotency_key": "notify:report:rep-500:v1" } },
+  "expected_output": {
+    "email": { "subject": "DRISHTI: a report is ready", "body_contains": "Synthetic Hackathon Demo", "body_excludes": ["evidence bytes", "full narrative", "PII"] },
+    "delivery_status": { "sent": true, "recorded": true }
+  },
+  "lineage": { "subject_ref": "Report:rep-500", "template": "report.ready" },
+  "runnable_via": "notify_dispatch template render -> asserts body carries only reference + role + synthetic marker",
+  "asserts": [ "data-minimized template", "never includes evidence content or full narratives", "idempotent by key" ]
+}

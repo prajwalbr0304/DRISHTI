@@ -1,0 +1,17 @@
+{
+  "workflow": "reconciliation-backup-recovery-and-cleanup",
+  "fixture_status": "representative",
+  "idempotency_key": "reconcile:2026-07-18",
+  "input": { "run_date": "2026-07-18", "trigger": "cron (disabled scaffold)" },
+  "expected_output": {
+    "reconciliation": { "datastore_vs_stratus": { "count_match": true, "hash_match": true, "version_match": true } },
+    "backup_ref": "stratus://drishti-cicd/backups/2026-07-18",
+    "restore_drill": "pass",
+    "failed_job_replay": { "replayed": 0 },
+    "cleanup": { "stale_temp_objects_removed": 4, "quarantine_expired": 1 },
+    "aws_shutdown": { "gpu_endpoints_stopped": true, "batch_idle": true },
+    "budget_health": { "envelope_used_pct": 12, "within_budget": true }
+  },
+  "lineage": { "run_date": "2026-07-18", "counts_hashes_per_store": true },
+  "asserts": [ "read-mostly + guarded (no destructive action without backup)", "its purpose is to REDUCE cost (stops temp compute)" ]
+}

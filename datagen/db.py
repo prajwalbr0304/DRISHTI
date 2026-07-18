@@ -53,6 +53,22 @@ class Vector(_Raw):
         super().__init__("[" + ",".join(f"{float(v):.6f}" for v in values) + "]")
 
 
+class Arr(_Raw):
+    """A PostgreSQL text[] array literal from a python iterable of scalars.
+
+    Produces the array-parser-level representation (quoted, array-escaped); the
+    outer TEXT-COPY encoder (_escape) then adds the COPY-protocol escaping, so
+    the double escaping round-trips correctly through COPY ... FROM STDIN.
+    """
+
+    def __init__(self, items):
+        parts = []
+        for it in items or []:
+            s = str(it).replace("\\", "\\\\").replace('"', '\\"')
+            parts.append(f'"{s}"')
+        super().__init__("{" + ",".join(parts) + "}")
+
+
 # ---------------------------------------------------------------------------
 # TEXT COPY encoding
 # ---------------------------------------------------------------------------

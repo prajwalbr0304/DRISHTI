@@ -1,0 +1,36 @@
+{
+  "_comment": "DRISHTI Stratus bucket layout (Phase 14 Part B / matrix row 8). Buckets are created in Console -> Stratus (no CLI); this is the reviewed source of names/prefixes/lifecycle applied at enable time. All buckets are PRIVATE (no public access); transfers use short-expiry EXACT-object presigned URLs. Real bucket names are supplied to AppSail via the DRISHTI_STRATUS_*_BUCKET env keys.",
+  "buckets": [
+    {
+      "logical": "evidence",
+      "env_key": "DRISHTI_STRATUS_EVIDENCE_BUCKET",
+      "visibility": "private",
+      "versioning": true,
+      "presign_ttl_seconds": 900,
+      "prefixes": ["evidence/quarantine/", "evidence/available/", "evidence/rejected/"],
+      "lifecycle": "quarantine objects auto-expire in 7 days if not promoted; available objects retained; rejected purged in 24h",
+      "notes": "New uploads land in quarantine/ and are promoted to available/ only after size/type/hash + isolated malware scan pass. NO OCR/transcription/extraction (capability-not-used)."
+    },
+    {
+      "logical": "import",
+      "env_key": "DRISHTI_STRATUS_IMPORT_BUCKET",
+      "visibility": "private",
+      "versioning": true,
+      "presign_ttl_seconds": 900,
+      "prefixes": ["import/staging/", "import/reports/"],
+      "lifecycle": "staging CSV/JSON expire in 3 days; ds:import job report CSVs retained 30 days",
+      "notes": "Holds the CSVs consumed by `catalyst ds:import` (object_url) and the generated job report files."
+    },
+    {
+      "logical": "report",
+      "env_key": "DRISHTI_STRATUS_REPORT_BUCKET",
+      "visibility": "private",
+      "versioning": true,
+      "presign_ttl_seconds": 900,
+      "prefixes": ["reports/pdf/", "reports/image/", "exports/board/", "exports/disaster/"],
+      "lifecycle": "generated reports retained; superseded versions kept (versioning) for audit",
+      "notes": "SmartBrowz output lands here watermarked + hashed + versioned before a report.ready Signal."
+    }
+  ],
+  "integrity_contract": "For every object, SHA-256 + size + MIME + object_key + version_id are recorded in the corresponding Data Store row (EvidenceObject / ImportBatch / Report). The bytes never flow through the API or logs."
+}
