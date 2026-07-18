@@ -81,3 +81,39 @@ Thumbs.db
 logs/
 tmp/
 temp/
+
+# ---------------------------------------------------------------------------
+# Datagen v2 generated fixtures (evidence files, manifests, backup markers).
+# Never commit large/generated synthetic files (roadmap Prompt 1 §F).
+# ---------------------------------------------------------------------------
+datagen/fixtures/
+
+# ---------------------------------------------------------------------------
+# Geo boundary raw downloads (full-resolution KGIS source, ~44 MB).
+# Only the simplified, vendored datagen/geo/*.geojson are committed; the raw
+# source can be re-fetched via datagen/geo/SOURCES.md + build_boundaries.py.
+# ---------------------------------------------------------------------------
+datagen/geo/raw/
+
+# ---------------------------------------------------------------------------
+# Zoho Catalyst (Phase 14)
+# Commit SAFE config only: infra/catalyst/.catalystrc, catalyst.json,
+# app-config.json, client-package.json, functions/*/*-config.json.
+# NEVER commit local auth tokens, caches, build archives or secret env files.
+# The CLI auth token lives in the user home (~/.catalyst), outside this repo.
+# ---------------------------------------------------------------------------
+.catalyst/
+**/.catalyst/
+.catalystcache
+**/__catalyst_generated__/
+infra/catalyst/**/node_modules/
+infra/catalyst/**/target/
+infra/catalyst/.deploy/
+infra/catalyst/**/*.zip
+infra/catalyst/functions/**/.env
+infra/catalyst/**/secrets.json
+# Catalyst / AWS deployment secrets and generated migration exports
+infra/catalyst/secrets/
+infra/**/serving-export/
+infra/**/*.export.jsonl
+infra/**/*.import-config.local.json
