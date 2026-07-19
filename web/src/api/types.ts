@@ -871,6 +871,26 @@ export interface FilterOptionsResponse {
   gravities: FilterOption[];
 }
 
+/** Per-stage caseload counts for the Command Center "My caseload" pipeline.
+ *  Each case sits in exactly one stage, so `stages` counts sum to `total`. */
+export interface CaseloadStage {
+  key: string;
+  label: string;
+  count: number;
+}
+export interface CaseloadStatusBreakdown {
+  status: string;
+  stage: string;
+  count: number;
+}
+export interface CaseloadResponse {
+  stages: CaseloadStage[];
+  by_status: CaseloadStatusBreakdown[];
+  total: number;
+  open_total: number;
+  disposed_total: number;
+}
+
 export interface CaseCore {
   case_id: number;
   crime_no?: string | null;
@@ -1048,6 +1068,21 @@ export interface CommunitySubgraphResponse {
   edge_count: number;
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+/* Path Finder: ready-made connected entity pairs (a shares a neighbour `via` with b). */
+export interface PathSuggestionEndpoint {
+  entity_id: number;
+  label?: string | null;
+  entity_type?: string | null;
+}
+export interface PathSuggestion {
+  a: PathSuggestionEndpoint;
+  b: PathSuggestionEndpoint;
+  via: PathSuggestionEndpoint;
+}
+export interface PathSuggestionsResponse {
+  suggestions: PathSuggestion[];
 }
 
 /* ------------------------- Map: raw incident points (15f) ----------------- */

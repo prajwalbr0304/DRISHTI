@@ -2,16 +2,19 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, FileText, Flame, MapPinned, Sparkles } from "lucide-react";
 import { useUIStore } from "@/stores/useUIStore";
 import { usePeekStore } from "@/stores/usePeekStore";
+import { formatNumber } from "@/lib/utils";
 import { Widget } from "@/components/widget/Widget";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { StatusPipeline, CASE_STAGES } from "@/components/dashboard/StatusPipeline";
 import { MiniDensity } from "@/components/dashboard/MiniDensity";
 import { EventList, alertToEvent } from "@/components/dashboard/EventList";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
-import { useAlerts, useHotspots, useTrends } from "@/routes/home/useDashboardData";
+import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
+import { useAlerts, useCaseload, useHotspots, useTrends } from "@/routes/home/useDashboardData";
 
 /* Investigator Command Center (doc 01 §4.1): caseload · jurisdiction map ·
-   KPI band · attention queue · recent activity. Jurisdiction-scoped server-side. */
+   KPI band · attention queue · recent activity. Jurisdiction-scoped server-side.
+   Cards are movable/resizable (AWS-style) via DashboardGrid. */
 export function InvestigatorHome() {
   const navigate = useNavigate();
   const askAbout = useUIStore((s) => s.askAbout);
@@ -20,6 +23,13 @@ export function InvestigatorHome() {
   const trends = useTrends();
   const hotspots = useHotspots();
   const alerts = useAlerts();
+  const caseload = useCaseload();
+
+  // Merge live per-stage counts onto the canonical pipeline stages.
+  const caseloadStages = CASE_STAGES.map((s) => ({
+    ...s,
+    count: caseload.data?.stages.find((x) => x.key === s.key)?.count ?? null,
+  }));
 
   const urgent = (alerts.data?.alerts ?? []).filter(
     (a) => a.severity === "critical" || a.severity === "high",
@@ -29,11 +39,12 @@ export function InvestigatorHome() {
     .filter((h) => h.centroid_lon != null && h.centroid_lat != null)
     .map((h) => ({ lon: h.centroid_lon!, lat: h.centroid_lat!, weight: h.intensity ?? 0.5 }));
 
-  return (
-    <div className="space-y-4">
-      {/* KPI band */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+  const tiles: DashTile[] = [
+    {
+      key: "kpi-firs", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<FileText />}
           label="New FIRs (window)"
           value={trends.data?.total}
@@ -43,7 +54,13 @@ export function InvestigatorHome() {
           error={trends.error}
           hint="Registered crimes in the selected time window; delta is month-on-month."
         />
+      ),
+    },
+    {
+      key: "kpi-myalerts", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<AlertTriangle />}
           label="My alerts"
           value={alerts.data?.count}
@@ -51,42 +68,76 @@ export function InvestigatorHome() {
           error={alerts.error}
           improveWhenDown
         />
+      ),
+    },
+    {
+      key: "kpi-urgent", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<AlertTriangle />}
           label="Urgent alerts"
           value={alerts.data ? urgent : undefined}
           loading={alerts.isLoading}
           error={alerts.error}
         />
+      ),
+    },
+    {
+      key: "kpi-hotspots", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<Flame />}
           label="Hotspots"
           value={hotspots.data?.count}
           loading={hotspots.isLoading}
           error={hotspots.error}
         />
-      </div>
-
-      {/* Hero: caseload + jurisdiction */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      ),
+    },
+    {
+      key: "caseload", handle: "header", x: 0, y: 2, w: 6, h: 6, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="My caseload"
+          contextChip={caseload.data ? `${formatNumber(caseload.data.total)} cases` : undefined}
           info={
             <p className="text-content-dim">
-              The FIR lifecycle for your assigned cases. Per-stage counts arrive with the Cases API
-              (Phase 15c); the pipeline shape is shown now.
+              The FIR lifecycle across your cases. Each case sits at exactly one stage, so the
+              per-stage counts sum to your total caseload. Live from the Cases API.
             </p>
           }
+          loading={caseload.isLoading}
+          error={caseload.error}
+          empty={!caseload.isLoading && !caseload.error && (caseload.data?.total ?? 0) === 0}
+          emptyLabel="No cases in your scope yet."
+          onRefresh={() => caseload.refetch()}
         >
-          <div className="py-2">
-            <StatusPipeline stages={CASE_STAGES} currentKey="under_investigation" pending />
-            <p className="mt-3 text-12 text-content-dim">
-              Caseload counts require the Cases API — coming in Phase 15c.
-            </p>
-          </div>
+          {caseload.data && (
+            <div className="py-2">
+              <StatusPipeline stages={caseloadStages} funnel />
+              <p className="mt-3 text-12 text-content-dim">
+                <span className="font-medium text-content">
+                  {formatNumber(caseload.data.open_total)}
+                </span>{" "}
+                open ·{" "}
+                <span className="font-medium text-content">
+                  {formatNumber(caseload.data.disposed_total)}
+                </span>{" "}
+                disposed
+              </p>
+            </div>
+          )}
         </Widget>
-
+      ),
+    },
+    {
+      key: "jurisdiction", handle: "header", x: 6, y: 2, w: 6, h: 6, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="My jurisdiction"
           contextChip="last window"
           provenance={hotspots.data?.result}
@@ -106,11 +157,13 @@ export function InvestigatorHome() {
         >
           {hotspots.data && <MiniDensity points={densityPoints} />}
         </Widget>
-      </div>
-
-      {/* Attention queue + recent activity */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      ),
+    },
+    {
+      key: "attention", handle: "header", x: 0, y: 8, w: 6, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="Attention queue"
           contextChip={alerts.data ? String(alerts.data.count) : undefined}
           provenance={alerts.data?.result}
@@ -135,13 +188,19 @@ export function InvestigatorHome() {
             </div>
           )}
         </Widget>
-
-        <Widget title="Recent activity" flush>
+      ),
+    },
+    {
+      key: "recent", handle: "header", x: 6, y: 8, w: 6, h: 7, minW: 3, minH: 4,
+      el: (
+        <Widget gridTile title="Recent activity" flush>
           <div className="px-2 py-1">
             <RecentActivity />
           </div>
         </Widget>
-      </div>
-    </div>
-  );
+      ),
+    },
+  ];
+
+  return <DashboardGrid id="investigator" tiles={tiles} />;
 }

@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
+from .. import db
 from ..config import get_settings
 from ..intake import guards
 from . import boundaries as boundaries_mod
@@ -120,6 +121,20 @@ def alerts(
     limit: int = Query(200, ge=1, le=1000),
 ):
     return service.active_alerts(_parse_bbox(bbox), severity, alert_type, limit)
+
+
+@router.get("/coverage")
+def coverage():
+    """Date coverage of the operational dataset (min/max CrimeRegisteredDate + total).
+    The UI anchors its time window to ``max_date`` so windows land on real data
+    instead of the wall clock (the synthetic dataset is historical). Harmless
+    aggregate metadata — available to every role."""
+    with db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT MIN("CrimeRegisteredDate")::text, '
+                        'MAX("CrimeRegisteredDate")::text, COUNT(*) FROM "CaseMaster"')
+            mn, mx, n = cur.fetchone()
+    return {"min_date": mn, "max_date": mx, "total": int(n)}
 
 
 @router.get("/boundaries/{level}")

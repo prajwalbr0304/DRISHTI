@@ -261,3 +261,28 @@
     margin: 14mm;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Dashboard grid (react-grid-layout) — AWS-style movable/resizable cards.
+   Theme the drop placeholder and lift the tile while interacting. The resize
+   handles stay functional (edge/corner drag zones with a resize cursor) but
+   render NO arrow icon — no arrow visuals or animations.
+   ------------------------------------------------------------------------- */
+.drishti-dashboard .react-grid-item.react-grid-placeholder {
+  background: var(--primary);
+  opacity: 0.14;
+  border-radius: 14px;
+}
+.drishti-dashboard .react-grid-item.react-draggable-dragging,
+.drishti-dashboard .react-grid-item.resizing {
+  z-index: 5;
+  box-shadow: 0 12px 32px -10px rgb(0 0 0 / 0.45);
+}
+/* Hide the default resize-handle arrow icon entirely; keep the zone draggable. */
+.drishti-dashboard .react-resizable-handle {
+  background-image: none;
+  padding: 0;
+}
+.drishti-dashboard .react-resizable-handle::after {
+  content: none;
+}

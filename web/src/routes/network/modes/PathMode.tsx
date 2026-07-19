@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { ArrowDown, Play, Route as RouteIcon } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowDown, Play, Route as RouteIcon, Sparkles } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
-import type { EntityListItem, PathResponse } from "@/api/types";
+import type { EntityListItem, PathResponse, PathSuggestion } from "@/api/types";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,19 @@ export function PathMode() {
     onSuccess: () => setRevealed(0),
   });
   const path: PathResponse | undefined = mut.data;
+
+  // Ready-made connected pairs so the user can one-click a working example.
+  const suggestionsQ = useQuery({
+    queryKey: ["path", "suggestions"],
+    queryFn: ({ signal }) => api.graph.pathSuggestions(6, signal),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const runSuggestion = (s: PathSuggestion) => {
+    setA({ id: s.a.entity_id, label: s.a.label ?? `Entity ${s.a.entity_id}` });
+    setB({ id: s.b.entity_id, label: s.b.label ?? `Entity ${s.b.entity_id}` });
+    mut.mutate({ s: s.a.entity_id, t: s.b.entity_id });
+  };
 
   const nodes = useMemo(
     () => (path?.nodes ?? []).map((n) => ({ id: n.entity_id, label: n.label, entity_type: n.entity_type, pagerank: n.pagerank })),
@@ -99,6 +112,32 @@ export function PathMode() {
             </div>
           )}
           {mut.error && <p className="text-12 text-content-dim">{errorMessage(mut.error)}</p>}
+
+          {(suggestionsQ.data?.suggestions.length ?? 0) > 0 && (
+            <div className="space-y-1.5 border-t border-hairline pt-3">
+              <div className="flex items-center gap-1.5 text-12 font-semibold text-content-dim">
+                <Sparkles className="size-3.5 text-primary" /> Try an example
+              </div>
+              {suggestionsQ.data!.suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => runSuggestion(s)}
+                  disabled={mut.isPending}
+                  className="w-full rounded-control border border-hairline px-2.5 py-1.5 text-left transition-colors hover:bg-surface-2 disabled:opacity-50"
+                >
+                  <span className="block truncate text-12 text-content">
+                    {s.a.label ?? `Entity ${s.a.entity_id}`}
+                    <span className="text-content-dim"> → </span>
+                    {s.b.label ?? `Entity ${s.b.entity_id}`}
+                  </span>
+                  <span className="block truncate text-11 text-content-dim">
+                    connected via {s.via.label ?? s.via.entity_type ?? "a shared link"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       }
     >

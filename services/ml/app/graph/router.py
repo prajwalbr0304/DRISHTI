@@ -96,6 +96,13 @@ def neighbourhood(
     return service.neighbourhood(entity_id, max_hops, top_n)
 
 
+@router.get("/path/suggestions")
+def path_suggestions(limit: int = Query(6, ge=1, le=20),
+                     _role: str = Depends(require_entity_read)):
+    """Ready-made connected entity pairs for a one-click Path Finder demo."""
+    return explorer.path_suggestions(limit)
+
+
 @router.get("/path", response_model=PathResponse)
 def path(source: int = Query(..., ge=1), target: int = Query(..., ge=1)):
     if source == target:

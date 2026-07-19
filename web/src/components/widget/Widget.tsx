@@ -66,6 +66,9 @@ export interface WidgetProps {
   bodyClassName?: string;
   /** remove body padding (for edge-to-edge maps / tables) */
   flush?: boolean;
+  /** rendered as a tile in a DashboardGrid: fills the cell height, the header is
+   *  the drag handle, and the body scrolls if content exceeds the cell. */
+  gridTile?: boolean;
   children?: React.ReactNode;
 }
 
@@ -84,6 +87,7 @@ export function Widget({
   className,
   bodyClassName,
   flush,
+  gridTile,
   children,
 }: WidgetProps) {
   const [trailOpen, setTrailOpen] = React.useState(false);
@@ -99,11 +103,17 @@ export function Widget({
     <section
       className={cn(
         "flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card",
+        gridTile && "h-full overflow-hidden",
         className,
       )}
     >
       {/* Header */}
-      <header className="flex items-center gap-2 px-4 py-2.5">
+      <header
+        className={cn(
+          "flex items-center gap-2 px-4 py-2.5",
+          gridTile && "dash-drag cursor-move select-none",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate text-14 font-semibold text-content">{title}</h3>
           {contextChip != null && (
@@ -113,7 +123,7 @@ export function Widget({
           )}
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className={cn("ml-auto flex shrink-0 items-center gap-0.5", gridTile && "no-drag cursor-default")}>
           {actions}
           {onRefresh && (
             <SimpleTooltip label="Refresh">
@@ -189,7 +199,9 @@ export function Widget({
       </header>
 
       {/* Body */}
-      <div className={cn("min-h-0 flex-1", !flush && "px-4 pb-3", bodyClassName)}>{body}</div>
+      <div className={cn("min-h-0 flex-1", gridTile && "overflow-auto", !flush && "px-4 pb-3", bodyClassName)}>
+        {body}
+      </div>
 
       {/* Provenance strip */}
       {provenance && (

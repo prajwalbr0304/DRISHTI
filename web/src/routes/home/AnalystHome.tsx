@@ -8,6 +8,7 @@ import { TrendChart } from "@/components/charts/TrendChart";
 import { EventList, alertToEvent } from "@/components/dashboard/EventList";
 import { PersonsOfInterest } from "@/components/dashboard/PersonsOfInterest";
 import { SavedCohorts } from "@/components/dashboard/SavedCohorts";
+import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { useAlerts, useCentrality, useHotspots, useTrends } from "@/routes/home/useDashboardData";
 
 const EMERGING_TYPES = ["emerging_hotspot", "spike", "anomaly", "emerging", "trend"];
@@ -31,11 +32,12 @@ export function AnalystHome() {
   );
   const feed = emerging.length ? emerging : emergingAll;
 
-  return (
-    <div className="space-y-4">
-      {/* KPI band */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+  const tiles: DashTile[] = [
+    {
+      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<TrendingUp />}
           label="Incidents (window)"
           value={trends.data?.total}
@@ -44,21 +46,39 @@ export function AnalystHome() {
           loading={trends.isLoading}
           error={trends.error}
         />
+      ),
+    },
+    {
+      key: "kpi-hotspots", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<Flame />}
           label="Active hotspots"
           value={hotspots.data?.count}
           loading={hotspots.isLoading}
           error={hotspots.error}
         />
+      ),
+    },
+    {
+      key: "kpi-alerts", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<AlertTriangle />}
           label="Active alerts"
           value={alerts.data?.count}
           loading={alerts.isLoading}
           error={alerts.error}
         />
+      ),
+    },
+    {
+      key: "kpi-poi", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<Users />}
           label="Persons of interest"
           value={centrality.data ? poi.length : undefined}
@@ -66,12 +86,13 @@ export function AnalystHome() {
           error={centrality.error}
           hint="Top entities by graph centrality (PageRank / betweenness)."
         />
-      </div>
-
-      {/* Trend + network of interest */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      ),
+    },
+    {
+      key: "emerging-trend", handle: "header", x: 0, y: 2, w: 8, h: 7, minW: 4, minH: 4,
+      el: (
         <Widget
-          className="lg:col-span-2"
+          gridTile
           title="Emerging trend"
           contextChip="window"
           provenance={trends.data?.result}
@@ -93,10 +114,19 @@ export function AnalystHome() {
             </p>
           }
         >
-          {trends.data && <TrendChart series={trends.data.series} />}
+          {trends.data && (
+            <div className="h-full min-h-[220px] w-full">
+              <TrendChart series={trends.data.series} fill />
+            </div>
+          )}
         </Widget>
-
+      ),
+    },
+    {
+      key: "network-interest", handle: "header", x: 8, y: 2, w: 4, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="Network of interest"
           provenance={centrality.data?.result}
           loading={centrality.isLoading}
@@ -125,11 +155,13 @@ export function AnalystHome() {
             </div>
           )}
         </Widget>
-      </div>
-
-      {/* Emerging feed + saved cohorts */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      ),
+    },
+    {
+      key: "emerging-feed", handle: "header", x: 0, y: 9, w: 6, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="Emerging-trend feed"
           contextChip={feed.length ? String(feed.length) : undefined}
           provenance={alerts.data?.result}
@@ -154,14 +186,21 @@ export function AnalystHome() {
             </div>
           )}
         </Widget>
-
+      ),
+    },
+    {
+      key: "saved-lenses", handle: "header", x: 6, y: 9, w: 6, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="Saved lenses"
           info={<p className="text-content-dim">Named, reusable scopes. Save the current time window and re-apply it anywhere.</p>}
         >
           <SavedCohorts />
         </Widget>
-      </div>
-    </div>
-  );
+      ),
+    },
+  ];
+
+  return <DashboardGrid id="analyst" tiles={tiles} />;
 }

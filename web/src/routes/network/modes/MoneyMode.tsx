@@ -90,8 +90,28 @@ export function MoneyMode({ initialAccount }: { initialAccount?: number | null }
             <Button type="submit" size="sm" disabled={!input.trim()}>Trace</Button>
           </form>
 
-          <div className="text-12 font-semibold text-content-dim">Flagged accounts</div>
+          <div className="flex items-center justify-between">
+            <span className="text-12 font-semibold text-content-dim">Flagged accounts</span>
+            {flaggedQ.data && flaggedQ.data.total > 0 && (
+              <Badge variant="high" className="shrink-0">{formatNumber(flaggedQ.data.total)}</Badge>
+            )}
+          </div>
           {flaggedQ.isLoading && <Skeleton className="h-24 w-full" />}
+          {flaggedQ.data && flaggedQ.data.total === 0 && (
+            <p className="rounded-control border border-hairline bg-surface-2/50 px-2.5 py-2 text-12 text-content-dim">
+              No flagged transactions yet. Run the money-laundering detection job to surface
+              structuring, layering and circular-flow patterns here.
+            </p>
+          )}
+          {flaggedQ.data && flaggedQ.data.total > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(flaggedQ.data.by_reason).map(([reason, n]) => (
+                <span key={reason} className="rounded-full bg-surface-2 px-2 py-0.5 text-11 capitalize text-content-dim">
+                  {reason} · <span className="tnum">{formatNumber(n)}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {flaggedQ.data?.items.slice(0, 15).map((f) => (
             <button
               key={f.transaction_id}

@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/dashboard/KpiCard";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { ForecastSummary } from "@/components/dashboard/ForecastSummary";
 import { SocioNarrativeCard } from "@/components/dashboard/SocioNarrativeCard";
+import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { useForecastMap, useSocio, useTrends } from "@/routes/home/useDashboardData";
 
 /* Policymaker Command Center (doc 01 §4.1 + §7): AGGREGATE-ONLY. District-level
@@ -18,11 +19,12 @@ export function PolicymakerHome() {
 
   const predicted = (forecast.data?.cells ?? []).reduce((s, c) => s + (c.predicted_count ?? 0), 0);
 
-  return (
-    <div className="space-y-4">
-      {/* Aggregate KPI band */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+  const tiles: DashTile[] = [
+    {
+      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<TrendingUp />}
           label="Incidents (window)"
           value={trends.data?.total}
@@ -31,7 +33,13 @@ export function PolicymakerHome() {
           loading={trends.isLoading}
           error={trends.error}
         />
+      ),
+    },
+    {
+      key: "kpi-predicted", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<Radar />}
           label="Predicted next period"
           value={forecast.data ? Math.round(predicted) : undefined}
@@ -39,14 +47,26 @@ export function PolicymakerHome() {
           error={forecast.error}
           hint="Sum of fused district forecasts for the next horizon."
         />
+      ),
+    },
+    {
+      key: "kpi-districts", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<Building2 />}
           label="Districts analysed"
           value={socio.data?.districts_analysed}
           loading={socio.isLoading}
           error={socio.error}
         />
+      ),
+    },
+    {
+      key: "kpi-suppressed", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<ShieldCheck />}
           label="Cells suppressed"
           value={socio.data?.suppressed_cells}
@@ -54,12 +74,13 @@ export function PolicymakerHome() {
           error={socio.error}
           hint="Small-count cells hidden for k-anonymity — privacy by design."
         />
-      </div>
-
-      {/* State trend + district forecast */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      ),
+    },
+    {
+      key: "state-trend", handle: "header", x: 0, y: 2, w: 8, h: 7, minW: 4, minH: 4,
+      el: (
         <Widget
-          className="lg:col-span-2"
+          gridTile
           title="State crime trend"
           contextChip="aggregate · window"
           provenance={trends.data?.result}
@@ -68,10 +89,19 @@ export function PolicymakerHome() {
           empty={!trends.isLoading && !trends.error && (trends.data?.series.length ?? 0) === 0}
           onRefresh={() => trends.refetch()}
         >
-          {trends.data && <TrendChart series={trends.data.series} />}
+          {trends.data && (
+            <div className="h-full min-h-[220px] w-full">
+              <TrendChart series={trends.data.series} fill />
+            </div>
+          )}
         </Widget>
-
+      ),
+    },
+    {
+      key: "district-forecast", handle: "header", x: 8, y: 2, w: 4, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="District forecast"
           contextChip="fused"
           provenance={forecast.data?.result}
@@ -83,27 +113,33 @@ export function PolicymakerHome() {
         >
           {forecast.data && <ForecastSummary data={forecast.data} />}
         </Widget>
-      </div>
+      ),
+    },
+    {
+      key: "socio", handle: "header", x: 0, y: 9, w: 12, h: 7, minW: 4, minH: 4,
+      el: (
+        <Widget
+          gridTile
+          title="Socio-economic signal"
+          contextChip="correlational"
+          provenance={socio.data?.result}
+          loading={socio.isLoading}
+          error={socio.error}
+          onRefresh={() => socio.refetch()}
+          menuItems={[
+            {
+              label: "Ask DRISHTI about this",
+              icon: <Sparkles />,
+              onSelect: () => askAbout("Explain the socio-economic correlations with crime, with caveats"),
+            },
+          ]}
+          info={<p className="text-content-dim">Correlations of crime with socio-economic indicators. Correlational, never causal; small counts are suppressed.</p>}
+        >
+          {socio.data && <SocioNarrativeCard data={socio.data} />}
+        </Widget>
+      ),
+    },
+  ];
 
-      {/* Socio-economic narrative */}
-      <Widget
-        title="Socio-economic signal"
-        contextChip="correlational"
-        provenance={socio.data?.result}
-        loading={socio.isLoading}
-        error={socio.error}
-        onRefresh={() => socio.refetch()}
-        menuItems={[
-          {
-            label: "Ask DRISHTI about this",
-            icon: <Sparkles />,
-            onSelect: () => askAbout("Explain the socio-economic correlations with crime, with caveats"),
-          },
-        ]}
-        info={<p className="text-content-dim">Correlations of crime with socio-economic indicators. Correlational, never causal; small counts are suppressed.</p>}
-      >
-        {socio.data && <SocioNarrativeCard data={socio.data} />}
-      </Widget>
-    </div>
-  );
+  return <DashboardGrid id="policymaker" tiles={tiles} />;
 }

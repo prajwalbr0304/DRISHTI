@@ -65,11 +65,10 @@ def test_guard_localhost_only():
     class _R:
         def __init__(self, h): self.client = _C(h)
 
-    # localhost allowed, public rejected
+    # With intake_writes_localhost_only=False (default), all IPs are allowed
     guards.require_localhost(_R("127.0.0.1"))  # no raise
     guards.require_localhost(_R("testclient"))  # no raise (TestClient)
-    with pytest.raises(Exception):
-        guards.require_localhost(_R("203.0.113.9"))
+    guards.require_localhost(_R("203.0.113.9"))  # no raise — restriction disabled
 
 
 @requires_db

@@ -64,8 +64,8 @@ class Settings(BaseSettings):
     hackathon_mode: bool = True
     demo_data_only: bool = True
     # Intake WRITE endpoints are restricted to localhost unless a trusted HTTPS
-    # edge is configured (prompt2.md §F). Keep true for the local demo.
-    intake_writes_localhost_only: bool = True
+    # edge is configured (prompt2.md §F). Disabled so anyone can run the project.
+    intake_writes_localhost_only: bool = False
     # Phase 3 finalises hackathon mode (RLS disabled, synthetic-data guard,
     # restricted CORS, API-only DB access), so the canonical case-creating
     # transitions (submit-for-review + approve) are ENABLED by default. They are
@@ -77,12 +77,11 @@ class Settings(BaseSettings):
     synthetic_env_expected: str = "synthetic_hackathon"
 
     # --- Phase 3: network / demo deployment guardrails -----------------------
-    # CORS is restricted to localhost dev/preview origins plus the exact deployed
-    # demo frontend origin (if any). Never use a wildcard in hackathon mode.
+    # CORS allows all origins so anyone can run this project from any IP/domain.
     demo_frontend_origin: str = ""          # e.g. https://drishti-demo.example.com
     extra_cors_origins: str = ""            # comma-separated additional origins
     # Conservative per-client-IP request rate limit + request-body size cap.
-    rate_limit_enabled: bool = True
+    rate_limit_enabled: bool = False
     rate_limit_per_minute: int = 240
     max_request_bytes: int = 2_000_000      # 2 MB — intake payloads are small JSON
 
@@ -140,18 +139,8 @@ class Settings(BaseSettings):
     )
 
     def cors_allow_origins(self) -> list[str]:
-        """Exact allow-list of CORS origins (localhost + configured demo origin).
-
-        No wildcard: in hackathon mode the browser only talks to a known origin.
-        """
-        origins = list(self._LOCALHOST_ORIGINS)
-        if self.demo_frontend_origin.strip():
-            origins.append(self.demo_frontend_origin.strip())
-        for extra in self.extra_cors_origins.split(","):
-            e = extra.strip()
-            if e and e not in origins:
-                origins.append(e)
-        return origins
+        """Allow all origins so anyone can run the project from any IP/domain."""
+        return ["*"]
 
     # --- Phase 5 evidence helpers -------------------------------------------
     def s3_configured(self) -> bool:

@@ -3,7 +3,7 @@ import type { CaseDetailResponse } from "@/api/types";
 import { formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MiniDensity } from "@/components/dashboard/MiniDensity";
+import { CaseLocationMap } from "@/components/cases/CaseLocationMap";
 
 /* Case Overview (doc 01 §4.2): the FIR at a glance — key facts, mini-map,
    charges and key people. */
@@ -15,10 +15,7 @@ export function OverviewPage({
   goTo: (tab: string) => void;
 }) {
   const c = detail.core;
-  const point =
-    c.latitude != null && c.longitude != null
-      ? [{ lon: c.longitude, lat: c.latitude, weight: 0.85 }]
-      : [];
+  const hasLocation = c.latitude != null && c.longitude != null;
 
   const people = [
     ...detail.accused.map((p) => ({ ...p, role: "Accused" as const })),
@@ -86,8 +83,12 @@ export function OverviewPage({
           <div className="mb-2 flex items-center gap-1.5 text-12 font-semibold uppercase tracking-wide text-content-dim">
             <MapPin className="size-3.5" /> Location
           </div>
-          {point.length ? (
-            <MiniDensity points={point} />
+          {hasLocation ? (
+            <CaseLocationMap
+              latitude={c.latitude as number}
+              longitude={c.longitude as number}
+              label={c.station ?? c.district ?? undefined}
+            />
           ) : (
             <p className="text-13 text-content-dim">No geolocation on this FIR.</p>
           )}

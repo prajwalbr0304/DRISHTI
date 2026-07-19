@@ -26,7 +26,16 @@ import {
    anomalies are marked with a labelled dot).
    ========================================================================== */
 
-export function TrendChart({ series, height = 240 }: { series: TrendPoint[]; height?: number }) {
+export function TrendChart({
+  series,
+  height = 240,
+  fill = false,
+}: {
+  series: TrendPoint[];
+  height?: number;
+  /** Fill the parent's height (with a sensible minimum) instead of a fixed height. */
+  fill?: boolean;
+}) {
   const theme = useChartTheme();
   assertChart({ kind: "area", yAxes: 1, threeD: false, usesRainbow: false, redundantEncoding: true });
 
@@ -35,7 +44,7 @@ export function TrendChart({ series, height = 240 }: { series: TrendPoint[]; hei
   const anomalies = series.filter((p) => p.is_anomaly);
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ResponsiveContainer width="100%" height={fill ? "100%" : height} minHeight={fill ? 220 : undefined}>
       <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">

@@ -23,9 +23,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from . import explorer, service
 from .permissions import require_case_read, require_case_write
-from .schemas import (CaseDetailResponse, CaseListResponse, CaseNetworkResponse,
-                      EvidenceCreateRequest, EvidenceCreateResponse, EvidenceListResponse,
-                      FilterOptionsResponse, LeadsResponse, SimilarResponse, SummaryResponse)
+from .schemas import (CaseDetailResponse, CaseListResponse, CaseloadResponse,
+                      CaseNetworkResponse, EvidenceCreateRequest, EvidenceCreateResponse,
+                      EvidenceListResponse, FilterOptionsResponse, LeadsResponse,
+                      SimilarResponse, SummaryResponse)
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -61,6 +62,30 @@ def list_cases(
 @router.get("/filters", response_model=FilterOptionsResponse)
 def case_filters(_role: str = Depends(require_case_read)):
     return explorer.filter_options()
+
+
+@router.get("/caseload", response_model=CaseloadResponse)
+def caseload(
+    district_id: Optional[int] = Query(None, ge=1),
+    station_id: Optional[int] = Query(None, ge=1),
+    major_head_id: Optional[int] = Query(None, ge=1),
+    minor_head_id: Optional[int] = Query(None, ge=1),
+    gravity_id: Optional[int] = Query(None, ge=1),
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    _role: str = Depends(require_case_read),
+):
+    """Per-stage caseload counts for the Command Center 'My caseload' pipeline.
+
+    A present-state snapshot: each case falls into exactly one lifecycle stage,
+    so the stage counts sum to the total. Optional filters scope the caseload
+    (e.g. by district / station). Denied to the policymaker role (case-scoped)."""
+    filters = {
+        "district_id": district_id, "station_id": station_id,
+        "major_head_id": major_head_id, "minor_head_id": minor_head_id,
+        "gravity_id": gravity_id, "date_from": date_from, "date_to": date_to,
+    }
+    return explorer.caseload_summary(filters)
 
 
 # --- AI decision-support (Phase 10) -----------------------------------------

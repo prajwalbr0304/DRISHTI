@@ -27,6 +27,7 @@ export interface KpiCardProps {
   pending?: boolean;
   pendingNote?: string;
   hint?: React.ReactNode;
+  className?: string;
 }
 
 export function KpiCard({
@@ -42,9 +43,10 @@ export function KpiCard({
   pending,
   pendingNote,
   hint,
+  className,
 }: KpiCardProps) {
   return (
-    <div className="flex flex-col justify-between rounded-card border border-hairline bg-surface p-3.5 shadow-card">
+    <div className={cn("flex flex-col justify-between rounded-card border border-hairline bg-surface p-3.5 shadow-card", className)}>
       <div className="flex items-center gap-2 text-12 text-content-dim">
         {icon && <span className="[&_svg]:size-4">{icon}</span>}
         <span className="truncate">{label}</span>

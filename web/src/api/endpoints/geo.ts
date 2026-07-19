@@ -59,6 +59,10 @@ export const geoApi = {
   /** GET /geo/boundaries/{level} — admin boundary overlay (state | districts | taluks) as GeoJSON. */
   boundaries: (level: BoundaryLevel, signal?: AbortSignal) =>
     apiClient.get<GeoJSON.FeatureCollection>(`/geo/boundaries/${level}`, undefined, signal),
+  /** GET /geo/coverage — dataset date range so the UI can anchor "now" to real data. */
+  coverage: (signal?: AbortSignal) =>
+    apiClient.get<{ min_date: string | null; max_date: string | null; total: number }>(
+      "/geo/coverage", undefined, signal),
   /** GET /geo/sho-regions — police-station jurisdiction polygons (Voronoi ∩ district). */
   shoRegions: (limit = 1500, signal?: AbortSignal) =>
     apiClient.get<GeoJSON.FeatureCollection>("/geo/sho-regions", { limit }, signal),

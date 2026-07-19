@@ -1,5 +1,7 @@
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, Pause, Play, RotateCcw } from "lucide-react";
+import { api } from "@/api";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import {
   PRESETS,
@@ -7,6 +9,21 @@ import {
   useTimeStore,
   type TimePreset,
 } from "@/stores/useTimeStore";
+
+/** Anchor the global time window to the latest data date (the dataset is
+    historical; the wall clock may be months ahead). Runs once, app-wide. */
+function useDataAnchor() {
+  const setAnchor = useTimeStore((s) => s.setAnchor);
+  const { data } = useQuery({
+    queryKey: ["geo", "coverage"],
+    queryFn: ({ signal }) => api.geo.coverage(signal),
+    staleTime: Infinity,
+    retry: false,
+  });
+  useEffect(() => {
+    if (data?.max_date) setAnchor(data.max_date);
+  }, [data?.max_date, setAnchor]);
+}
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -21,6 +38,7 @@ const PLAY_STEP = 0.02; // per tick
 const PLAY_INTERVAL = 220; // ms
 
 export function TimeScrubber() {
+  useDataAnchor();
   const { preset, start, end, playhead, playing } = useTimeStore();
   const setPreset = useTimeStore((s) => s.setPreset);
   const setPlayhead = useTimeStore((s) => s.setPlayhead);

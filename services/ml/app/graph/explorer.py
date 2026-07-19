@@ -6,9 +6,27 @@ All reads run under the restricted read-only role.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from .. import db
+
+# EntityGraph."SearchVector" is a GENERATED tsvector built with the 'english'
+# config (police_fir_intelligence.sql), which STEMS tokens (e.g. 'Syed' -> 'sy').
+# A bare plainto_tsquery(text) uses the database default config (pg_catalog.simple,
+# no stemming -> 'syed'), so it NEVER matches the stemmed vector. Queries MUST use
+# the same 'english' config as the stored vector, or entity search returns nothing.
+_FTS_CONFIG = "english"
+
+
+def _prefix_tsquery(q: str) -> Optional[str]:
+    """Build a safe prefix tsquery string from free text: split into alphanumeric
+    tokens and AND them as prefix terms (``token:*``) so search-as-you-type works
+    (typing 'kir' finds 'Kiran'). Returns None when there is no usable token."""
+    tokens = re.findall(r"[A-Za-z0-9]+", q or "")
+    if not tokens:
+        return None
+    return " & ".join(f"{t}:*" for t in tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -31,8 +49,14 @@ def list_entities(
         clauses.append('"EntityType"::text = %s')
         params.append(entity_type)
     if q:
-        clauses.append('"SearchVector" @@ plainto_tsquery(%s)')
-        params.append(q)
+        ts = _prefix_tsquery(q)
+        if ts:
+            # to_tsquery with the SAME 'english' config as the stored vector.
+            clauses.append('"SearchVector" @@ to_tsquery(%s, %s)')
+            params.append(_FTS_CONFIG)
+            params.append(ts)
+        else:
+            clauses.append("FALSE")  # q had no searchable token -> honest no-match
     if has_risk:
         clauses.append('EXISTS(SELECT 1 FROM "CrimeRiskScore" r WHERE r."EntityID"=e."EntityID")')
     if gang_affiliated:
@@ -133,7 +157,10 @@ def entity_detail(entity_id: int) -> Optional[dict]:
                     'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
                     'LEFT JOIN "CaseStatusMaster" st ON st."CaseStatusID" = cm."CaseStatusID" '
                     'WHERE ce."CanonicalEntityID" = %s '
-                    'ORDER BY cm."CrimeRegisteredDate" DESC NULLS LAST LIMIT 50',
+                    # SELECT DISTINCT requires ORDER BY expressions to appear in the
+                    # select list, so order by the same cast expression (a DATE cast
+                    # to 'YYYY-MM-DD' text still sorts chronologically).
+                    'ORDER BY cm."CrimeRegisteredDate"::text DESC NULLS LAST LIMIT 50',
                     (canonical_entity_id,),
                 )
                 for r2 in cur.fetchall():
@@ -199,6 +226,92 @@ def list_communities(limit: int = 40) -> dict:
             for r in rows if r[0] is not None
         ]
     }
+
+
+# Provenanced, non-archived directed edges, both ways (undirected view).
+_PROVENANCED_UD = (
+    'SELECT "Source" AS a, "Target" AS b FROM "NetworkEdge" '
+    'WHERE "ProvenanceStatus" IS NOT NULL AND COALESCE("IsArchived", FALSE) = FALSE '
+    'UNION '
+    'SELECT "Target" AS a, "Source" AS b FROM "NetworkEdge" '
+    'WHERE "ProvenanceStatus" IS NOT NULL AND COALESCE("IsArchived", FALSE) = FALSE')
+
+# Primary source: materialized hidden associations — pairs that share an
+# intermediary (phone/vehicle/address/account) but are NOT directly linked, so
+# the shortest path is a genuine >=2-hop chain THROUGH that shared intermediary.
+# These are the most illustrative Path Finder demos (the "aha" connections).
+_SUGG_HIDDEN = """
+SELECT h."EntityA", ea."Label", h."EntityB", eb."Label",
+       h."SharedIntermediaries"[1] AS via_id, ev."Label", ev."EntityType"::text
+FROM "drishti_hidden_associations" h
+JOIN "EntityGraph" ea ON ea."EntityID" = h."EntityA"
+JOIN "EntityGraph" eb ON eb."EntityID" = h."EntityB"
+JOIN "EntityGraph" ev ON ev."EntityID" = h."SharedIntermediaries"[1]
+WHERE COALESCE(h."IsArchived", FALSE) = FALSE
+  AND array_length(h."SharedIntermediaries", 1) >= 1
+  AND NOT EXISTS (                              -- exclude directly-adjacent pairs
+      SELECT 1 FROM "NetworkEdge" e
+      WHERE e."ProvenanceStatus" IS NOT NULL AND COALESCE(e."IsArchived", FALSE) = FALSE
+        AND ((e."Source" = h."EntityA" AND e."Target" = h."EntityB")
+          OR (e."Source" = h."EntityB" AND e."Target" = h."EntityA")))
+ORDER BY h."Score" DESC
+LIMIT %s
+"""
+
+# Fallback (no hidden associations materialized): persons two hops apart via a
+# shared neighbour, excluding any that are also directly connected.
+_SUGG_TWO_HOP = """
+WITH ud AS ({ud}),
+pairs AS (
+    SELECT u1.a AS a, u2.b AS b, u1.b AS via
+    FROM ud u1 JOIN ud u2 ON u1.b = u2.a AND u1.a < u2.b
+)
+SELECT DISTINCT ON (p.a, p.b)
+       p.a, ea."Label", p.b, eb."Label", p.via, ev."Label", ev."EntityType"::text
+FROM pairs p
+JOIN "EntityGraph" ea ON ea."EntityID" = p.a AND ea."EntityType" = 'person'
+JOIN "EntityGraph" eb ON eb."EntityID" = p.b AND eb."EntityType" = 'person'
+JOIN "EntityGraph" ev ON ev."EntityID" = p.via
+WHERE NOT EXISTS (
+    SELECT 1 FROM "NetworkEdge" e
+    WHERE e."ProvenanceStatus" IS NOT NULL AND COALESCE(e."IsArchived", FALSE) = FALSE
+      AND ((e."Source" = p.a AND e."Target" = p.b) OR (e."Source" = p.b AND e."Target" = p.a)))
+ORDER BY p.a, p.b
+LIMIT %s
+""".format(ud=_PROVENANCED_UD)
+
+
+def path_suggestions(limit: int = 6) -> dict:
+    """A few ready-made, genuinely-connected entity pairs so the user can one-click
+    a Path Finder demo instead of guessing two connected entities. Each pair has a
+    real >=2-hop shortest path (they are NOT directly linked), shown through the
+    shared intermediary that connects them."""
+    limit = max(1, min(int(limit), 20))
+
+    def _rows(cur, sql):
+        cur.execute(sql, (limit,))
+        return cur.fetchall()
+
+    with db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            rows: list = []
+            try:
+                rows = _rows(cur, _SUGG_HIDDEN)
+            except Exception:            # noqa: BLE001 — table may not exist yet
+                conn.rollback()
+                rows = []
+            if not rows:
+                rows = _rows(cur, _SUGG_TWO_HOP)
+
+    suggestions = [
+        {
+            "a": {"entity_id": int(r[0]), "label": r[1]},
+            "b": {"entity_id": int(r[2]), "label": r[3]},
+            "via": {"entity_id": int(r[4]), "label": r[5], "entity_type": r[6]},
+        }
+        for r in rows
+    ]
+    return {"suggestions": suggestions}
 
 
 def community_subgraph(community_id: int, limit: int = 60) -> dict:

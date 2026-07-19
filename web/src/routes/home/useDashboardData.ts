@@ -35,6 +35,15 @@ export function useAlerts() {
   });
 }
 
+/** My caseload — per-stage FIR-lifecycle counts. A present-state snapshot (no
+    time window, like the alert queue); each case sits at exactly one stage. */
+export function useCaseload() {
+  return useQuery({
+    queryKey: ["cases", "caseload"],
+    queryFn: ({ signal }) => api.cases.caseload({}, signal),
+  });
+}
+
 /** Persons of interest by graph centrality (network-of-interest shortcut). */
 export function useCentrality(top = 20) {
   return useQuery({
@@ -43,12 +52,13 @@ export function useCentrality(top = 20) {
   });
 }
 
-/** Socio-economic correlations + narrative for the window (policymaker turf). */
+/** Socio-economic correlations + narrative (policymaker turf). District-level
+    correlation needs volume, so it reads the FULL operational period rather than
+    the trailing scrubber window (which would be too sparse / k-anon suppressed). */
 export function useSocio() {
-  const { start, end } = useTimeStore();
   return useQuery({
-    queryKey: ["analytics", "socio", start, end],
-    queryFn: ({ signal }) => api.analytics.socioeconomic({ start, end }, signal),
+    queryKey: ["analytics", "socio", "full"],
+    queryFn: ({ signal }) => api.analytics.socioeconomic({}, signal),
   });
 }
 

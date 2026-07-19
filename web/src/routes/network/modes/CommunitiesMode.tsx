@@ -96,12 +96,15 @@ export function CommunitiesMode() {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between border-b border-hairline bg-surface px-3 py-2">
-            <span className="text-13 font-medium text-content">
+          <div className="flex items-center justify-between gap-2 border-b border-hairline bg-surface px-3 py-2">
+            <span className="min-w-0 truncate text-13 font-medium text-content">
               Community {selected}
               {sgQ.data && <span className="tnum ml-2 text-12 text-content-dim">{sgQ.data.node_count} shown · {sgQ.data.edge_count} links</span>}
+              <span className="ml-2 hidden text-12 font-normal text-content-dim lg:inline">
+                · hover a node to focus its links
+              </span>
             </span>
-            <Button variant="ghost" size="sm" onClick={() => askAbout(`Explain community ${selected} in the entity network`)}>
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={() => askAbout(`Explain community ${selected} in the entity network`)}>
               <Sparkles /> Explain
             </Button>
           </div>

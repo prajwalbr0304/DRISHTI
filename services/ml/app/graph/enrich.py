@@ -97,7 +97,8 @@ def _load_context(conn):
 
 
 def enrich(conn, seed: int = 42, vehicle_fraction: float = 0.4,
-           n_flagship: int = 12, n_secondary: int = 40) -> dict:
+           n_flagship: int = 12, n_secondary: int = 40,
+           include_personal_footprint: bool = True) -> dict:
     rng = _rng(seed)
     clear_enrichment(conn)
     persons, gangs, gang_members, co_accused, max_eid, max_edge = _load_context(conn)
@@ -118,8 +119,13 @@ def enrich(conn, seed: int = 42, vehicle_fraction: float = 0.4,
         nonlocal edge_id
         edge_id += 1
         cost = round(1.0 / max(weight, 0.05), 4)
+        # ProvenanceStatus MUST be set: the hidden-association detector (and the
+        # canonical-graph views) only consider edges WHERE "ProvenanceStatus" IS
+        # NOT NULL. Without it these enriched links are invisible to the detector
+        # and the feed stays empty. These are synthetic demo links.
         edges.append((edge_id, person, inter, REL_FOR_TYPE[etype], cost, cost,
-                      round(weight, 3), 0.9, json.dumps({**props, "source": _ENRICH_TAG})))
+                      round(weight, 3), 0.9, json.dumps({**props, "source": _ENRICH_TAG}),
+                      "synthetic_unverified"))
 
     def phone_no() -> str:
         return "9" + "".join(str(rng.randint(0, 9)) for _ in range(9))
@@ -133,12 +139,16 @@ def enrich(conn, seed: int = 42, vehicle_fraction: float = 0.4,
     def acct_no(prefix: str) -> str:
         return f"{rng.choice(_BANKS)}-{prefix}-{rng.randint(10**7, 10**8 - 1)}"
 
-    # 1. personal footprint (degree-1, no false sharing)
-    for p in persons:
-        link(p, new_node("phone", phone_no(), {"role": "personal"}), "phone", 0.6, {"kind": "personal"})
-        link(p, new_node("location", address(), {"role": "home"}), "location", 0.55, {"kind": "home"})
-        if rng.random() < vehicle_fraction:
-            link(p, new_node("vehicle", plate(), {"role": "owner"}), "vehicle", 0.6, {"kind": "owned"})
+    # 1. personal footprint (degree-1, no false sharing). Optional: it is pure
+    # realism (one unique phone/address per person) and adds ~2-3 nodes PER
+    # PERSON, so it is skippable when only the hidden-association signal (gang
+    # overlay + seeded pairs) is needed, keeping the write small.
+    if include_personal_footprint:
+        for p in persons:
+            link(p, new_node("phone", phone_no(), {"role": "personal"}), "phone", 0.6, {"kind": "personal"})
+            link(p, new_node("location", address(), {"role": "home"}), "location", 0.55, {"kind": "home"})
+            if rng.random() < vehicle_fraction:
+                link(p, new_node("vehicle", plate(), {"role": "owner"}), "vehicle", 0.6, {"kind": "owned"})
 
     # 2. gang overlay — members share safehouse + vehicle + burner + mule account
     gang_pairs = 0
@@ -196,7 +206,7 @@ def enrich(conn, seed: int = 42, vehicle_fraction: float = 0.4,
         execute_values(
             cur,
             'INSERT INTO "NetworkEdge" ("EdgeID","Source","Target","RelationshipType",'
-            '"Cost","ReverseCost","Weight","Confidence","Properties") VALUES %s',
+            '"Cost","ReverseCost","Weight","Confidence","Properties","ProvenanceStatus") VALUES %s',
             edges, page_size=5000,
         )
         # advance identity sequences past explicit ids

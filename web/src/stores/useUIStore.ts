@@ -31,7 +31,7 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      theme: "ops", // Ops (dark) is the default operations surface
+      theme: "desk", // Desk (light) is the default surface
       sidebarCollapsed: false,
       density: "comfortable",
       commandOpen: false,
@@ -48,11 +48,23 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "drishti.ui",
+      version: 2,
       partialize: (s) => ({
         theme: s.theme,
         sidebarCollapsed: s.sidebarCollapsed,
         density: s.density,
       }),
+      // v1 defaulted to the dark "ops" surface. Move everyone to the new light
+      // default once (users can still toggle after).
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<UIState>;
+        const theme: ThemeName = version < 2 ? "desk" : p.theme ?? "desk";
+        return {
+          theme,
+          sidebarCollapsed: p.sidebarCollapsed ?? false,
+          density: p.density ?? "comfortable",
+        };
+      },
     },
   ),
 );

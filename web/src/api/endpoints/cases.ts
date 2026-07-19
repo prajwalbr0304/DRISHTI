@@ -2,6 +2,7 @@ import { apiClient } from "@/api/client";
 import type {
   CaseDetailResponse,
   CaseListResponse,
+  CaseloadResponse,
   CaseNetworkResponse,
   EvidenceCreateRequest,
   EvidenceCreateResponse,
@@ -28,6 +29,16 @@ export type CaseListParams = {
   page_size?: number;
 };
 
+export type CaseloadParams = {
+  district_id?: number;
+  station_id?: number;
+  major_head_id?: number;
+  minor_head_id?: number;
+  gravity_id?: number;
+  date_from?: string;
+  date_to?: string;
+};
+
 /** Cases destination (services/ml/app/cases). Raw reads + AI decision-support. */
 export const casesApi = {
   /** GET /cases — filterable, paginated case index. */
@@ -37,6 +48,10 @@ export const casesApi = {
   /** GET /cases/filters — reference values for the filter rail. */
   filters: (signal?: AbortSignal) =>
     apiClient.get<FilterOptionsResponse>("/cases/filters", undefined, signal),
+
+  /** GET /cases/caseload — per-stage caseload counts for the pipeline. */
+  caseload: (params: CaseloadParams = {}, signal?: AbortSignal) =>
+    apiClient.get<CaseloadResponse>("/cases/caseload", params, signal),
 
   /** GET /cases/{id}/detail — full case (overview, people, sections, timeline). */
   detail: (caseId: number, signal?: AbortSignal) =>

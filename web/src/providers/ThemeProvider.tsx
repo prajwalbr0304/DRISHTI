@@ -27,5 +27,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.dataset.density = density;
   }, [density]);
 
+  // The global-zoom feature was removed. Clear any leftover inline `zoom` a prior
+  // session may have set on <html> (a stale zoom would break dashboard drag math).
+  useEffect(() => {
+    document.documentElement.style.removeProperty("zoom");
+  }, []);
+
   return <>{children}</>;
 }

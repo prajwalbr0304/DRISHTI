@@ -128,6 +128,28 @@ class FilterOptionsResponse(BaseModel):
     gravities: list[FilterOption]
 
 
+class CaseloadStage(BaseModel):
+    key: str                              # canonical stage key (matches the UI pipeline)
+    label: str
+    count: int
+
+
+class CaseloadStatusBreakdown(BaseModel):
+    status: str                           # raw CaseStatusMaster name
+    stage: str                            # canonical stage it folds into
+    count: int
+
+
+class CaseloadResponse(BaseModel):
+    """Per-stage caseload counts for the Command Center pipeline. Each case sits
+    in exactly one stage, so ``stages`` counts sum to ``total``."""
+    stages: list[CaseloadStage]
+    by_status: list[CaseloadStatusBreakdown]
+    total: int
+    open_total: int                       # total minus disposed
+    disposed_total: int
+
+
 class CaseCore(BaseModel):
     case_id: int
     crime_no: Optional[str] = None

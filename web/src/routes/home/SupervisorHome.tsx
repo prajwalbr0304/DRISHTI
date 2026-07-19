@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/dashboard/KpiCard";
 import { DistrictBars, type BarDatum } from "@/components/dashboard/DistrictBars";
 import { EventList, alertToEvent } from "@/components/dashboard/EventList";
 import { EmptyState } from "@/components/common/EmptyState";
+import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { useAlerts, useHotspots, useTrends } from "@/routes/home/useDashboardData";
 
 const REVIEWED = ["resolved", "closed", "acknowledged", "ack", "dismissed", "actioned"];
@@ -39,11 +40,12 @@ export function SupervisorHome() {
   const needsReview = allAlerts.filter((a) => !REVIEWED.includes((a.status ?? "").toLowerCase()));
   const review = needsReview.length ? needsReview : allAlerts;
 
-  return (
-    <div className="space-y-4">
-      {/* Unit KPI band */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+  const tiles: DashTile[] = [
+    {
+      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<TrendingUp />}
           label="Incidents (window)"
           value={trends.data?.total}
@@ -52,32 +54,52 @@ export function SupervisorHome() {
           loading={trends.isLoading}
           error={trends.error}
         />
+      ),
+    },
+    {
+      key: "kpi-openalerts", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<AlertTriangle />}
           label="Open alerts"
           value={alerts.data?.count}
           loading={alerts.isLoading}
           error={alerts.error}
         />
+      ),
+    },
+    {
+      key: "kpi-urgent", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<AlertTriangle />}
           label="Urgent alerts"
           value={alerts.data ? urgent : undefined}
           loading={alerts.isLoading}
           error={alerts.error}
         />
+      ),
+    },
+    {
+      key: "kpi-hotspots", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      el: (
         <KpiCard
+          className="h-full"
           icon={<Flame />}
           label="Hotspots"
           value={hotspots.data?.count}
           loading={hotspots.isLoading}
           error={hotspots.error}
         />
-      </div>
-
-      {/* Load by district + review queue */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      ),
+    },
+    {
+      key: "load-district", handle: "header", x: 0, y: 2, w: 6, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="Load by district"
           contextChip="hotspot case-load"
           provenance={hotspots.data?.result}
@@ -95,8 +117,13 @@ export function SupervisorHome() {
         >
           {hotspots.data && <DistrictBars data={districtBars} unit=" cases" />}
         </Widget>
-
+      ),
+    },
+    {
+      key: "review-queue", handle: "header", x: 6, y: 2, w: 6, h: 7, minW: 3, minH: 4,
+      el: (
         <Widget
+          gridTile
           title="Review queue"
           contextChip={review.length ? String(review.length) : undefined}
           provenance={alerts.data?.result}
@@ -121,19 +148,25 @@ export function SupervisorHome() {
             </div>
           )}
         </Widget>
-      </div>
+      ),
+    },
+    {
+      key: "performance", handle: "header", x: 0, y: 9, w: 12, h: 6, minW: 4, minH: 4,
+      el: (
+        <Widget
+          gridTile
+          title="Station & officer performance"
+          info={<p className="text-content-dim">Per-officer clearance, workload and outcomes. Requires the officer-performance API.</p>}
+        >
+          <EmptyState
+            icon={UserCog}
+            title="Awaiting the performance API"
+            description="Station and officer performance metrics (clearance rate, workload balance, disposal times) land when the transactional Cases/HR endpoints are built."
+          />
+        </Widget>
+      ),
+    },
+  ];
 
-      {/* Officer performance — honest pending (no officer-performance endpoint yet) */}
-      <Widget
-        title="Station & officer performance"
-        info={<p className="text-content-dim">Per-officer clearance, workload and outcomes. Requires the officer-performance API.</p>}
-      >
-        <EmptyState
-          icon={UserCog}
-          title="Awaiting the performance API"
-          description="Station and officer performance metrics (clearance rate, workload balance, disposal times) land when the transactional Cases/HR endpoints are built."
-        />
-      </Widget>
-    </div>
-  );
+  return <DashboardGrid id="supervisor" tiles={tiles} />;
 }

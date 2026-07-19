@@ -46,6 +46,11 @@ export const graphApi = {
   path: (source: number, target: number, signal?: AbortSignal) =>
     apiClient.get<PathResponse>("/graph/path", { source, target }, signal),
 
+  /** GET /graph/path/suggestions — ready-made connected pairs for a one-click demo. */
+  pathSuggestions: (limit = 6, signal?: AbortSignal) =>
+    apiClient.get<import("@/api/types").PathSuggestionsResponse>(
+      "/graph/path/suggestions", { limit }, signal),
+
   communities: (signal?: AbortSignal) =>
     apiClient.post<CommunitiesResponse>("/graph/communities", undefined, undefined, signal),
 

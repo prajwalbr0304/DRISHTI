@@ -138,6 +138,89 @@ def filter_options() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Caseload summary — per-stage counts for the Command Center pipeline
+# ---------------------------------------------------------------------------
+
+# The canonical FIR-lifecycle stages the Command Center pipeline renders
+# (doc 01 §4.1 / doc 03 §2.13). Each case sits in exactly ONE stage, so the
+# per-stage counts always sum to the in-scope total.
+CASELOAD_STAGES: list[tuple[str, str]] = [
+    ("registered", "Registered"),
+    ("under_investigation", "Under investigation"),
+    ("chargesheet", "Chargesheeted"),
+    ("trial", "Trial"),
+    ("disposed", "Disposed"),
+]
+
+# Fold each real CaseStatusMaster.CaseStatusName onto a canonical stage. The
+# still-active "Missing - Under Trace" stays under investigation; every terminal
+# outcome (convicted / acquitted / B-report / C-report / transferred / untraced /
+# enquiry- or inquest-closed / reclassified / recovered) folds into "disposed".
+# A NULL / unrecognised status falls back to "registered" (a freshly-registered
+# FIR not yet actioned) so no case is ever dropped from the total.
+STATUS_TO_STAGE: dict[str, str] = {
+    "Under Investigation": "under_investigation",
+    "Missing - Under Trace": "under_investigation",
+    "Charge Sheeted": "chargesheet",
+    "Pending Trial": "trial",
+    "Closed - Convicted": "disposed",
+    "Closed - Acquitted": "disposed",
+    "Undetected / B-Report": "disposed",
+    "False / C-Report": "disposed",
+    "Transferred": "disposed",
+    "Missing - Recovered": "disposed",
+    "Closed - Untraced": "disposed",
+    "Enquiry Closed": "disposed",
+    "Inquest Closed": "disposed",
+    "Converted / Reclassified": "disposed",
+}
+
+_CASELOAD_DEFAULT_STAGE = "registered"
+_CASELOAD_DISPOSED_STAGE = "disposed"
+
+
+def caseload_summary(filters: dict) -> dict:
+    """Per-stage caseload counts (a present-state snapshot) for the pipeline.
+
+    Reuses the Explorer filter builder, so the same jurisdiction / date / crime
+    filters scope the caseload. Every case maps to exactly one canonical stage
+    via its current status, so the stage counts sum to ``total``. Also returns
+    the raw per-status breakdown (for tooltips) and open/disposed splits.
+    """
+    where, params = _build_filters(filters)
+    with db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT st."CaseStatusName", COUNT(*) '
+                + _LIST_FROM + where +
+                ' GROUP BY st."CaseStatusName"',
+                params)
+            rows = cur.fetchall()
+
+    counts = {key: 0 for key, _ in CASELOAD_STAGES}
+    by_status: list[dict] = []
+    total = 0
+    for name, n in rows:
+        n = int(n)
+        total += n
+        stage = STATUS_TO_STAGE.get(name, _CASELOAD_DEFAULT_STAGE) if name else _CASELOAD_DEFAULT_STAGE
+        counts[stage] += n
+        by_status.append({"status": name or "Unspecified", "stage": stage, "count": n})
+    by_status.sort(key=lambda r: r["count"], reverse=True)
+
+    stages = [{"key": key, "label": label, "count": counts[key]}
+              for key, label in CASELOAD_STAGES]
+    disposed_total = counts[_CASELOAD_DISPOSED_STAGE]
+    return {
+        "stages": stages,
+        "by_status": by_status,
+        "total": total,
+        "open_total": total - disposed_total,
+        "disposed_total": disposed_total,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Case detail (Overview / Timeline / people / sections)
 # ---------------------------------------------------------------------------
 

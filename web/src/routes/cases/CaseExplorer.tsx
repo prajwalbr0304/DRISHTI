@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { AlertTriangle, ChevronLeft, ChevronRight, Lock, Map as MapIcon, Search, Table2 } from "lucide-react";
 import { api } from "@/api";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
-import { MiniDensity } from "@/components/dashboard/MiniDensity";
+import { CaseMap } from "@/components/cases/CaseMap";
 import { CaseFilterRail, type CaseFilters } from "@/components/cases/CaseFilterRail";
 import { CaseTable } from "@/components/cases/CaseTable";
 import { MoSearchBar } from "@/components/cases/MoSearchBar";
@@ -71,9 +71,6 @@ export function CaseExplorer() {
   const total = listQ.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const items = listQ.data?.items ?? [];
-  const mapPoints = items
-    .filter((c) => c.latitude != null && c.longitude != null)
-    .map((c) => ({ lon: c.longitude!, lat: c.latitude!, weight: 0.6 }));
 
   return (
     <div>
@@ -136,11 +133,12 @@ export function CaseExplorer() {
               )}
             </>
           ) : (
-            <div className="rounded-card border border-hairline bg-surface p-4">
+            <div className="rounded-card border border-hairline bg-surface p-3">
               <div className="mb-2 text-13 text-content-dim">
-                Spatial view of this page's results. The full interactive map lives in Map & Hotspots.
+                Spatial view of this page's results. The full interactive map lives in{" "}
+                <Link to="/map" className="text-primary hover:underline">Map &amp; Hotspots</Link>.
               </div>
-              <MiniDensity points={mapPoints} />
+              <CaseMap items={items} onSelect={(id) => navigate(`/cases/${id}`)} />
             </div>
           )}
 
