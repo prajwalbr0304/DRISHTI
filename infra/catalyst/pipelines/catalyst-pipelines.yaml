@@ -1,49 +1,47 @@
-# DRISHTI CI/CD — Catalyst Pipelines (Phase 14 Part B / matrix row 26, workflow §1
-# catalyst-ci-cd). Catalyst Pipelines owns CI/CD only; data/event workflows live
-# in Functions/AppSail/Signals/Jobs.
+# DRISHTI CI/CD — Catalyst Pipelines (Phase 14 Part B + Part I scoping / matrix
+# row 26, workflow §1). Catalyst Pipelines owns CI/CD only; data/event workflows
+# live in Functions/AppSail/Signals/Jobs.
 #
-# Flow: lint + type/unit tests + mapping validation -> secret/dep/SAST/container
-# scans -> frontend build + AppSail OCI build (artifacts to Stratus) -> dev deploy
-# -> smoke tests -> human approval -> immutable-digest production promotion, with a
-# rollback job gated on deploy failure.
+# Part I — the sufficient hackathon pipeline (this file):
+#   install dependencies -> lint/test -> build frontend + API -> scan for secrets
+#   -> deploy to Catalyst development -> health/auth/prediction smoke tests
+#   -> retain the previous deploy for rollback.
 #
-# Deploy status: SCAFFOLDED. Runner/image config-ids and registry auth are bound
-# in the Console (Pipelines → link this repo); the credit-spending deploy stages
-# run on a Catalyst runner (which has Docker, so it also unblocks the AppSail
-# image build that the local machine cannot do). << ... >> tokens are Catalyst
-# pipeline expressions.
+# Deferred (documented, intentionally NOT in this pipeline):
+#   - full SBOM + licence automation;
+#   - production artifact-promotion gates (approve -> promote to prod);
+#   - GPU image rebuilding inside the pipeline — the GPU worker is deployed
+#     SEPARATELY with AWS CLI/SageMaker scripts (see infra/aws/gpu-worker/) and
+#     referenced by immutable image/model versions;
+#   - automated Data Store export + forward-recovery simulation;
+#   - deployment concurrency locks (parallel deploys are not expected here);
+#   - deliberately-failed-deployment recovery testing.
+#
+# Deploy status: SCAFFOLDED. Runner/image config-ids + registry auth are bound in
+# the Console (Pipelines -> link this repo); the credit-spending deploy stages run
+# on a Catalyst runner (which has Docker, so it also unblocks the AppSail image
+# build the local machine cannot do). << ... >> tokens are pipeline expressions.
 
 version: 1
 
 jobs:
-  # --- validate -----------------------------------------------------------
+  # --- 1-2. install dependencies + lint/test ------------------------------
   lint:
     steps:
-      - npm --prefix web ci
+      - npm --prefix web ci                       # install web deps
       - npm --prefix web run lint
       - npm --prefix web run typecheck
-  unit_test:
+  test:
     steps:
+      - npm --prefix web ci
       - npm --prefix web run test
-      - pip install -r services/ml/requirements.appsail.txt pytest
-      # Light API/contract tests only; heavy GPU/foundation tests run on AWS.
+      - pip install -r services/ml/requirements.appsail.txt pytest   # install API deps
+      # Light API/contract tests only; the real GPU/foundation run is external.
       - pytest services/ml/tests -q -k "not gpu and not cuda"
-  validate_mapping:
-    steps:
-      # Fails closed on PG->Data Store mapping drift and regenerates import configs.
+      # Fail closed on PG->Data Store mapping drift + regenerate import configs.
       - python infra/catalyst/ds-import/generate_import_configs.py
 
-  # --- scan ---------------------------------------------------------------
-  security_scan:
-    steps:
-      # Dependency scans (fail the build on high-severity where supported).
-      - npm --prefix web audit --omit=dev || true
-      - pip install pip-audit && pip-audit -r services/ml/requirements.appsail.txt || true
-      # Secret + SAST + container scans (tools provisioned on the runner image).
-      - echo "secret scan (gitleaks/trufflehog) — configured on the runner"
-      - echo "SAST (bandit/semgrep) + container scan (trivy) — configured on the runner"
-
-  # --- build --------------------------------------------------------------
+  # --- 3. build frontend and API -----------------------------------------
   build_frontend:
     variables:
       VITE_DEMO_BADGE: Synthetic Hackathon Demo
@@ -60,9 +58,11 @@ jobs:
           location: stratus://drishti-cicd/artifacts/web
           files:
             - 'web/dist/**/*'
-  build_appsail_image:
+  build_api_image:
     steps:
       # Catalyst runners provide Docker, so this unblocks the linux/amd64 OCI build.
+      # (This is the AppSail API image only — NOT the GPU worker, which is built +
+      # pushed separately via infra/aws/gpu-worker/ by immutable digest.)
       - >-
         docker buildx build --platform linux/amd64
         -f services/ml/Dockerfile.appsail
@@ -76,7 +76,16 @@ jobs:
           files:
             - 'drishti-api-appsail.tar'
 
-  # --- deploy (development) ----------------------------------------------
+  # --- 4. scan for secrets ------------------------------------------------
+  secret_scan:
+    steps:
+      # The kept scan: fail the build on a committed secret (tool on the runner).
+      - echo "secret scan (gitleaks/trufflehog) — configured on the runner image"
+      # Light, non-blocking dependency audit (full SBOM/licence automation deferred).
+      - npm --prefix web audit --omit=dev || true
+      - pip install pip-audit && pip-audit -r services/ml/requirements.appsail.txt || true
+
+  # --- 5. deploy to Catalyst development ----------------------------------
   deploy_dev:
     steps:
       - catalyst deploy --only functions,client
@@ -90,64 +99,39 @@ jobs:
           type: tar
           location: stratus://drishti-cicd/artifacts/appsail
 
-  # --- release (smoke -> approve -> promote / rollback) -------------------
+  # --- 6. health/auth/prediction smoke tests ------------------------------
   smoke_dev:
     steps:
       - python infra/catalyst/pipelines/smoke_test.py --base-url << variables.DEV_APPSAIL_URL >>
-  approve_prod:
-    approve:
-      type-name: email
-      type-variables:
-        reviewers: prajwalbr0304@gmail.com
-        message: >-
-          Smoke passed on Development. Approve promotion of the exact tested
-          immutable AppSail digest + web build to Production.
-  promote_prod:
-    steps:
-      # Promote the SAME tested artifact (immutable digest) to production.
-      - catalyst deploy --only functions,client --production
-      - >-
-        catalyst deploy appsail --name drishti-api
-        --source docker-archive://drishti-api-appsail.tar --port 9000 --production
-      - catalyst deploy slate --production -m "ci: prod promote"
-    artifacts:
-      download:
-        - name: drishti-api-appsail
-          type: tar
-          location: stratus://drishti-cicd/artifacts/appsail
+
+  # --- 7. retain previous deploy for rollback -----------------------------
   rollback_dev:
-    # Runs only if the dev deploy failed — forward-recovery / redeploy last good.
+    # Runs only if the dev deploy failed: the previous deployment is retained, so
+    # roll back to the last good one. (Deliberately-failed-deploy recovery testing
+    # + forward-recovery simulation are deferred.)
     when:
       - not:
           - << status.deploy.deploy_dev >>
     steps:
-      - echo "deploy failed — rolling back Slate/AppSail to the last good deployment"
+      - echo "deploy failed — rolling back AppSail/Slate to the retained last-good deploy"
       - catalyst deploy appsail --name drishti-api --rollback || true
 
 stages:
-  - name: validate
+  - name: validate            # install deps + lint/test
     jobs:
       - - lint
-        - unit_test
-        - validate_mapping
-  - name: scan
-    jobs:
-      - security_scan
-  - name: build
+        - test
+  - name: build               # frontend + API image
     jobs:
       - - build_frontend
-        - build_appsail_image
-  - name: deploy
+        - build_api_image
+  - name: scan                # scan for secrets
+    jobs:
+      - secret_scan
+  - name: deploy_dev          # deploy to Catalyst development (+ retain-for-rollback)
     jobs:
       - deploy_dev
       - rollback_dev
-  - name: release
-    # Only promote from the main branch.
-    when:
-      - equal:
-          - << pipeline.event.branch >>
-          - main
+  - name: smoke               # health/auth/prediction smoke tests
     jobs:
       - smoke_dev
-      - approve_prod
-      - promote_prod

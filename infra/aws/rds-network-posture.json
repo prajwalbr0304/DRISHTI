@@ -1,0 +1,42 @@
+{
+  "_comment": "DRISHTI analytics RDS network posture (Prompt 14 Part F, item 2). RDS is a PRIVATE, read-only analytics adapter behind the AWS model plane — NEVER the operational CRUD path (that is Catalyst Data Store) and NEVER reachable from the browser. This descriptor is the reviewed source of the required network controls; enforce it in the Console/IaC and verify the browser side with infra/aws/check_no_db_url_in_web.py.",
+  "engine": "postgres",
+  "port": 5432,
+  "publicly_accessible": false,
+  "multi_az": "recommended",
+  "network": {
+    "placement": "private subnets only (DB subnet group across 2+ AZs)",
+    "internet_gateway_route": false,
+    "security_group": {
+      "name": "drishti-analytics-rds-sg",
+      "ingress": [
+        {
+          "from_port": 5432, "to_port": 5432, "protocol": "tcp",
+          "source_security_group": "<ADAPTER_SG_ID>",
+          "note": "SG-to-SG only: PostgreSQL 5432 is reachable ONLY from the protected AWS adapter's security group (Lambda/ECS in private subnets)."
+        }
+      ],
+      "forbidden_ingress": [
+        { "cidr": "0.0.0.0/0", "port": 5432, "reason": "F.2: never open PostgreSQL 5432 to the internet." },
+        { "cidr": "0.0.0.0/0", "port": "any", "reason": "no public ingress to the DB at all." }
+      ]
+    },
+    "vpc_endpoints": "adapter reaches SageMaker/Batch/S3 via VPC endpoints; RDS never egresses to the internet."
+  },
+  "encryption": {
+    "at_rest": "aws:kms (storage encrypted)",
+    "in_transit": "TLS required (parameter group rds.force_ssl=1); client db_sslmode=require",
+    "auth": "IAM DB authentication preferred (no static password); role drishti_readonly (NOLOGIN app role assumed read-only)."
+  },
+  "access_rules": {
+    "operational_crud_path": "Catalyst Data Store — RDS is NOT used for operational CRUD.",
+    "database_url_scope": "server-side AppSail env ONLY; in the AppSail deploy descriptor DATABASE_URL is in must_not_set_for_crud and readiness never hard-requires it.",
+    "browser": "React/Slate must NEVER receive a DATABASE_URL, a 5432 endpoint, an RDS host, or any DB credential. Only VITE_* public values ship to the browser.",
+    "adapter_usage": "read-only PostGIS/pgRouting queries, only-where-necessary, via the drishti_readonly role."
+  },
+  "verification": {
+    "browser_leak_check": "python infra/aws/check_no_db_url_in_web.py  (fails CI if a DB URL/5432/RDS host/server secret key appears in the web source or committed env).",
+    "bundle_check": "web/scripts/check-bundle-secrets.mjs  (fails the build if a secret-shaped string reaches dist/).",
+    "app_side": "services/ml/app/config.py keeps database_url server-side (sslmode=require); /health/ready never hard-requires RDS; appsail.deploy.json must_not_set_for_crud=[DATABASE_URL]."
+  }
+}

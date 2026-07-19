@@ -1,0 +1,105 @@
+/* ============================================================================
+   DRISHTI · /login — split-screen art direction.
+   The hero panel has its own always-dark operations-room look (independent of
+   the app theme); the auth panel uses the Calm Authority theme tokens so it
+   adapts to Ops/Desk. All motion is CSS-only and is disabled automatically by
+   the global prefers-reduced-motion rule in index.css.
+   ========================================================================== */
+
+.login-hero {
+  background:
+    radial-gradient(130% 120% at 12% -10%, #16305c 0%, #0c1430 42%, #070b18 100%);
+  color: #e8ecf6;
+  isolation: isolate;
+}
+
+.login-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Drifting aurora blobs — the calm coloured light behind everything. */
+.login-aurora {
+  background:
+    radial-gradient(38% 38% at 22% 24%, rgba(59, 130, 246, 0.38), transparent 70%),
+    radial-gradient(34% 34% at 82% 28%, rgba(18, 185, 129, 0.24), transparent 70%),
+    radial-gradient(46% 46% at 68% 88%, rgba(139, 92, 246, 0.22), transparent 72%);
+  filter: blur(8px);
+  animation: login-drift 20s ease-in-out infinite alternate;
+}
+
+/* Faint operational grid, softly masked to the centre and slowly panning. */
+.login-grid {
+  background-image:
+    linear-gradient(to right, rgba(148, 160, 189, 0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 160, 189, 0.10) 1px, transparent 1px);
+  background-size: 42px 42px;
+  -webkit-mask-image: radial-gradient(85% 85% at 50% 40%, #000 28%, transparent 100%);
+  mask-image: radial-gradient(85% 85% at 50% 40%, #000 28%, transparent 100%);
+  opacity: 0.55;
+  animation: login-grid-pan 44s linear infinite;
+}
+
+/* A slow radar sweep anchored bottom-left — the "scanning" motif. */
+.login-radar {
+  position: absolute;
+  left: -9%;
+  bottom: -14%;
+  width: 44vw;
+  height: 44vw;
+  max-width: 660px;
+  max-height: 660px;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg, rgba(96, 165, 250, 0.34) 0deg, transparent 58deg 360deg);
+  -webkit-mask: radial-gradient(closest-side, #000 62%, transparent 100%);
+  mask: radial-gradient(closest-side, #000 62%, transparent 100%);
+  opacity: 0.5;
+  animation: login-sweep 9s linear infinite;
+}
+
+/* Faint concentric range rings around the radar centre. */
+.login-rings {
+  position: absolute;
+  left: -9%;
+  bottom: -14%;
+  width: 44vw;
+  height: 44vw;
+  max-width: 660px;
+  max-height: 660px;
+  border-radius: 9999px;
+  background:
+    repeating-radial-gradient(circle at center,
+      transparent 0 46px,
+      rgba(148, 160, 189, 0.10) 46px 47px);
+  -webkit-mask: radial-gradient(closest-side, #000 62%, transparent 100%);
+  mask: radial-gradient(closest-side, #000 62%, transparent 100%);
+  opacity: 0.6;
+}
+
+.login-noise {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 3px 3px;
+  opacity: 0.5;
+}
+
+@keyframes login-drift {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(0, -2.5%, 0) scale(1.07); }
+}
+@keyframes login-grid-pan {
+  to { background-position: 42px 42px; }
+}
+@keyframes login-sweep {
+  to { transform: rotate(360deg); }
+}
+
+/* Staggered entrance for the auth-panel content. */
+.login-rise {
+  opacity: 0;
+  animation: login-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}

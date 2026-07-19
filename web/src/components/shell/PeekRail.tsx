@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { PeekContent } from "@/components/peek/PeekContent";
+import { SendToBoard, peekKindToTarget } from "@/components/board/SendToBoard";
 
 /* ============================================================================
    The PEEK RAIL — opens any object reference beside the workspace without
@@ -57,6 +58,12 @@ export function PeekRail() {
           </div>
           {top.sublabel && <div className="truncate text-12 text-content-dim">{top.sublabel}</div>}
         </div>
+        {/* Send to Board — the universal object affordance (cases, people,
+            vehicles, phones, accounts, locations, organisations). */}
+        {(() => {
+          const target = peekKindToTarget(top.kind, top.id, top.label);
+          return target ? <SendToBoard target={target} size="icon-sm" variant="ghost" /> : null;
+        })()}
         <SimpleTooltip label="Close peek">
           <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close peek">
             <X />

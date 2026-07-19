@@ -9,6 +9,12 @@ Checks a deployed DRISHTI AppSail/API base URL:
   4. If ZOHO_APPSAIL_SIGNING_SECRET is set, mint a valid service context and
      POST /internal/ping -> 200 with scope=service (happy path proves the Node
      signing <-> Python verification contract end-to-end).
+  5. GET /predict/health -> 200 (prediction runtime is deployed + responding).
+  6. GET /predict/enablement -> 200 with the enabled model tasks present
+     (the prediction plane's routing/enablement is live). Aggregate metadata
+     only; no GPU call is made (the real TabFM run is the held cloud step).
+
+Health + auth + prediction smoke, per Part I.
 
 Stdlib only (urllib/hmac) so it runs on any runner without extra deps.
 Exit code is non-zero if any assertion fails, failing the pipeline stage.
@@ -92,6 +98,14 @@ def main() -> int:
         check("POST /internal/ping signed == 200 (scope=service)", code == 200, f"got {code} {body[:120]}")
     else:
         print("[SKIP] signed /internal/ping (ZOHO_APPSAIL_SIGNING_SECRET not set)")
+
+    # Prediction plane smoke (aggregate metadata only; no GPU call).
+    code, _ = _get(f"{base}/predict/health")
+    check("GET /predict/health == 200", code == 200, f"got {code}")
+
+    code, body = _get(f"{base}/predict/enablement")
+    ok = code == 200 and "enabled_tasks" in body and "station_workload_band" in body
+    check("GET /predict/enablement == 200 (enabled tasks present)", ok, f"got {code} {body[:120]}")
 
     if failures:
         print(f"\nSMOKE FAILED: {len(failures)} check(s) failed: {failures}")

@@ -1,11 +1,12 @@
-import { NavLink } from "react-router-dom";
-import { PanelLeftClose, PanelLeftOpen, ScanEye } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import { PanelLeftClose, PanelLeftOpen, ScanEye, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/useUIStore";
 import { useRole } from "@/providers/RoleProvider";
-import { visibleDestinations } from "@/config/destinations";
+import { contextForPath, visibleDestinations } from "@/config/destinations";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { WorkspaceSwitcher } from "@/components/shell/WorkspaceSwitcher";
 
 /* ============================================================================
    Left sidebar — the eight destinations, collapsible to an icon rail. Renders
@@ -16,7 +17,10 @@ export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggle = useUIStore((s) => s.toggleSidebar);
   const { role, isAdmin } = useRole();
-  const destinations = visibleDestinations(role, isAdmin);
+  const { pathname } = useLocation();
+  const context = contextForPath(pathname);
+  const destinations = visibleDestinations(role, isAdmin, context);
+  const emergency = context === "emergency";
 
   return (
     <aside
@@ -27,15 +31,23 @@ export function Sidebar() {
     >
       {/* Brand */}
       <div className={cn("flex h-topbar items-center gap-2 border-b border-hairline px-3", collapsed && "justify-center px-0")}>
-        <div className="grid size-8 shrink-0 place-items-center rounded-control bg-primary/15 text-primary">
-          <ScanEye className="size-5" />
+        <div className={cn("grid size-8 shrink-0 place-items-center rounded-control",
+                           emergency ? "bg-severity-high/20 text-severity-high" : "bg-primary/15 text-primary")}>
+          {emergency ? <ShieldAlert className="size-5" /> : <ScanEye className="size-5" />}
         </div>
         {!collapsed && (
           <div className="min-w-0 leading-tight">
             <div className="truncate text-14 font-semibold tracking-wide text-content">DRISHTI</div>
-            <div className="truncate text-12 text-content-dim">Crime Intelligence</div>
+            <div className="truncate text-12 text-content-dim">
+              {emergency ? "Emergency Response" : "Crime Intelligence"}
+            </div>
           </div>
         )}
+      </div>
+
+      {/* Workspace context switcher */}
+      <div className={cn("border-b border-hairline p-2", collapsed && "flex justify-center")}>
+        <WorkspaceSwitcher collapsed={collapsed} />
       </div>
 
       {/* Nav */}

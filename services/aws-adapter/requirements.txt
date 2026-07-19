@@ -1,0 +1,8 @@
+# Protected AWS adapter (Prompt 14 Part F). Runs inside the AWS VPC behind the
+# AWS API Gateway. Deliberately tiny: it authenticates + routes, it does NOT run
+# models (no torch/CUDA — that is services/gpu-worker/). Credentials come from the
+# Lambda/ECS execution role, never static keys.
+boto3>=1.34,<2.0
+# Only needed for the ECS/Fargate (Flask) deployment; the Lambda entrypoint uses
+# no web framework.
+flask>=3.0,<4.0

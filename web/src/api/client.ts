@@ -34,6 +34,7 @@ export interface ApiClientConfig {
 type RoleGetter = () => UserRole;
 type ActorGetter = () => string;
 type TokenGetter = () => Promise<string | undefined> | string | undefined;
+type DistrictGetter = () => number | null | undefined;
 
 export type QueryValue = string | number | boolean | undefined | null;
 export type QueryParams = Record<string, QueryValue | (string | number)[]>;
@@ -54,6 +55,9 @@ export class ApiClient {
   // Cross-domain auth token from the auth layer (Catalyst generateAuthToken).
   // Undefined in dev/offline; then the session is cookie-based (credentials).
   private tokenGetter: TokenGetter = () => undefined;
+  // Prompt 17 — the disaster coordinator's assigned district (server-side scope
+  // for Emergency Response writes). Display/scoping only, never authentication.
+  private districtGetter: DistrictGetter = () => null;
 
   constructor(config?: Partial<ApiClientConfig>) {
     this.baseUrl = config?.baseUrl ?? DEFAULT_BASE;
@@ -80,6 +84,12 @@ export class ApiClient {
     this.tokenGetter = getter;
   }
 
+  /** Emergency Response wires this so the coordinator's assigned district scopes
+      server-side actions (X-Disaster-District). Scoping/display only. */
+  setDistrictGetter(getter: DistrictGetter) {
+    this.districtGetter = getter;
+  }
+
   private buildUrl(path: string, params?: QueryParams) {
     const url = new URL(path.replace(/^\//, ""), ensureTrailingSlash(this.baseUrl));
     if (params) {
@@ -99,9 +109,11 @@ export class ApiClient {
       params?: QueryParams;
       body?: unknown;
       signal?: AbortSignal;
+      /** Optional per-request headers (e.g. X-Idempotency-Key, If-Match). */
+      headers?: Record<string, string>;
     } = {},
   ): Promise<T> {
-    const { method = "GET", params, body, signal } = opts;
+    const { method = "GET", params, body, signal, headers: extraHeaders } = opts;
     const token = await this.tokenGetter();
     let res: Response;
     try {
@@ -120,9 +132,16 @@ export class ApiClient {
           "X-Demo-Actor": this.actorGetter(),
           // Correlation id echoed back by the API and recorded in the audit trail.
           "X-Request-ID": makeRequestId(),
+          // Emergency Response scope (assigned district). Omitted when null.
+          ...(this.districtGetter() != null
+            ? { "X-Disaster-District": String(this.districtGetter()) }
+            : {}),
           // Catalyst cross-domain token is a RAW Authorization value (no
           // "Bearer " prefix). Absent in dev/offline (cookie-based session).
           ...(token ? { Authorization: token } : {}),
+          // Per-request headers (idempotency key / If-Match version) — never
+          // identity/auth headers, which the gateway controls.
+          ...(extraHeaders ?? {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });

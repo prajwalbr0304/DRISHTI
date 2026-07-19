@@ -1,0 +1,12 @@
+{
+  "deployment": {
+    "name": "channel_token",
+    "stack": "node20",
+    "type": "advancedio",
+    "memory": 256,
+    "env_variables": {}
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}

@@ -8,6 +8,7 @@ export type UserRole =
   | "analyst"
   | "supervisor"
   | "policymaker"
+  | "disaster_coordinator"
   | "super_admin";
 
 export interface RoleDef {
@@ -54,6 +55,14 @@ export const ROLES: Record<UserRole, RoleDef> = {
     blurb: "Strategic trends and socio-economic signals.",
     scope: "State · aggregated",
     home: "/analytics",
+    admin: false,
+  },
+  disaster_coordinator: {
+    id: "disaster_coordinator",
+    label: "Disaster Coordinator",
+    blurb: "Emergency Response: hazards, readiness, allocation and evacuation.",
+    scope: "Assigned district · Emergency Response",
+    home: "/er",
     admin: false,
   },
   super_admin: {

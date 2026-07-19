@@ -117,6 +117,16 @@ class Settings(BaseSettings):
     # existence only. Keeps hash verification bounded and safe.
     evidence_hash_verify_max_bytes: int = 52_428_800
 
+    # --- Phase 17: live hazard feed (read-only) ------------------------------
+    # Open-Meteo is a documented, free, NO-API-KEY weather API (CC BY 4.0,
+    # non-commercial) covering Karnataka — used as the read-only LIVE rainfall/
+    # temperature/wind/humidity connector. Attribution: "Weather data by
+    # Open-Meteo.com (CC BY 4.0)". Official gauge networks (IMD/KSNDMC/CWC) remain
+    # registration-gated (recorded-sample connector). No credential is stored.
+    live_feed_enabled: bool = True            # ops kill-switch for outbound calls
+    openmeteo_url: str = "https://api.open-meteo.com/v1/forecast"
+    live_feed_timeout_s: float = 12.0
+
     model_config = SettingsConfigDict(
         env_file=(str(_REPO_ROOT / ".env"), ".env"),
         env_file_encoding="utf-8",

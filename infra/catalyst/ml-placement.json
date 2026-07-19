@@ -1,0 +1,153 @@
+{
+  "_comment": "ML/RAG model-placement + regional-availability (Prompt 14 Part G items 1-2). GENERATED from services/ml/app/predict/placement.py — edit that module, not this file. validate_placements() guards parity + the placement rules and cross-checks capability-gaps.json.",
+  "version": "2026.07.18-1",
+  "placements": [
+    {
+      "engine": "quickml-rag",
+      "capability": "Text-LLM / RAG / knowledge base over approved SOP/policy",
+      "placement": "catalyst-quickml",
+      "availability": "available",
+      "reason": "QuickML is the preferred RAG runtime in the India DC; the KB is built only from approved SOP/policy text (no case narratives/evidence bytes).",
+      "runtime": "Catalyst QuickML RAG endpoint (app/quickml.py), disabled until DRISHTI_QUICKML_RAG_ENABLED=true",
+      "tasks": [
+        "sop_policy_rag"
+      ],
+      "backend": "",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "optional"
+    },
+    {
+      "engine": "quickml-nocode-baseline",
+      "capability": "No-code ML baseline (eligible aggregate comparator)",
+      "placement": "catalyst-quickml",
+      "availability": "available",
+      "reason": "An eligible no-code tabular baseline runs on QuickML as the Catalyst-native comparator against the custom AWS model (G item 4).",
+      "runtime": "Catalyst QuickML no-code pipeline (infra/catalyst/quickml/nocode-experiment.json)",
+      "tasks": [
+        "area_workload_band_baseline"
+      ],
+      "backend": "",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "optional"
+    },
+    {
+      "engine": "zia-automl",
+      "capability": "Automated tabular training (no-code AutoML)",
+      "placement": "unavailable-in-region",
+      "availability": "unavailable-in-region",
+      "reason": "Zia AutoML is not exposed in this India-DC project; used only if actually available (it is not), so its unavailability is recorded.",
+      "runtime": "n/a (not offered in the IN DC)",
+      "tasks": [],
+      "backend": "",
+      "evidence": "Catalyst Zia AutoML SDK docs list it unavailable in EU/AU/IN/JP/SA/CA (verified 2026-07-18): https://docs.catalyst.zoho.com/en/sdk/python/v1/zia-services/automl",
+      "fallback": "QuickML no-code baseline + the justified AWS TabFM path.",
+      "enablement": "deferred"
+    },
+    {
+      "engine": "google-tabfm-v1",
+      "capability": "TabFM tabular foundation-model in-context inference",
+      "placement": "aws-gpu",
+      "availability": "available",
+      "reason": "Catalyst exposes no custom GPU runtime; QuickML/Zia AutoML do not provide TabFM. GPU in-context inference is the genuine capability gap.",
+      "runtime": "SageMaker async / AWS Batch (GPU); private ECR image (services/gpu-worker) + temporary encrypted S3 staging",
+      "tasks": [
+        "station_workload_band",
+        "area_incident_forecast_tabfm"
+      ],
+      "backend": "tabfm",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "enabled"
+    },
+    {
+      "engine": "timesfm-2",
+      "capability": "TimesFM time-series foundation-model forecasting",
+      "placement": "aws-gpu",
+      "availability": "available",
+      "reason": "No Catalyst service runs a pretrained time-series foundation model on GPU; the CPU statistical baseline is a comparator, not a replacement.",
+      "runtime": "AWS Batch (preferred, scale-to-zero) / SageMaker async (GPU); private ECR + temporary S3 staging",
+      "tasks": [
+        "timesfm_count_forecast"
+      ],
+      "backend": "timesfm",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "enabled"
+    },
+    {
+      "engine": "st-gnn",
+      "capability": "Spatio-temporal graph neural network area forecast",
+      "placement": "aws-gpu",
+      "availability": "available",
+      "reason": "A torch-geometric ST-GNN needs a GPU + heavy graph stack Catalyst does not provide.",
+      "runtime": "AWS Batch / SageMaker async (GPU, torch-geometric); private ECR",
+      "tasks": [
+        "stgnn_area_forecast"
+      ],
+      "backend": "stgnn",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "deferred"
+    },
+    {
+      "engine": "hawkes-near-repeat",
+      "capability": "Near-repeat (Hawkes/ETAS) short-horizon intensity",
+      "placement": "catalyst-cpu",
+      "availability": "available",
+      "reason": "A light CPU point-process; no GPU needed, so it stays on Catalyst AppSail (never an AWS GPU) and can run near-real-time.",
+      "runtime": "AppSail CPU job",
+      "tasks": [
+        "near_repeat_intensity"
+      ],
+      "backend": "hawkes",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "enabled"
+    },
+    {
+      "engine": "kde-stdbscan-hotspots",
+      "capability": "KDE / ST-DBSCAN hotspot clusters",
+      "placement": "catalyst-cpu",
+      "availability": "available",
+      "reason": "Deterministic CPU spatial analytics; stays on Catalyst.",
+      "runtime": "AppSail CPU / scheduled job",
+      "tasks": [
+        "hotspot_clusters"
+      ],
+      "backend": "kde",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "deferred"
+    },
+    {
+      "engine": "forecast-fusion",
+      "capability": "Forecast fusion (combination/validation of layers)",
+      "placement": "catalyst-cpu",
+      "availability": "available",
+      "reason": "Fusion is a CPU validation/combination step over compatible layer outputs, not another GPU model call.",
+      "runtime": "AppSail CPU step",
+      "tasks": [
+        "forecast_fusion"
+      ],
+      "backend": "baseline",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "deferred"
+    },
+    {
+      "engine": "statistical-gbm-baselines",
+      "capability": "Statistical / gradient-boosted baselines (eligible comparators)",
+      "placement": "catalyst-cpu",
+      "availability": "available",
+      "reason": "Prior-period / seasonal / XGBoost / HistGradientBoosting baselines run on CPU on the same split as the candidate (G item 4).",
+      "runtime": "AppSail CPU",
+      "tasks": [],
+      "backend": "baseline",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "enabled"
+    }
+  ]
+}

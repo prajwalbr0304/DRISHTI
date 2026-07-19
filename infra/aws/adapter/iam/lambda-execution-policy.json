@@ -1,0 +1,74 @@
+{
+  "_comment": "Least-privilege execution policy for the DRISHTI protected AWS adapter (Prompt 14 Part F item 5). Every statement is scoped to specific DRISHTI resource ARNs. Fill <ACCOUNT_ID>/<REGION>/<STAGING_BUCKET>/<KMS_KEY_ID>/<RDS_RESOURCE_ID> at provision time. The ONLY Resource:'*' entries are read-only AWS actions that do not support resource-level scoping (batch:DescribeJobs); VPC ENI management is delegated to the AWS-managed AWSLambdaVPCAccessExecutionRole, not inlined here. No sagemaker:CreateEndpoint / no s3:*/ no iam:* — the adapter can only INVOKE approved model backends and read/write its own staging prefix.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeApprovedSageMakerEndpoints",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:InvokeEndpoint",
+        "sagemaker:InvokeEndpointAsync"
+      ],
+      "Resource": "arn:aws:sagemaker:<REGION>:<ACCOUNT_ID>:endpoint/drishti-*"
+    },
+    {
+      "Sid": "CreateAndReadApprovedTransformJobs",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:CreateTransformJob",
+        "sagemaker:DescribeTransformJob"
+      ],
+      "Resource": "arn:aws:sagemaker:<REGION>:<ACCOUNT_ID>:transform-job/drishti-*"
+    },
+    {
+      "Sid": "SubmitApprovedBatchJobs",
+      "Effect": "Allow",
+      "Action": [ "batch:SubmitJob" ],
+      "Resource": [
+        "arn:aws:batch:<REGION>:<ACCOUNT_ID>:job-queue/drishti-model-queue",
+        "arn:aws:batch:<REGION>:<ACCOUNT_ID>:job-definition/drishti-model-jobdef:*"
+      ]
+    },
+    {
+      "Sid": "DescribeBatchJobsReadOnly",
+      "Effect": "Allow",
+      "Action": [ "batch:DescribeJobs" ],
+      "Resource": "*",
+      "_note": "batch:DescribeJobs does not support resource-level permissions; it is read-only and returns only job metadata."
+    },
+    {
+      "Sid": "AdapterStagingObjectsOnly",
+      "Effect": "Allow",
+      "Action": [ "s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload" ],
+      "Resource": "arn:aws:s3:::<STAGING_BUCKET>/adapter/*"
+    },
+    {
+      "Sid": "StagingKmsUse",
+      "Effect": "Allow",
+      "Action": [ "kms:Decrypt", "kms:GenerateDataKey" ],
+      "Resource": "arn:aws:kms:<REGION>:<ACCOUNT_ID>:key/<KMS_KEY_ID>",
+      "Condition": {
+        "StringEquals": { "kms:ViaService": "s3.<REGION>.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "ReadAdapterHmacSecretOnly",
+      "Effect": "Allow",
+      "Action": [ "secretsmanager:GetSecretValue" ],
+      "Resource": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:drishti/adapter/hmac-*"
+    },
+    {
+      "Sid": "OwnLogsOnly",
+      "Effect": "Allow",
+      "Action": [ "logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents" ],
+      "Resource": "arn:aws:logs:<REGION>:<ACCOUNT_ID>:log-group:/aws/lambda/drishti-aws-adapter:*"
+    },
+    {
+      "Sid": "OptionalReadOnlyAnalyticsRdsIamAuth",
+      "Effect": "Allow",
+      "Action": [ "rds-db:connect" ],
+      "Resource": "arn:aws:rds-db:<REGION>:<ACCOUNT_ID>:dbuser:<RDS_RESOURCE_ID>/drishti_readonly",
+      "_note": "OPTIONAL — attach ONLY when a task genuinely needs PostGIS/pgRouting. Read-only role via IAM DB auth (no password). Remove this statement if the deployed tasks never touch analytics RDS."
+    }
+  ]
+}

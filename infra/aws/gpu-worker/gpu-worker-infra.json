@@ -1,0 +1,67 @@
+{
+  "_comment": "DRISHTI GPU worker — AWS deploy descriptor (Prompt 14 Part I + G.3). The GPU worker is deployed SEPARATELY from the Catalyst pipeline (which never rebuilds GPU images), with AWS CLI/SageMaker scripts, and is referenced by IMMUTABLE image + model versions. Single mechanism (G.3): ONE SageMaker asynchronous-inference endpoint. Enabled models (G.2): TabFM (workload) + TimesFM; ST-GNN is deferred. KEYS + non-secret config only; no secret values, no static credentials. Placeholders <ACCOUNT_ID>/<REGION>/... are filled at deploy time. Region default ap-south-1 (matches the retained AWS corpus / IN DC).",
+  "name": "drishti-gpu-worker",
+  "region": "ap-south-1",
+  "mechanism": "sagemaker_async",
+  "_mechanism_note": "G.3 keeps exactly one AWS GPU execution mechanism: SageMaker asynchronous inference (scales to zero when idle; torn down after the demo). AWS Batch / Batch Transform / real-time endpoints are deferred.",
+
+  "ecr": {
+    "repository": "drishti-gpu-worker",
+    "image_tag_mutability": "IMMUTABLE",
+    "scan_on_push": true,
+    "encryption": "KMS",
+    "dockerfile": "services/gpu-worker/Dockerfile",
+    "build": "docker buildx build --platform linux/amd64 -f services/gpu-worker/Dockerfile -t drishti-gpu-worker:<VER> --load services/gpu-worker",
+    "reference_by": "digest",
+    "image_uri": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/drishti-gpu-worker@sha256:<IMAGE_DIGEST>",
+    "_immutable_note": "The endpoint references the image by @sha256 digest, never a mutable tag, so a redeploy cannot silently change the running code."
+  },
+
+  "model_artifacts": {
+    "s3_bucket": "drishti-model-artifacts-<ACCOUNT_ID>",
+    "encryption": "aws:kms",
+    "block_public_access": true,
+    "versioning": true,
+    "objects": [
+      { "model": "tabfm", "version": "google-tabfm-v1", "key": "tabfm/google-tabfm-v1/model.tar.gz", "enabled": true },
+      { "model": "timesfm", "version": "timesfm-2", "key": "timesfm/timesfm-2/model.tar.gz", "enabled": true },
+      { "model": "stgnn", "version": "st-gnn", "key": "stgnn/st-gnn/model.tar.gz", "enabled": false, "note": "deferred (G.2)" }
+    ],
+    "_immutable_note": "Model artifacts are versioned S3 objects referenced by exact key+version; a new model is a NEW version, never an in-place overwrite."
+  },
+
+  "sagemaker": {
+    "execution_role": "arn:aws:iam::<ACCOUNT_ID>:role/drishti-sagemaker-exec",
+    "_role_note": "IAM execution role assumed by SageMaker; NO static credentials anywhere. Grants: ecr:GetDownloadUrlForLayer/BatchGetImage on this repo, s3:GetObject on the model prefix, kms:Decrypt on the model CMK, s3:GetObject/PutObject on the async I/O prefix, logs:PutLogEvents. No '*' resources.",
+    "model_name": "drishti-gpu-worker",
+    "endpoint_name": "drishti-gpu-async",
+    "async_inference": {
+      "s3_output_path": "s3://drishti-model-artifacts-<ACCOUNT_ID>/async-io/output/",
+      "s3_failure_path": "s3://drishti-model-artifacts-<ACCOUNT_ID>/async-io/failure/",
+      "kms_key_id": "<MODEL_CMK_ARN>",
+      "max_concurrent_invocations_per_instance": 2
+    },
+    "production_variant": {
+      "instance_type": "ml.g5.xlarge",
+      "initial_instance_count": 1,
+      "_gpu_note": "GPU instance (A10G). Never SageMaker Serverless (no GPU)."
+    },
+    "autoscaling": {
+      "min_capacity": 0,
+      "max_capacity": 2,
+      "scale_to_zero": true,
+      "target": "ApproximateBacklogSizePerInstance",
+      "_scale_note": "Async endpoints scale IN to zero when idle, so GPU cost is only incurred during a run."
+    }
+  },
+
+  "adapter_env_to_set": {
+    "DRISHTI_SM_ASYNC_ENDPOINT": "drishti-gpu-async",
+    "_note": "Set on the Part F adapter (Lambda/ECS) so it dispatches to this one endpoint. The AppSail app never talks to SageMaker directly."
+  },
+
+  "shutdown_after_testing": {
+    "delete_endpoint": "aws sagemaker delete-endpoint --endpoint-name drishti-gpu-async",
+    "note": "Async + scale-to-zero already idles GPU cost to ~0, but DELETE the endpoint after the demo to stop all standing charges (J cost safety). The image + model artifacts remain in ECR/S3 for a later redeploy by the same immutable digest/version."
+  }
+}

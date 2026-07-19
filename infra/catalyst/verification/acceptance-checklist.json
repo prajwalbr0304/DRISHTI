@@ -1,0 +1,103 @@
+{
+  "_comment": "DRISHTI Part K — REDUCED demo acceptance (Prompt 14). This is the single authoritative list of what the demo must prove; it is deliberately small. NoSQL, Cache, Mail, Push, SmartBrowz, QuickML and Circuits are NOT in the minimum set — they are tested only when that feature is actually enabled (see test_only_when_enabled). Each required check maps to how it is proven + its current status. acceptance_check.py reads this file and runs the checks that are runnable, reporting PASS/HELD/MANUAL/FAIL. Status legend: verified_offline = provable now without a deploy; held_on_deploy = needs the live Catalyst deployment; held_on_gpu = needs the AWS SageMaker GPU plane; ops_action = a cleanup action performed after testing.",
+  "version": "2026.07.18-1",
+  "required": [
+    {
+      "id": "K1",
+      "proves": "Frontend is deployed through Catalyst.",
+      "how": "GET the Slate / Web Client Hosting URL -> 200 and it serves the SPA shell.",
+      "evidence": "web/dist + infra/catalyst/client/slate-config.toml; pipeline deploy_dev.",
+      "status": "held_on_deploy",
+      "runner": "http_web"
+    },
+    {
+      "id": "K2",
+      "proves": "Authentication and API Gateway work.",
+      "how": "An unsigned protected call is rejected (401) and a correctly signed/authenticated call succeeds (200). API Gateway -> Function -> signed context -> AppSail.",
+      "evidence": "app/gateway_context.py; pipelines/smoke_test.py (unsigned=401, signed=200).",
+      "status": "held_on_deploy",
+      "runner": "http_auth"
+    },
+    {
+      "id": "K3",
+      "proves": "AppSail backend works.",
+      "how": "GET /health/live and /health/ready -> 200.",
+      "evidence": "services/ml/app/main.py health endpoints; appsail.deploy.json.",
+      "status": "held_on_deploy",
+      "runner": "http_health"
+    },
+    {
+      "id": "K4",
+      "proves": "Data Store serves operational data.",
+      "how": "An authenticated API read returns rows sourced from Catalyst Data Store.",
+      "evidence": "ds-import/ (106 configs + importer); app/datastore/repository.py.",
+      "status": "held_on_deploy",
+      "runner": "http_read"
+    },
+    {
+      "id": "K5",
+      "proves": "Stratus stores one evidence file.",
+      "how": "Upload ONE evidence file -> object in a private Stratus bucket + hash/size/type metadata in Data Store -> retrievable via a short-lived signed URL.",
+      "evidence": "infra/catalyst/stratus/; workflow §4 (evidence ingestion, no OCR).",
+      "status": "held_on_deploy",
+      "runner": "manual"
+    },
+    {
+      "id": "K6",
+      "proves": "An approved FIR reaches TabFM on AWS GPU.",
+      "how": "Submit an approved-FIR prediction job -> poll -> a completed result with actual_backend=tabfm and actual_device=cuda (fail-closed otherwise).",
+      "evidence": "tests/test_predict_runtime.py::test_real_tabfm_cuda_prediction_succeeds (skipif no GPU); app/predict/{runtime,validation}.py; services/gpu-worker/.",
+      "status": "held_on_gpu",
+      "runner": "tabfm_live"
+    },
+    {
+      "id": "K7",
+      "proves": "Prediction returns to Catalyst and appears in the UI.",
+      "how": "The validated PredictionResult is persisted in Data Store and is visible via an API read / the UI (data-minimized notice via Gateway polling or the scoped SSE channel).",
+      "evidence": "app/predict/{runtime,lineage}.py (result -> Data Store, AWS not authoritative); app/stream/.",
+      "status": "held_on_deploy",
+      "runner": "http_read"
+    },
+    {
+      "id": "K8",
+      "proves": "Drafts and evidence files do not invoke the model.",
+      "how": "Routing for a FIR draft and an evidence upload returns invokes_model=false; the runtime refuses to submit.",
+      "evidence": "tests/test_predict_runtime.py::test_fir_draft_produces_no_prediction + ::test_evidence_upload_does_not_invoke_model (PASS offline); app/predict/routing.py.",
+      "status": "verified_offline",
+      "runner": "http_routing"
+    },
+    {
+      "id": "K9",
+      "proves": "One Signal and one scheduled job work.",
+      "how": "The minimal event plane declares exactly ONE active Signal (prediction-requested) and ONE active cron (drishti-forecast-daily); when enabled, an approved PredictionRequest fires prediction_event and the daily cron dispatches a forecast.",
+      "evidence": "infra/catalyst/jobs/signals-rules.json + cron-schedules.json (tier=minimal).",
+      "status": "verified_offline",
+      "runner": "config_minimal_events"
+    },
+    {
+      "id": "K10",
+      "proves": "No secrets exist in the browser.",
+      "how": "No DATABASE_URL / RDS host / :5432 / AWS key / PEM / server-only key in the web env or bundle.",
+      "evidence": "infra/aws/check_no_db_url_in_web.py (source) + web/scripts/check-bundle-secrets.mjs (dist).",
+      "status": "verified_offline",
+      "runner": "no_browser_secrets"
+    },
+    {
+      "id": "K11",
+      "proves": "AWS GPU resources are stopped.",
+      "how": "After testing, the SageMaker async endpoint is deleted so there is no standing GPU cost.",
+      "evidence": "infra/aws/gpu-worker/deploy_gpu_worker.py --teardown; billing/budget.json cleanup.",
+      "status": "ops_action",
+      "runner": "gpu_stopped"
+    }
+  ],
+  "test_only_when_enabled": [
+    { "feature": "NoSQL", "when": "board/presence feature enabled (Prompt 16)", "note": "saved layouts/prefs/presence only; not a duplicate of relational records." },
+    { "feature": "Cache", "when": "bounded-TTL lookups/idempotency/rate-limit in use", "note": "never system of record." },
+    { "feature": "Mail", "when": "DRISHTI_NOTIFY_ENABLED (Prompt 15)", "note": "notification delivery belongs to Prompt 15." },
+    { "feature": "Push", "when": "DRISHTI_NOTIFY_ENABLED (Prompt 15)", "note": "notification delivery belongs to Prompt 15." },
+    { "feature": "SmartBrowz", "when": "DRISHTI_REPORT_DELIVERY_ENABLED (report generation)", "note": "PDF rendering tested with reports." },
+    { "feature": "QuickML RAG", "when": "DRISHTI_QUICKML_RAG_ENABLED", "note": "RAG/no-code baseline tested only when demonstrated (G.2)." },
+    { "feature": "Circuits", "when": "if it becomes available in the IN DC", "note": "unavailable in IN DC; idempotent Functions + Jobs are used instead." }
+  ]
+}

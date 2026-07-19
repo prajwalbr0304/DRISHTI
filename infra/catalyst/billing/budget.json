@@ -1,6 +1,16 @@
 {
-  "_comment": "DRISHTI Catalyst billing Budget/Report descriptor (Phase 14 Part B credit monitoring). Catalyst exposes NO CLI billing/usage command and the CLI login carries no billing scope (verified Part A, report §9), so budget alerts + usage reports are configured in Console -> Billing/Budget. This file is the reviewed source of the thresholds an operator applies there. No monetary values are secret; amounts are the hackathon plan baseline.",
+  "_comment": "DRISHTI cost-safety descriptor (Phase 14 Part B + Part J scoping). Catalyst exposes NO CLI billing/usage command and the CLI login carries no billing scope (verified Part A, report §9), so Catalyst budget alerts + usage reports are configured in Console -> Billing/Budget; AWS cost safety uses AWS Budgets + CloudWatch. This file is the reviewed source an operator applies. No monetary values are secret; amounts are the hackathon plan baseline. Part J keeps a SMALL, robust set of cost controls; the exact 50/75/90% Catalyst alert automation is OPTIONAL (only if the Console makes it straightforward).",
   "monitoring": "console-only (no CLI/API on this login)",
+
+  "kept_cost_safety_J": [
+    "Confirm the Catalyst credit balance before + after enabling any paid capability (Console -> Billing).",
+    "Avoid duplicate AppSail apps / services / jobs (one drishti-api AppSail; one prediction.requested Signal; one forecast cron).",
+    "Conservative resource sizing (AppSail 1-2 instances; SageMaker async scale-to-zero; dev Data Store imports capped).",
+    "An AWS budget alarm (AWS Budgets + CloudWatch) for the AWS side.",
+    "Stop GPU resources after testing (delete the SageMaker async endpoint).",
+    "Cleanup instructions kept current (see 'cleanup')."
+  ],
+
   "plan_baseline": {
     "period": "2026-07-17 to 2026-08-17",
     "free_credit_inr": 300,
@@ -8,16 +18,52 @@
     "envelope_inr": 1800,
     "source": "console screenshot (Part A, report §9)"
   },
-  "budget_alerts_inr": [
-    {"threshold_pct": 50, "amount_inr": 900, "action": "email owner; review usage report"},
-    {"threshold_pct": 75, "amount_inr": 1350, "action": "email owner; pause non-essential enable flags (DRISHTI_*_ENABLED)"},
-    {"threshold_pct": 90, "amount_inr": 1620, "action": "email owner; stop temporary AWS GPU/Batch; freeze new deploys"}
+
+  "avoid_duplicates": {
+    "appsail_apps": ["drishti-api"],
+    "signals_rules_active": ["prediction-requested"],
+    "crons_active": ["drishti-forecast-daily"],
+    "sagemaker_endpoints": ["drishti-gpu-async"],
+    "note": "Before creating anything, check it does not already exist. Exactly one of each above; everything else stays OFF (DRISHTI_*_ENABLED)."
+  },
+
+  "conservative_sizing": [
+    "AppSail instances capped 1-2 (appsail/appsail.deploy.json).",
+    "SageMaker: ONE async endpoint, scale-to-zero (min_capacity=0) — GPU cost only during a run.",
+    "All event/cron/RAG/notify scaffolds default OFF (DRISHTI_*_ENABLED).",
+    "Development Data Store imports capped at 5000 rows/table."
   ],
-  "cost_controls": [
-    "AppSail instances capped 1-2 (appsail/appsail.deploy.json)",
-    "all event/cron/RAG/notify scaffolds default OFF (DRISHTI_*_ENABLED)",
-    "cron_reconcile stops temporary AWS GPU/Batch + emits budget/health evidence (workflow §17)",
-    "development Data Store imports capped at 5000 rows/table"
+
+  "aws_cost_safety": {
+    "budget_alarm": {
+      "service": "AWS Budgets + CloudWatch",
+      "monthly_budget_usd": 25,
+      "alerts_pct": [80, 100],
+      "action": "email owner; the SageMaker endpoint is the only standing GPU cost — delete it (see cleanup).",
+      "note": "AWS Budgets IS straightforward, so the AWS alarm is kept."
+    },
+    "no_static_credentials": "SageMaker + the adapter use IAM roles; no access keys are stored.",
+    "stop_gpu_after_testing": "python infra/aws/gpu-worker/deploy_gpu_worker.py --teardown  (then aws sagemaker delete-endpoint --endpoint-name drishti-gpu-async)"
+  },
+
+  "catalyst_budget_alerts_inr": {
+    "_optional_note": "OPTIONAL (Part J): the exact 50/75/90% Catalyst alert automation is applied in Console -> Budget only if it is straightforward; otherwise rely on confirming the credit balance manually + the AWS alarm. These thresholds are the intended values if enabled.",
+    "optional": true,
+    "thresholds": [
+      {"threshold_pct": 50, "amount_inr": 900, "action": "email owner; review usage report"},
+      {"threshold_pct": 75, "amount_inr": 1350, "action": "email owner; pause non-essential enable flags (DRISHTI_*_ENABLED)"},
+      {"threshold_pct": 90, "amount_inr": 1620, "action": "email owner; stop temporary AWS GPU; freeze new deploys"}
+    ]
+  },
+
+  "cleanup": [
+    "Stop GPU: python infra/aws/gpu-worker/deploy_gpu_worker.py --teardown ; aws sagemaker delete-endpoint --endpoint-name drishti-gpu-async (+ delete-endpoint-config).",
+    "Turn OFF every DRISHTI_*_ENABLED flag on AppSail so no Signal/cron/RAG fires.",
+    "Confirm no duplicate AppSail apps / Signals rules / crons were left active (see avoid_duplicates).",
+    "AWS: leave the ECR image + versioned S3 model artifacts (cheap, immutable) for a later redeploy; delete only if fully done.",
+    "Confirm the Catalyst credit balance in Console -> Billing after the demo.",
+    "Temporary S3 async I/O objects expire via lifecycle; verify the async output/failure prefixes are empty."
   ],
-  "review_cadence": "cron_reconcile nightly attaches a budget/health evidence line; operator reviews the Console usage report weekly."
+
+  "review_cadence": "Confirm the credit balance before/after enabling paid capabilities; the optional cron_reconcile can attach a nightly budget/health evidence line if enabled."
 }

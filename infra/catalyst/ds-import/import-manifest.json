@@ -1,5 +1,5 @@
 {
-  "mapping_version": "2026.07.18-1",
+  "mapping_version": "2026.07.19-1",
   "dev_row_cap": 5000,
   "generated_from": "services/ml/app/datastore/mapping.py",
   "import_mechanism": "catalyst ds:import (operation=upsert, find_by=ExternalID); offline alternative: import_serving_subset.py (SDK bulk_upsert)",
@@ -10,7 +10,8 @@
     "operational": 93,
     "ui_projection": 13,
     "analytics_only": 9,
-    "not_imported": 7
+    "not_imported": 7,
+    "datastore_native": 6
   },
   "tables": [
     {
@@ -30,7 +31,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "District",
@@ -49,7 +50,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "UnitType",
@@ -66,7 +67,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Unit",
@@ -85,7 +86,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "UnitLocation",
@@ -102,7 +103,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "JurisdictionBoundary",
@@ -119,7 +120,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "JurisdictionReassignment",
@@ -136,7 +137,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "SpatialRepairRun",
@@ -153,7 +154,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Rank",
@@ -170,7 +171,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Designation",
@@ -187,7 +188,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Employee",
@@ -206,7 +207,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseMaster",
@@ -227,7 +228,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseVersion",
@@ -244,7 +245,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseEvent",
@@ -261,7 +262,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseSource",
@@ -278,7 +279,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseCategory",
@@ -297,7 +298,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseCategoryWorkflow",
@@ -314,7 +315,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseStatusMaster",
@@ -331,7 +332,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CaseDisposition",
@@ -348,7 +349,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ChargesheetDetails",
@@ -365,7 +366,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ArrestSurrender",
@@ -382,7 +383,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "AlertHistory",
@@ -399,7 +400,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CanonicalPerson",
@@ -419,7 +420,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CanonicalOrganisation",
@@ -438,7 +439,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CanonicalEntity",
@@ -455,7 +456,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CasePartyRole",
@@ -472,7 +473,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PersonAlias",
@@ -491,7 +492,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PersonIdentifier",
@@ -510,7 +511,7 @@
       ],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PersonContact",
@@ -527,7 +528,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PersonAddress",
@@ -544,7 +545,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EntityResolutionCandidate",
@@ -561,7 +562,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EntityMergeHistory",
@@ -578,7 +579,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "GangMembership",
@@ -595,7 +596,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EvidenceItem",
@@ -616,7 +617,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EvidenceObject",
@@ -633,7 +634,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EvidenceVersion",
@@ -650,7 +651,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EvidenceCaseLink",
@@ -667,7 +668,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EvidenceEntityLink",
@@ -684,7 +685,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EvidenceActivityEvent",
@@ -701,7 +702,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Statement",
@@ -722,7 +723,7 @@
       ],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "StatementVersion",
@@ -739,7 +740,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Seizure",
@@ -756,7 +757,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PropertyItem",
@@ -775,7 +776,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "LabResult",
@@ -792,7 +793,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Device",
@@ -809,7 +810,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "DeviceArtifact",
@@ -826,7 +827,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CommunicationEvent",
@@ -843,7 +844,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "LocationObservation",
@@ -860,7 +861,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "DigitalImportBatch",
@@ -877,7 +878,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "FinancialAccount",
@@ -896,7 +897,7 @@
       ],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "FinancialTransaction",
@@ -913,7 +914,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "TransactionLink",
@@ -930,7 +931,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CourtEvent",
@@ -947,7 +948,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "BailEvent",
@@ -964,7 +965,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "OutcomeObservation",
@@ -981,7 +982,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "SourceSystem",
@@ -998,7 +999,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "SourceRecord",
@@ -1015,7 +1016,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "IngestionJob",
@@ -1032,7 +1033,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "IngestionRecord",
@@ -1049,7 +1050,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ImportBatch",
@@ -1066,7 +1067,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ImportStagingRow",
@@ -1083,7 +1084,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ImportTemplate",
@@ -1100,7 +1101,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ImportTemplateVersion",
@@ -1117,7 +1118,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "DataQualityIssue",
@@ -1134,7 +1135,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "audit_logs",
@@ -1153,7 +1154,7 @@
       ],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "DemoActor",
@@ -1170,7 +1171,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "SavedQuery",
@@ -1187,7 +1188,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "SyntheticDataRun",
@@ -1204,7 +1205,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "FeatureDefinition",
@@ -1221,7 +1222,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "FeatureSchemaVersion",
@@ -1238,7 +1239,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "FeatureSnapshot",
@@ -1255,7 +1256,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "TrainingDatasetSnapshot",
@@ -1272,7 +1273,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "OutcomeLabel",
@@ -1289,7 +1290,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PredictionRequest",
@@ -1306,7 +1307,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PredictionResult",
@@ -1323,7 +1324,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PredictionReview",
@@ -1340,7 +1341,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ModelVersion",
@@ -1359,7 +1360,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ModelInference",
@@ -1376,7 +1377,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ModelBenchmark",
@@ -1393,7 +1394,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "EntityGraph",
@@ -1410,7 +1411,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "NetworkEdge",
@@ -1427,7 +1428,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "drishti_hidden_associations",
@@ -1444,7 +1445,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimePattern",
@@ -1461,7 +1462,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimePatternCase",
@@ -1478,7 +1479,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimeHotspot",
@@ -1495,7 +1496,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimePrediction",
@@ -1512,7 +1513,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ForecastBacktest",
@@ -1529,7 +1530,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "MoneyAlert",
@@ -1546,7 +1547,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "MoneyAlertReview",
@@ -1563,7 +1564,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "OfficerRecommendation",
@@ -1580,7 +1581,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "AISummary",
@@ -1597,7 +1598,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Act",
@@ -1616,7 +1617,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "Section",
@@ -1636,7 +1637,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ActSectionAssociation",
@@ -1653,7 +1654,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimeHead",
@@ -1672,7 +1673,7 @@
       "excluded_columns": [],
       "search": true,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimeSubHead",
@@ -1689,7 +1690,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "CrimeHeadActSection",
@@ -1706,7 +1707,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "GravityOffence",
@@ -1723,7 +1724,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "OccupationMaster",
@@ -1740,7 +1741,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "WeatherIndicator",
@@ -1757,7 +1758,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "HolidayCalendar",
@@ -1774,7 +1775,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "PublicEvent",
@@ -1791,7 +1792,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "AreaContextObservation",
@@ -1808,7 +1809,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ExternalSourceVersion",
@@ -1825,7 +1826,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ChatSession",
@@ -1842,7 +1843,7 @@
       "excluded_columns": [],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     },
     {
       "source_table": "ChatMessage",
@@ -1861,7 +1862,7 @@
       ],
       "search": false,
       "dev_row_cap": 5000,
-      "mapping_version": "2026.07.18-1"
+      "mapping_version": "2026.07.19-1"
     }
   ]
 }

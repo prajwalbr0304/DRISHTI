@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-MAPPING_VERSION = "2026.07.18-1"
+MAPPING_VERSION = "2026.07.19-2"  # + Prompt 17 disaster tables (Data Store-native)
 
 # Current Data Store development import ceiling (re-verify before a real import;
 # current Catalyst docs cap development imports at 5,000 rows/table with no
@@ -62,6 +62,10 @@ class Disposition(str, Enum):
     ANALYTICS_ONLY = "analytics_only"  # retained in AWS RDS only
     RESERVED = "reserved"              # later-phase namespace; not created now
     NOT_IMPORTED = "not_imported"      # auth/secret/PII handled outside import
+    DATASTORE_NATIVE = "datastore_native"  # created directly in Data Store; app-
+    #                                        populated at runtime; NOT projected
+    #                                        from an AWS PG source and NEVER a PG
+    #                                        migration (Prompt 16 board tables).
 
 
 @dataclass(frozen=True)
@@ -414,6 +418,103 @@ _MAPPINGS: list[TableMapping] = [
     _m("inv_arrestsurrenderaccused", "InvArrestAccused", Domain.CASE_LIFECYCLE,
        Disposition.ANALYTICS_ONLY, ("id",), "invarrest",
        note="Legacy arrest-accused join; superseded by canonical CasePartyRole."),
+
+    # --- investigation board (Prompt 16) -----------------------------------
+    # Data Store-NATIVE tables: created directly in Catalyst Data Store and
+    # populated by the AppSail board service at runtime. There is NO AWS
+    # PostgreSQL source table and NO new operational PG migration for these
+    # (source_table == datastore_table by convention). Column/index/search
+    # definitions live in ``board_schema.py``; provisioning is repeatable via
+    # ``infra/catalyst/ds-schema``. AWS RLS/FORCE RLS stay disabled — a board
+    # mirror, if ever created for analytics, adds no RLS policy.
+    _m("InvestigationBoard", "InvestigationBoard", Domain.INVESTIGATION_BOARD,
+       Disposition.DATASTORE_NATIVE, ("BoardID",), "board",
+       search_columns=("Title", "Description"),
+       note="Board header: owner/case scope, status, visibility, lock, version."),
+    _m("BoardNode", "BoardNode", Domain.INVESTIGATION_BOARD,
+       Disposition.DATASTORE_NATIVE, ("BoardNodeID",), "bnode",
+       search_columns=("Label",),
+       note="A reference to a canonical DRISHTI object (RefTable/RefID) + pin-time "
+            "Snapshot; never a detached copy and never uploaded file bytes."),
+    _m("BoardEdge", "BoardEdge", Domain.INVESTIGATION_BOARD,
+       Disposition.DATASTORE_NATIVE, ("BoardEdgeID",), "bedge",
+       note="evidence (imported, read-only) | hypothesis (drawn, editable, "
+            "requires Rationale before promotion)."),
+    _m("BoardAnnotation", "BoardAnnotation", Domain.INVESTIGATION_BOARD,
+       Disposition.DATASTORE_NATIVE, ("BoardAnnotationID",), "bann",
+       note="sticky | text | frame | freehand; geometry/style JSON size-limited "
+            "at the API boundary."),
+    _m("BoardCollaborator", "BoardCollaborator", Domain.INVESTIGATION_BOARD,
+       Disposition.DATASTORE_NATIVE, ("BoardCollaboratorID",), "bcollab",
+       note="owner/editor/viewer demo collaboration state; a UI aid, not a "
+            "production security boundary in hackathon mode."),
+    _m("BoardActivity", "BoardActivity", Domain.INVESTIGATION_BOARD,
+       Disposition.DATASTORE_NATIVE, ("BoardActivityID",), "bact",
+       note="APPEND-ONLY chain-of-custody + Timeline replay. UPDATE/DELETE are "
+            "blocked in every repository/API path."),
+
+    # --- disaster response (Prompt 17) -------------------------------------
+    # Data Store-NATIVE operational tables: created directly in Catalyst Data
+    # Store and populated by the AppSail disaster service at runtime. Column/
+    # index/search definitions live in ``disaster_schema.py``. The AWS
+    # PostGIS/pgRouting analytics MIRROR (services/ml/sql/023_disaster_response.
+    # sql) is reconstructable and keyed by the SAME ExternalIDs — never the
+    # submitted-app CRUD path. AWS RLS/FORCE RLS stay disabled (no RLS policy).
+    _m("HazardType", "HazardType", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("HazardTypeID",), "haztype",
+       search_columns=("Name", "Code"),
+       note="Lookup: flood/urban_flood/landslide/drought/heatwave/cyclone/"
+            "forest_fire/dam_breach/lightning."),
+    _m("HazardEvent", "HazardEvent", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("HazardEventID",), "hazevt",
+       search_columns=("Description",),
+       note="Actual or forecast event; validated GeoJSON + CRS/source/version. "
+            "GiST index only on the AWS mirror."),
+    _m("HazardPrediction", "HazardPrediction", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("HazardPredictionID",), "hazpred",
+       note="Immutable forecast row: model/rule version, FeatureSnapshot ref, "
+            "window, probability, confidence, factors, quality state."),
+    _m("HazardRiskZone", "HazardRiskZone", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("HazardRiskZoneID",), "riskzone",
+       note="Static susceptibility + dynamic polygons; centroid, risk level/"
+            "score, factors, validity."),
+    _m("HydroMetReading", "HydroMetReading", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("HydroMetReadingID",), "hydromet",
+       note="Normalized rainfall/river/reservoir/temperature/wind/humidity; "
+            "observed-at vs received-at; quality flag; idempotent ExternalID."),
+    _m("Resource", "Resource", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("ResourceID",), "resource",
+       search_columns=("Name",),
+       note="Deployable resource; personnel link to synthetic Employee/Unit."),
+    _m("ReliefShelter", "ReliefShelter", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("ReliefShelterID",), "shelter",
+       search_columns=("Name",),
+       note="Evacuation destinations with capacity/occupancy/facilities/status."),
+    _m("ResourceAllocation", "ResourceAllocation", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("ResourceAllocationID",), "alloc",
+       note="proposed->approved->dispatched->enroute->onsite->released; a human "
+            "must approve before dispatch."),
+    _m("EvacuationRoute", "EvacuationRoute", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("EvacuationRouteID",), "evacroute",
+       note="Hazard-excluded route zone->shelter; no_route surfaced explicitly."),
+    _m("ResponsePlan", "ResponsePlan", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("ResponsePlanID",), "resplan",
+       search_columns=("Title",),
+       note="Per-hazard SOP plan header."),
+    _m("ResponseTask", "ResponseTask", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("ResponseTaskID",), "restask",
+       note="SOP checklist task with assignment, due time and lifecycle."),
+    _m("FeedSource", "FeedSource", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("FeedSourceID",), "feedsrc",
+       note="Hazard feed connector registry (synthetic_replay/recorded_sample/"
+            "live) + licence/attribution + freshness SLA."),
+    _m("FeedIngestionRun", "FeedIngestionRun", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("FeedIngestionRunID",), "feedrun",
+       note="Feed heartbeat/freshness run (accepted/duplicate/rejected + stale)."),
+    _m("DisasterActivity", "DisasterActivity", Domain.DISASTER_RESPONSE,
+       Disposition.DATASTORE_NATIVE, ("DisasterActivityID",), "dact",
+       note="APPEND-ONLY disaster lifecycle/chain-of-custody. UPDATE/DELETE are "
+            "blocked in every repository/API path."),
 ]
 
 # Fast lookup by source table.
@@ -426,24 +527,13 @@ MAPPINGS: dict[str, TableMapping] = {m.source_table: m for m in _MAPPINGS}
 # contracts only. These are intentionally not backed by a source PG table yet.
 # ---------------------------------------------------------------------------
 RESERVED_NAMESPACES: dict[Domain, tuple[str, ...]] = {
-    Domain.INVESTIGATION_BOARD: (
-        "InvestigationBoard", "BoardNode", "BoardEdge", "BoardAnnotation",
-        "BoardCollaborator", "BoardActivity"),
-    Domain.DISASTER_RESPONSE: (
-        "HazardType", "HazardEvent", "HazardPrediction", "HazardRiskZone",
-        "HydroMetReading", "Resource", "ReliefShelter", "ResourceAllocation",
-        "EvacuationRoute", "ResponsePlan", "ResponseTask"),
+    # Prompt 16 (Investigation Board) and Prompt 17 (Disaster Response) are now
+    # both LIVE — their tables moved into _MAPPINGS as Disposition.
+    # DATASTORE_NATIVE. No later-phase namespace remains reserved.
 }
 
 RESERVED_EXTERNAL_ID_PREFIXES: dict[str, str] = {
-    # Prompt 16
-    "InvestigationBoard": "board", "BoardNode": "bnode", "BoardEdge": "bedge",
-    "BoardAnnotation": "bann", "BoardCollaborator": "bcollab", "BoardActivity": "bact",
-    # Prompt 17
-    "HazardType": "haztype", "HazardEvent": "hazevt", "HazardPrediction": "hazpred",
-    "HazardRiskZone": "riskzone", "HydroMetReading": "hydromet", "Resource": "resource",
-    "ReliefShelter": "shelter", "ResourceAllocation": "alloc",
-    "EvacuationRoute": "evacroute", "ResponsePlan": "resplan", "ResponseTask": "restask",
+    # Empty: Prompt 16 + Prompt 17 prefixes are now live in _MAPPINGS.
 }
 
 
@@ -473,8 +563,22 @@ def datastore_tables() -> list[str]:
 
 
 def search_enabled_tables() -> list[TableMapping]:
-    """Tables that declare Data Store full-text search columns (requirement #10)."""
+    """Tables that declare Data Store full-text search columns (requirement #10).
+
+    Global operational metadata search only spans IMPORTED tables. Data Store-
+    native board tables declare search columns for their OWN scoped indexes
+    (see ``board_schema.py`` / ds-schema provisioning), not the global FTS.
+    """
     return [m for m in imported_tables() if m.search_columns]
+
+
+def datastore_native_tables(domain: "Domain | None" = None) -> list[TableMapping]:
+    """Tables created directly in Data Store and app-populated at runtime
+    (Prompt 16 board + Prompt 17 disaster tables). Never imported from an AWS PG
+    source. Pass ``domain`` to scope to one feature (e.g. INVESTIGATION_BOARD)."""
+    return [m for m in _MAPPINGS
+            if m.disposition == Disposition.DATASTORE_NATIVE
+            and (domain is None or m.domain == domain)]
 
 
 def external_id(source_table: str, *pk_values: object) -> str:

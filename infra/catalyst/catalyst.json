@@ -3,6 +3,7 @@
     "source": "functions",
     "targets": [
       "gateway_api",
+      "channel_token",
       "evidence_event",
       "datastore_event",
       "prediction_event",

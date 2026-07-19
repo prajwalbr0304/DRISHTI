@@ -24,15 +24,16 @@ Catalyst project: **DHRISTI** (ID `48361000000030003`), India (IN) DC, Developme
 | Part | Description | State |
 |---|---|---|
 | A | Catalyst CLI login + DHRISTI project binding + local config | **DONE** (verified) |
-| A.8/J | Plan-baseline (INR 1500 + 300) verification | **BLOCKED** — no CLI billing API; console-only (see §9) |
+| A.8/J | Plan-baseline (INR 1500 + 300) + Part J cost safety | **BLOCKED** — no CLI billing API; console-only. **Kept (J)**: confirm credit balance, avoid duplicate AppSail/Signals/crons, conservative sizing, AWS budget alarm, stop GPU after test, cleanup; 50/75/90% Catalyst automation **OPTIONAL** (see §9) |
 | B | Component allocation + 26-row compliance matrix | **DONE** — matrix + committed component scaffolding (functions/client/appsail/ds-import/jobs/gateway/pipeline), locally verified (§3.1–3.2) |
 | C | React → Slate / Web Client Hosting + Catalyst Auth | **IMPLEMENTED (verified)** — `web/src/auth/` (embedded Catalyst Auth), single API-Gateway base URL, SPA/caching/CORS/badge; build+41 tests+secret-scan pass; cloud deploy HELD (§5, `PHASE_14_PARTC_REPORT.md`) |
 | D | FastAPI → AppSail (lightweight OCI, health, non-root) | **SCAFFOLDED (verified)** — `Dockerfile.appsail` (now binds `X_ZOHO_CATALYST_LISTEN_PORT`) + health endpoints + `appsail.deploy.json`; image build/deploy **BLOCKED on Docker** (§6) |
 | E | Data Store / Stratus / NoSQL / Cache mapping + migration | **SCAFFOLDED (verified)** — mapping + repository + **106 import configs** + idempotent importer; import pending (§7) |
-| F+G | Secure Catalyst→AWS adapter + typed model contracts | **SCAFFOLDED** — inbound signed-context boundary DONE + interop-verified (§3.2/§8.2); outbound adapter pre-existing; AWS provisioning + GPU run **BLOCKED** (§8) |
-| H | Job Scheduling / Signals / Circuits check | Circuits + AutoML **UNAVAILABLE in IN DC** (verified, §8.4); Functions+Jobs fallback SCAFFOLDED (`jobs/`, all disabled) |
-| I | Pipelines CI/CD | **SCAFFOLDED** — `catalyst-pipelines.yaml` (5 stages) + `smoke_test.py` |
-| K | Verification | Partial — local artifact verification DONE (§3.2/§10); cloud smoke pending |
+| F | Secure Catalyst→AWS adapter (signed boundary, private RDS, protected adapter, capability-gaps, scoped SSE channel) | **IMPLEMENTED** — inbound signed-context boundary + adapter round-trip + channel interop verified (`PHASE_14_PARTF_REPORT.md`); AWS provisioning / IAM / RDS lockdown **HELD** (§8) |
+| G | ML/RAG placement + prediction runtime (+ G.1–G.5 scoping) | **IMPLEMENTED** — `app/predict/{placement,dispatch_policy,validation,lineage,runtime,comparison,enablement,router}.py` + `infra/catalyst/ml-placement.json`; **G.1/G.2** reduced routing matrix + reduced model set (deferred models documented, off by default); **G.3** one SageMaker-async GPU mechanism (multi-mode deferred); **G.4** correction-staleness + inference-only governance; **G.5** six committed tests (`tests/test_predict_runtime.py`, 5 passed / 1 skipped); verified offline (`PHASE_14_PARTG_REPORT.md`); SageMaker/ECR + real GPU + QuickML enable **HELD** (§8.7) |
+| H | Job Scheduling / Signals / Circuits (+ Part H minimal scoping) | Circuits + AutoML **UNAVAILABLE in IN DC** (verified, §8.4); **minimal event plane** (§8.8): ONE `prediction.requested` Signal + ONE `drishti-forecast-daily` cron are `tier:minimal`, all else optional/deferred (Mail/Push→Prompt 15); retry + failed-job state + persist-before-emit kept; `jobs/` all disabled until enabled |
+| I | Pipelines CI/CD (+ Part I minimal scoping) | **SCAFFOLDED** — `catalyst-pipelines.yaml` simplified to the **7-step** hackathon flow (install→lint/test→build→secret-scan→dev-deploy→health/auth/prediction smoke→retain-for-rollback); prod-promotion/SBOM/GPU-rebuild/DS-forward-recovery/concurrency-lock **deferred**; GPU worker deploys **separately** (`infra/aws/gpu-worker/`); `smoke_test.py` +prediction checks (§8.8) |
+| K | Verification (reduced to the demo) | **Reduced to 11 demo checks** — `infra/catalyst/verification/` (`acceptance-checklist.json` + `acceptance_check.py`); offline **2 PASS/7 HELD/2 MANUAL**, K8/K9/K10 proven now, K1–K7 held on deploy, K6 on GPU, K5/K11 manual/ops; NoSQL/Cache/Mail/Push/SmartBrowz/QuickML/Circuits test-only-when-enabled (§10) |
 
 **The only planned human pause — the Zoho browser login/consent — was already completed by
 the user** (login as `prajwalbr0304@gmail.com`, IN DC). Every step after that in Part A
@@ -419,7 +420,7 @@ replication and no last-write-wins.**
 
 ---
 
-## 8. Parts F+G — Secure Catalyst→AWS adapter + ML placement (SCAFFOLDED; AWS/GPU BLOCKED)
+## 8. Parts F+G — Secure Catalyst→AWS adapter + ML placement/runtime (IMPLEMENTED; AWS/GPU deploy HELD)
 
 ### 8.1 Public boundary
 No browser component calls AWS or AppSail CRUD directly. API Gateway + authenticated/throttled
@@ -495,6 +496,102 @@ output mislabelled as TabFM).
 
 ---
 
+### 8.7 Part G — ML/RAG placement + prediction runtime (IMPLEMENTED; cloud HELD)
+
+Full detail + verification: **`PHASE_14_PARTG_REPORT.md`**. Part G wires the
+pre-existing pieces (envelope, G.1 routing, signed adapter + breaker, QuickML
+contract, `gpu-worker`, scoped SSE channel) into a governed prediction runtime and
+adds the Part-G-specific layers. New under `services/ml/app/predict/`:
+
+- **`placement.py`** (+ `infra/catalyst/ml-placement.json`) — the source of truth for
+  WHERE each model/assistant runs: QuickML RAG + the eligible **no-code baseline** on
+  Catalyst (item 1); TabFM/TimesFM/ST-GNN external **AWS GPU** (item 2); near-repeat/
+  KDE/fusion/baselines on **Catalyst CPU**; **Zia AutoML recorded UNAVAILABLE in the IN
+  DC with doc evidence** + fallback (never faked). Cross-checks `capability_gaps.py`.
+- **`dispatch_policy.py`** (item 3, scoped by G.3) — the hackathon keeps **one** AWS
+  GPU mechanism: **SageMaker asynchronous inference** (scale-to-zero). The multi-mode
+  selection (AWS Batch / Batch Transform / real-time) is **retained + tested but
+  DEFERRED** (`DRISHTI_DISPATCH_MULTIMODE_ENABLED`); the **GPU-never-Serverless** guard
+  always applies.
+- **`validation.py`** — **fail-closed** result validation (id/task binding, completed
+  state, **backend authenticity — TabFM must be `tabfm` on `cuda`**, digest + shape).
+- **`lineage.py`** (item 5) — FeatureSnapshot / PredictionRequest / PredictionResult
+  Data Store rows keyed by stable ExternalID, results written back as **NEW** records
+  tagged `authoritative_store=catalyst_data_store` (AWS never authoritative).
+- **`runtime.py`** — the orchestrator: routing gate → persist to Data Store → select
+  dispatch mode → protected AWS adapter → validate → persist result → **data-minimized**
+  Signal notice (bridged to the Part F scoped SSE channel; else Gateway polling).
+- **`comparison.py`** (item 4) — QuickML/no-code baseline **vs** the custom AWS model on
+  the **same split** (hash-checked) with the **leakage-safe** guardrail.
+- **`enablement.py`** (G.1/G.2 demo scoping) — the reduced routing matrix + reduced
+  model set: **ENABLED** = TabFM workload, TimesFM, near-repeat/graph, CPU baselines;
+  **DEFERRED** = area-forecast TabFM, ST-GNN, fusion, KDE, multi-embedding; **OPTIONAL**
+  = QuickML RAG/no-code; court/lab + CDR/financial routes documented-but-disabled.
+  `routing.py` filters to enabled tasks (Approved FIR drops area-forecast TabFM; context
+  keeps only TimesFM), `placement.py` records each engine's enablement, and
+  `runtime.submit` refuses a deferred task. Env-flippable per task/route.
+- **`router.py`** (registered in `main.py`) — open aggregate introspection
+  (`/predict/placement|capability-gaps|routing|dispatch-policy|enablement|health`) + the
+  role- + write-guarded `POST /predict/jobs` and `GET /predict/jobs/{id}`.
+
+**Governance (G.4):** a new FIR is inference-only (never retrains TabFM; training +
+inference are separate paths); a correction creates a new version and marks the prior
+result **stale (preserved, not deleted)** + permits a controlled rerun; duplicate events
+do not create duplicate GPU jobs (idempotency); every request/result row carries model /
+version / status / stale for the UI.
+
+**Six Part G tests (G.5):** `services/ml/tests/test_predict_runtime.py` — (1) draft → no
+prediction, (2) approved FIR → one idempotent request, (3) real TabFM CUDA success
+(skipped unless the real GPU plane is configured), (4) TabFM failure not labelled success,
+(5) evidence upload → no model, (6) correction marks prior stale + controlled rerun →
+**5 passed, 1 skipped**.
+
+**Verified offline:** the six tests above + throwaway harness checks (placement parity, Zia
+unavailable-with-evidence, single-mechanism dispatch + GPU-never-serverless, result validation
+incl. **mislabelled-TabFM rejected**, full runtime round-trip, **TabFM fail-closed**,
+routing-gate refusals, enablement filtering, comparison same-split/leakage gates); a TestClient
+`POST /predict/jobs → dispatched(sagemaker_async) → GET → completed` round-trip; `get_diagnostics`
+clean; `pytest --collect-only` = **333 tests**, no import errors.
+
+**HELD (cloud):** ECR GPU-worker push + weight staging, SageMaker async / AWS Batch
+endpoints, `DRISHTI_USE_CATALYST_DATASTORE=true` + adapter env on AppSail, QuickML enable
++ no-code baseline run, and a real-time endpoint (only after a benchmark). Ordered steps in
+`PHASE_14_PARTG_REPORT.md` §8.
+
+### 8.8 Parts H + I — minimal event processing + simplified CI/CD (scoping)
+
+**Part H — minimal event processing.** The event plane is deliberately small.
+`infra/catalyst/jobs/*.json` now tag each rule/cron with a `tier`:
+
+- **`tier: "minimal"`** (the only two things active for the hackathon): ONE
+  `prediction.requested` Signal/Event Function (`prediction-requested` →
+  `prediction_event`) and ONE scheduled aggregate forecast job
+  (`drishti-forecast-daily` → `cron_forecast`).
+- **Kept even so:** retry + failed-job state (auto exponential backoff, max 20; a
+  failed `prediction_event` sets `PredictionRequest.Status='failed'`) and the
+  **persist-authoritative-record-before-emit** invariant.
+- **`tier: "optional"` / deferred (documented, inactive):** Circuits (also IN-DC
+  unavailable), a separate event per upload/import/report action, the result-ready
+  and canonical-version events, **Mail/Push (→ Prompt 15)**, and multiple crons /
+  backfill pipelines. All `active/enabled=false` so they cost nothing until enabled.
+
+**Part I — simplified Catalyst Pipelines.** `catalyst-pipelines.yaml` is reduced to
+the sufficient hackathon flow: **install deps → lint/test → build frontend + API →
+scan for secrets → deploy to Catalyst development → health/auth/prediction smoke →
+retain the previous deploy for rollback** (`smoke_test.py` now also asserts
+`/predict/health` + `/predict/enablement`). Deferred (documented, out of the
+pipeline): full SBOM/licence automation, production artifact-promotion gates,
+**GPU image rebuild in the pipeline**, Data Store export + forward-recovery
+simulation, deployment concurrency locks, and deliberately-failed-deploy recovery
+testing. The **GPU worker deploys separately** via `infra/aws/gpu-worker/`
+(`deploy_gpu_worker.py` — offline `--plan` validated; `--commit` HELD) using AWS
+CLI/SageMaker, referenced by **immutable image (`@sha256`) + model versions**.
+
+Verified: all `jobs/` + `billing/` + `gpu-worker/` JSON parse; the pipeline YAML
+parses to 5 stages (validate/build/scan/deploy_dev/smoke); `deploy_gpu_worker.py`
+`--plan`/`--teardown` exit 0 and `--commit` without confirmation exits 2 (held);
+`smoke_test.py` diagnostics clean.
+
 ## 9. Part J — Cost / credit controls
 
 - Recorded IDs (no secrets): project `48361000000030003`, org `60075362708`, env Development,
@@ -503,47 +600,53 @@ output mislabelled as TabFM).
   INR 1,500 Basic + INR 300 Free = INR 1,800 usable. **Verification is console-only** — the
   CLI (v1.27.0) exposes no billing/usage command (`catalyst help` lists none). The full balance
   is not assumed to remain available.
-- Budget/alerts at ~50/75/90% (INR 900/1350/1620) configured per
-  `infra/catalyst/billing/budget.json` in the console (no CLI billing API on this login).
-- Conservative AppSail memory/disk/instances + scale-to-low; prevent duplicate dev deploys;
-  keep only the curated linked serving subset; lifecycle temporary Stratus imports/reports.
-- AWS: Budgets + CloudWatch alarms; temporary GPU endpoints/Batch jobs stopped after validation.
+- **Kept basic cost safety (Part J), in `infra/catalyst/billing/budget.json`:** confirm the
+  Catalyst credit balance before/after enabling any paid capability; **avoid duplicate** AppSail
+  apps / Signals rules / crons (exactly one `drishti-api`, one `prediction-requested`, one
+  `drishti-forecast-daily`, one `drishti-gpu-async`); conservative sizing (AppSail 1–2 instances,
+  SageMaker async **scale-to-zero**, dev imports capped at 5000 rows/table); an **AWS budget
+  alarm** (AWS Budgets + CloudWatch); **stop GPU after testing** (`deploy_gpu_worker.py
+  --teardown` → delete the async endpoint); and a cleanup checklist.
+- **The 50/75/90% Catalyst alert automation is OPTIONAL** (`optional:true` in `budget.json`): the
+  CLI (v1.27.0) exposes no billing/usage command, so it is applied in Console → Budget only if
+  straightforward; otherwise rely on confirming the balance manually + the AWS alarm. The intended
+  thresholds (INR 900/1350/1620) are recorded.
 - A post-hackathon cleanup/export runbook (preserves required Data Store/Stratus data + retained
-  AWS model artifacts; deletes temporary resources) is tracked in §11.
+  AWS model artifacts; deletes temporary resources) is tracked in `budget.json` `cleanup` + §11.
 
 ---
 
 ## 10. Part K — Verification status
 
-**Verifiable now (DONE):**
-- Project binding is active (`DHRISTI (active) (base)`), India DC, no tokens committed.
-- FastAPI exposes `/health`, `/health/live`, `/health/ready` (lint-clean).
-- AppSail image excludes the heavy GPU/foundation stack (requirements diff) and binds the
-  Catalyst-injected port.
-- No secret / DB URL / AWS URL in `VITE_*` (web/.env.example inspected).
-- Circuits + AutoML IN-DC unavailability recorded against current docs.
-- **Part B (§3.2):** all committed JSON valid; 8 Functions pass `node --check`; new Python
-  compiles and `app.main` imports with `/internal/ping` registered; **Node→Python signed-context
-  interop 4/4** (verify + forged/replay/expired rejected); ds-import generator = 106 configs +
-  idempotent importer; regression `pytest --collect-only` = 327 tests no import errors,
-  `test_workload.py` 15 passed.
-- **Part B gap-closure pass:** live CLI project inspection recorded (`ds:import` **is** real —
-  earlier claim corrected); 6 component modules (`stratus/nosql/cache/smartbrowz/quickml/
-  connections`) compile + import; **QuickML offline RAG** returns a cited answer for a known
-  query and **refuses** a PII query; **SmartBrowz** fake renders a watermarked PDF with a 64-char
-  SHA-256; all **151** `infra/catalyst/**/*.json` valid (incl. 14 workflow fixtures); full
-  18-workflow specs in `PHASE_14_WORKFLOWS.md`.
+Part K is **reduced to the actual demo** (11 required checks). The authoritative
+list is `infra/catalyst/verification/acceptance-checklist.json`; the one-command
+runner is `infra/catalyst/verification/acceptance_check.py` (offline now: **2 PASS,
+0 FAIL, 7 HELD, 2 MANUAL** — full acceptance runs post-deploy with `--base-url`/`--web-url`).
 
-**Pending (needs deploy/Docker/GPU/AWS/credit go-ahead):**
-- Public frontend/API URLs resolving to Slate/Web-Client + API Gateway → Function → AppSail.
-- AppSail health/SDK connectivity live; Data Store as operational record + full-text search.
-- Stratus up/download/hash/version/short-lived access; one NoSQL + one Cache bounded use.
-- One authenticated FIR read + one allowed write end-to-end.
-- FeatureSnapshot → AWS Batch/SageMaker → PredictionResult round trip.
-- Draft/save/submit + raw-evidence upload proving **no** model invocation.
-- Real TabFM smoke test asserting `actual_backend=tabfm`, `device=cuda`, and fail-closed on
-  missing CUDA/weights.
-- Rollback + CI concurrency-lock + forward-recovery drills; production immutable-digest promotion.
+| # | Proves | Status | Evidence |
+|---|---|---|---|
+| K1 | Frontend deployed through Catalyst | **HELD** (deploy) | `web/dist`, `client/slate-config.toml`, pipeline `deploy_dev` |
+| K2 | Auth + API Gateway work | **HELD** (deploy) | `gateway_context.py`; `smoke_test.py` unsigned=401/signed=200 |
+| K3 | AppSail backend works | **HELD** (deploy) | `/health/live` + `/health/ready` |
+| K4 | Data Store serves operational data | **HELD** (deploy + `ds:import`) | `ds-import/` (106 configs); `datastore/repository.py` |
+| K5 | Stratus stores one evidence file | **MANUAL** (post-deploy) | `stratus/`; workflow §4 (no OCR) |
+| K6 | Approved FIR reaches TabFM on AWS GPU | **HELD** (GPU) | `test_predict_runtime.py::test_real_tabfm_cuda_prediction_succeeds` (skipif); `runtime`+`validation`+`gpu-worker` |
+| K7 | Prediction returns to Catalyst + appears in UI | **HELD** (deploy) | `runtime.py`+`lineage.py` (result→Data Store); `stream/` |
+| K8 | Drafts + evidence do NOT invoke the model | **VERIFIED (offline)** | `test_predict_runtime.py` (draft + evidence tests) pass; live re-check via `/predict/routing` |
+| K9 | One Signal + one scheduled job | **VERIFIED (offline)** | `jobs/*.json` `tier:minimal` (harness PASS) |
+| K10 | No secrets in the browser | **VERIFIED (offline)** | `check_no_db_url_in_web.py` (harness PASS) + `check-bundle-secrets.mjs` |
+| K11 | AWS GPU resources are stopped | **MANUAL/ops** | `deploy_gpu_worker.py --teardown`; `budget.json` cleanup |
+
+**Test only when the feature is enabled (NOT in the minimum set):** NoSQL, Cache,
+Mail, Push, SmartBrowz, QuickML, Circuits — each tested when its
+`DRISHTI_*_ENABLED` flag / region availability makes it live (see the checklist
+`test_only_when_enabled`).
+
+**Supporting evidence already captured (Part B, §3.2):** all committed JSON valid; 8
+Functions pass `node --check`; `app.main` imports with `/internal/ping`; Node→Python
+signed-context interop 4/4; ds-import = 106 configs + idempotent importer; regression
+`pytest --collect-only` = **333 tests** (incl. the six Part G tests), no import errors.
+Circuits + AutoML IN-DC unavailability recorded against current docs.
 
 ---
 

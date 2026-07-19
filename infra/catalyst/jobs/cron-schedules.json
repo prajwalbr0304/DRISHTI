@@ -1,28 +1,35 @@
 {
-  "_comment": "DRISHTI Job Scheduling / Cron descriptors (Phase 14 Part B / matrix row 20). Catalyst crons are created via the Job Scheduling SDK or the Console (there is no standalone CLI-deployed cron config file), so this is the single reviewed source of the intended schedules, consumed by a setup step at enable time. EVERY cron below is enabled=false so it never fires and incurs no charge until its owning phase turns it on. Cron expression format is Quartz-like: 'sec min hour day-of-month month day-of-week'. Times are the project timezone (Asia/Kolkata).",
+  "_comment": "DRISHTI Job Scheduling / Cron descriptors (Phase 14 Part B + H scoping). Catalyst crons are created via the Job Scheduling SDK or the Console (there is no standalone CLI-deployed cron config file), so this is the single reviewed source of the intended schedules, consumed by a setup step at enable time. H MINIMAL SET: enable exactly ONE scheduled aggregate forecast job for the hackathon - 'drishti-forecast-daily'. Every other cron is tier=optional or RESERVED (documented but enabled=false), so multiple schedules + backfill pipelines are deferred. EVERY cron is enabled=false so it never fires and incurs no charge until its owning phase turns it on. Cron expression format is Quartz-like: 'sec min hour day-of-month month day-of-week'. Times are the project timezone (Asia/Kolkata).",
   "timezone": "Asia/Kolkata",
+  "minimal_set": {
+    "cron": "drishti-forecast-daily",
+    "note": "One scheduled aggregate forecast job is the only cron kept for the hackathon; see signals-rules.json for the one minimal prediction.requested Signal."
+  },
   "crons": [
-    {
-      "name": "drishti-reconcile-nightly",
-      "function": "cron_reconcile",
-      "type": "cron",
-      "cron_expression": "0 30 2 ? * *",
-      "description": "Nightly Data Store/Stratus reconciliation, backup/export, failed-job replay, stale temp cleanup, temporary AWS GPU/Batch shutdown checks, budget/health evidence.",
-      "workflow": "17",
-      "owner_phase": "14 (ops)",
-      "enable_flag": "DRISHTI_RECONCILE_ENABLED",
-      "enabled": false
-    },
     {
       "name": "drishti-forecast-daily",
       "function": "cron_forecast",
       "type": "cron",
       "cron_expression": "0 0 3 ? * *",
-      "description": "Scheduled aggregate/spatiotemporal forecast + backfill dispatch to the protected AWS adapter (baseline/TimesFM/ST-GNN/hotspot/near-repeat).",
+      "description": "The ONE scheduled aggregate forecast job (H): daily aggregate/spatiotemporal forecast dispatch to the protected AWS adapter for the enabled models (TabFM workload / TimesFM). Persists the PredictionRequest authoritative record BEFORE the run; retry + failed-job state per signals-rules retry_policy.",
       "workflow": "9",
-      "owner_phase": "14 (scaffold) / later-phase enablement",
+      "owner_phase": "14",
       "enable_flag": "DRISHTI_FORECAST_CRON_ENABLED",
+      "tier": "minimal",
       "enabled": false
+    },
+    {
+      "name": "drishti-reconcile-nightly",
+      "function": "cron_reconcile",
+      "type": "cron",
+      "cron_expression": "0 30 2 ? * *",
+      "description": "Nightly Data Store/Stratus reconciliation, failed-job replay, stale temp cleanup, temporary AWS GPU/Batch shutdown checks, budget/health evidence.",
+      "workflow": "17",
+      "owner_phase": "14 (ops)",
+      "enable_flag": "DRISHTI_RECONCILE_ENABLED",
+      "tier": "optional",
+      "enabled": false,
+      "note": "OPTIONAL (H) - a second cron is deferred. The J cost-safety cleanup (stop GPU after testing) is otherwise handled by the documented cleanup runbook / AWS scripts, not a required cron."
     },
     {
       "name": "drishti-embeddings-refresh-weekly",
@@ -33,17 +40,20 @@
       "workflow": "18",
       "owner_phase": "14 (scaffold)",
       "enable_flag": "DRISHTI_EMBEDDINGS_REFRESH_ENABLED",
-      "enabled": false
+      "tier": "optional",
+      "enabled": false,
+      "note": "OPTIONAL (H) - multiple embedding index versions are deferred (G.2); single active index only."
     },
     {
       "name": "drishti-board-export (RESERVED)",
       "function": null,
       "type": "cron",
       "cron_expression": null,
-      "description": "Investigation Board locked-snapshot/export housekeeping. RESERVED — the owning function is created and enabled by Prompt 16.",
+      "description": "Investigation Board locked-snapshot/export housekeeping. RESERVED - the owning function is created and enabled by Prompt 16.",
       "workflow": "13",
       "owner_phase": "16",
       "enable_flag": null,
+      "tier": "reserved",
       "enabled": false
     },
     {
@@ -51,10 +61,11 @@
       "function": null,
       "type": "cron",
       "cron_expression": null,
-      "description": "Hazard feed ingestion + freshness heartbeat. RESERVED — created and enabled by Prompt 17.",
+      "description": "Hazard feed ingestion + freshness heartbeat. RESERVED - created and enabled by Prompt 17.",
       "workflow": "14",
       "owner_phase": "17",
       "enable_flag": null,
+      "tier": "reserved",
       "enabled": false
     },
     {
@@ -62,10 +73,11 @@
       "function": null,
       "type": "cron",
       "cron_expression": null,
-      "description": "Hazard forecast review + alert. RESERVED — created and enabled by Prompt 17. Never auto-warns or issues an all-clear.",
+      "description": "Hazard forecast review + alert. RESERVED - created and enabled by Prompt 17. Never auto-warns or issues an all-clear.",
       "workflow": "15",
       "owner_phase": "17",
       "enable_flag": null,
+      "tier": "reserved",
       "enabled": false
     },
     {
@@ -73,10 +85,11 @@
       "function": null,
       "type": "cron",
       "cron_expression": null,
-      "description": "Resource allocation + routing planning. RESERVED — created and enabled by Prompt 17. Never auto-dispatches.",
+      "description": "Resource allocation + routing planning. RESERVED - created and enabled by Prompt 17. Never auto-dispatches.",
       "workflow": "16",
       "owner_phase": "17",
       "enable_flag": null,
+      "tier": "reserved",
       "enabled": false
     }
   ]

@@ -566,10 +566,25 @@ def run_request(request_id: int, actor: Optional[str]) -> dict:
         return _run_request(conn, request_id, actor)
 
 
+def _emit_prediction_reviewed(out: dict) -> None:
+    """Publish a data-minimized ``prediction.reviewed`` Signal AFTER the review
+    transaction commits (Phase 15). Never carries the model output/explanation."""
+    try:
+        from ..signals import EVENT_PREDICTION_REVIEWED, get_signals
+        get_signals().publish(EVENT_PREDICTION_REVIEWED, {
+            "prediction_request_id": out.get("request_id"),
+            "prediction_review_id": out.get("prediction_review_id"),
+            "decision": out.get("decision"), "status": out.get("status")})
+    except Exception:  # noqa: BLE001 — a Signal failure must not break the review
+        pass
+
+
 def review_result(result_id: int, decision: str, override_reason: Optional[str],
                   actor: Optional[str]) -> dict:
     with db.rw_conn() as conn:
-        return _review_result(conn, result_id, decision, override_reason, actor)
+        out = _review_result(conn, result_id, decision, override_reason, actor)
+    _emit_prediction_reviewed(out)
+    return out
 
 
 def review_request(request_id: int, decision: str, override_reason: Optional[str],
@@ -579,7 +594,9 @@ def review_request(request_id: int, decision: str, override_reason: Optional[str
         res = _current_result(conn, request_id)
         if res is None:
             raise NotFound(f"Request {request_id} has no result to review yet.")
-        return _review_result(conn, res["prediction_result_id"], decision, override_reason, actor)
+        out = _review_result(conn, res["prediction_result_id"], decision, override_reason, actor)
+    _emit_prediction_reviewed(out)
+    return out
 
 
 def invalidate_for_subject(subject_kind: str, subject_ref_id: str, reason: str,

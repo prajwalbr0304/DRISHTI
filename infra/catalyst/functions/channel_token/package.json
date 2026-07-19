@@ -1,0 +1,10 @@
+{
+  "name": "channel_token",
+  "version": "0.1.0",
+  "description": "DRISHTI scoped SSE/WS channel-token minter (authenticated gateway path -> short-lived audience/board/user-bound token).",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

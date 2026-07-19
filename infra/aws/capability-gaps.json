@@ -1,0 +1,119 @@
+{
+  "_comment": "Capability-gap justification for every retained AWS path (Prompt 14 Part F item 6). GENERATED from services/ml/app/predict/capability_gaps.py \u2014 edit that module, not this file. validate_capability_gaps() guards parity + content.",
+  "version": "2026.07.18-1",
+  "aws_paths": [
+    {
+      "aws_path": "sagemaker-tabfm-gpu-inference",
+      "capability": "TabFM tabular foundation-model in-context inference",
+      "aws_runtime": "SageMaker async endpoint / AWS Batch (GPU: g5/g6, ~3 GiB BF16 weights)",
+      "catalyst_services_checked": [
+        "QuickML (no-code ML / RAG)",
+        "Zia AutoML",
+        "AppSail (CPU)"
+      ],
+      "gap_reason": "Catalyst exposes no custom GPU runtime and cannot host a ~3 GiB BF16 foundation-model for in-context inference; QuickML/Zia AutoML do not provide TabFM. GPU inference is the genuine capability gap.",
+      "crosses_boundary": "ids, versions, content hashes, feature vectors, observation cutoff (labelled context rows or an approved s3 snapshot uri) \u2014 never narrative/evidence/PII/DATABASE_URL.",
+      "not_replacing": "Operational data stays in Catalyst Data Store; only the aggregate feature vector is sent, and results return as NEW records.",
+      "tasks": [
+        "station_workload_band",
+        "area_incident_forecast_tabfm"
+      ]
+    },
+    {
+      "aws_path": "sagemaker-timesfm-gpu-inference",
+      "capability": "TimesFM time-series foundation-model forecasting",
+      "aws_runtime": "AWS Batch (preferred) / SageMaker async (GPU)",
+      "catalyst_services_checked": [
+        "QuickML",
+        "Zia AutoML",
+        "AppSail (CPU stats baseline)"
+      ],
+      "gap_reason": "No Catalyst service runs a pretrained time-series foundation model on GPU; the CPU statistical baseline in AppSail is the eligible comparator, not a replacement for TimesFM.",
+      "crosses_boundary": "compact incident-count series, frequency, horizon, cutoff and approved dynamic-covariate versions \u2014 aggregates only.",
+      "not_replacing": "The AppSail CPU baseline (QuickML/stats) still runs on Catalyst for comparison; AWS is used only for the GPU foundation model.",
+      "tasks": [
+        "timesfm_count_forecast"
+      ]
+    },
+    {
+      "aws_path": "sagemaker-stgnn-gpu-inference",
+      "capability": "Spatio-temporal graph neural network area forecast",
+      "aws_runtime": "AWS Batch / SageMaker async (GPU, torch-geometric)",
+      "catalyst_services_checked": [
+        "QuickML",
+        "AppSail (CPU)"
+      ],
+      "gap_reason": "A torch-geometric ST-GNN needs a GPU + a heavy graph stack that Catalyst does not provide.",
+      "crosses_boundary": "time-by-area count tensor, versioned adjacency/geometry ids and approved context \u2014 no person nodes, no invalid geography.",
+      "not_replacing": "Deterministic graph community/centrality/path analytics stay on Catalyst/PostGIS/NetworkX; only the GPU model runs on AWS.",
+      "tasks": [
+        "stgnn_area_forecast"
+      ]
+    },
+    {
+      "aws_path": "analytics-rds-postgis-pgrouting",
+      "capability": "PostGIS/pgRouting geospatial routing + heavy spatial analytics",
+      "aws_runtime": "Retained AWS RDS (read-only, drishti_readonly, IAM DB auth)",
+      "catalyst_services_checked": [
+        "Catalyst Data Store",
+        "Catalyst full-text search"
+      ],
+      "gap_reason": "Catalyst Data Store is not a spatial database: no PostGIS geometry ops and no pgRouting graph routing. Used only-where-necessary, read-only.",
+      "crosses_boundary": "geometry ids, area/beat ids and aggregate query parameters \u2014 no operational rows are written; RDS never on the CRUD path.",
+      "not_replacing": "Operational relational records + search are served by Catalyst Data Store; RDS is a private, read-only analytics adapter only (F.2).",
+      "tasks": []
+    },
+    {
+      "aws_path": "ecr-model-artifact-workflow",
+      "capability": "Private model-artifact registry + GPU execution (image + weights)",
+      "aws_runtime": "Private ECR image (services/gpu-worker) + SageMaker/Batch + temporary S3 staging",
+      "catalyst_services_checked": [
+        "Catalyst Functions",
+        "AppSail",
+        "Catalyst Stratus"
+      ],
+      "gap_reason": "Catalyst has no container registry or GPU execution plane for a CUDA image with multi-GiB model weights; the model-artifact lifecycle (build, digest-pin, load, verify) must run on AWS.",
+      "crosses_boundary": "model/version/artifact digests + temporary feature I/O objects in an approved S3 staging prefix \u2014 never the operational object store.",
+      "not_replacing": "Application objects (evidence/import/report) live in Catalyst Stratus; S3 is only temporary SageMaker/Batch I/O staging.",
+      "tasks": []
+    }
+  ],
+  "catalyst_served": [
+    {
+      "capability": "Operational relational data + CRUD",
+      "catalyst_service": "Catalyst Data Store"
+    },
+    {
+      "capability": "Full-text case/FIR/person/evidence search",
+      "catalyst_service": "Catalyst Data Store search"
+    },
+    {
+      "capability": "Application object store (evidence/import/report)",
+      "catalyst_service": "Catalyst Stratus"
+    },
+    {
+      "capability": "Text-LLM / RAG over approved SOP/policy",
+      "catalyst_service": "Catalyst QuickML"
+    },
+    {
+      "capability": "No-code ML baseline (eligible comparator)",
+      "catalyst_service": "Catalyst QuickML"
+    },
+    {
+      "capability": "Near-repeat (Hawkes/ETAS) short-horizon intensity",
+      "catalyst_service": "AppSail CPU job"
+    },
+    {
+      "capability": "KDE / ST-DBSCAN hotspots",
+      "catalyst_service": "AppSail CPU job"
+    },
+    {
+      "capability": "Forecast fusion (combination/validation)",
+      "catalyst_service": "AppSail CPU step"
+    },
+    {
+      "capability": "Serverless glue + scheduled jobs",
+      "catalyst_service": "Catalyst Functions + Job Scheduling"
+    }
+  ]
+}

@@ -67,7 +67,7 @@ For a new Kiro/Codex/Claude/Cursor session:
 | 12 | TimesFM/ST-GNN/hotspot/near-repeat forecasting | Complete |
 | 13 | TabFM aggregate prediction task and model validation | Complete |
 | 14 | Catalyst-native app/data deployment with external AWS custom ML | Pending |
-| 15 | Demo admin/governance, notifications, reports, and optional RAG | Pending |
+| 15 | Demo admin/governance, notifications, reports, and optional RAG | Complete |
 | 16 | Palantir-style Investigation Board on Catalyst with AWS analytics | Pending |
 | 17 | Disaster Response forecasting, readiness, allocation, and maps | Pending |
 | 18 | Final hackathon testing, CI/CD, recovery, and demo release | Pending |

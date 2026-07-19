@@ -14,6 +14,7 @@ FastAPI service; these functions are thin, event-driven, and secured.
 | Folder | Type | Role | Matrix rows | Workflow | Enable flag |
 |---|---|---|---|---|---|
 | `gateway_api` | advancedio | Authenticated public API facade → signed context → AppSail | 1, 17, 18 | §8.1–8.2 | always on |
+| `channel_token` | advancedio | Authenticated mint of a scoped SSE/WS channel token (audience/board/user-bound) | 1 (Part F) | §8.1 | `DRISHTI_STREAM_CHANNEL_ENABLED` (AppSail side) |
 | `evidence_event` | event | Evidence security path (quarantine/validate/scan) | 8, 21 | §4 | `DRISHTI_EVIDENCE_SCAN_ENABLED` |
 | `datastore_event` | event | Approved canonical change → FeatureSnapshot + staleness | 6, 10, 21, 22 | §3, §6 | `DRISHTI_FEATURE_SNAPSHOT_ENABLED` |
 | `prediction_event` | event | Approved PredictionRequest dispatch + result routing | 21, 22 | §7 | `DRISHTI_PREDICTION_DISPATCH_ENABLED` |
@@ -54,7 +55,24 @@ is implemented in `services/ml/app/gateway_context.py`.
 | `DRISHTI_GATEWAY_PATH_PREFIX` | gateway_api | public path prefix to strip (default `/api`) |
 | `DRISHTI_GATEWAY_TIMEOUT_MS` | gateway_api | upstream timeout (default 25000; aio hard cap 30s) |
 | `DRISHTI_NOTIFY_FROM_EMAIL` / `DRISHTI_NOTIFY_DEFAULT_TO` | notify_dispatch | Mail sender / fallback recipient |
+| `DRISHTI_CHANNEL_SIGNING_SECRET` | channel_token | HMAC secret for the channel token (falls back to `ZOHO_APPSAIL_SIGNING_SECRET`) |
+| `DRISHTI_CHANNEL_ALLOWED_ORIGINS` | channel_token | comma-separated exact browser origins (strict Origin check at mint) |
+| `DRISHTI_APPSAIL_STREAM_URL` | channel_token | HTTPS base URL of the AppSail SSE endpoint returned to the browser |
+| `DRISHTI_CHANNEL_TTL_MS` | channel_token | channel-token lifetime (default 300000 = 5 min) |
 | `DRISHTI_*_ENABLED` | events/crons | per-scaffold enable flags (default off = cost-free) |
+
+## Scoped SSE/WS channel token (Part F item 1)
+
+`channel_token` is the one authenticated path that mints a **short-lived,
+audience/board/user-bound** token (`aud:'drishti-channel'`, distinct from the
+`drishti-appsail` gateway audience). The browser uses it to open ONE **direct**
+AppSail SSE stream (`/stream/predictions`) — the only permitted non-facade
+browser→AppSail connection. AppSail verifies the token signature, audience,
+board+user binding, expiry and a **strict Origin** check before opening the
+stream, which self-closes at the token expiry. Minting + verification share the
+scheme in `services/ml/app/channel.py`; the stream lives in
+`services/ml/app/stream/router.py` and is OFF unless
+`DRISHTI_STREAM_CHANNEL_ENABLED=true`.
 
 ## API Gateway route table (matrix row 18)
 
@@ -67,6 +85,7 @@ target, so the gateway fronts `gateway_api`, which securely invokes AppSail.
 | Path pattern | Target | Auth | Throttle (general / IP) |
 |---|---|---|---|
 | `/api/*` | `gateway_api` | required | 600 rpm / 120 rpm |
+| `/api/channel-token` | `channel_token` | required | 120 rpm / 30 rpm |
 | `/api/public/health` | `gateway_api` | optional | 120 rpm / 60 rpm |
 
 CORS for the deployed Slate origin is handled by **Authorized Domains**, not in

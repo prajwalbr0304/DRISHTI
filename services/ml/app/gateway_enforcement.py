@@ -41,6 +41,13 @@ from .gateway_context import (ContextError, GatewayContext, configured_audience,
 # through the gateway), so they must never require a signed context.
 _EXEMPT_PATHS = frozenset({"/health", "/health/live", "/health/ready"})
 
+# The scoped SSE/WS channel (Part F item 1) is a DIRECT browser->AppSail stream
+# by design: it does not carry a signed gateway context, it carries a short-lived
+# channel token verified in app/channel.py with a strict Origin check. So its
+# paths are exempt from THIS enforcement (their token is the dedicated, stricter
+# auth) — never a blanket bypass of authentication.
+_EXEMPT_PREFIXES = ("/stream/",)
+
 # Client-supplied identity headers are stripped before the trusted role is
 # injected, so a caller can never smuggle a role past the boundary. Names are
 # lowercased bytes to match the ASGI header representation.
@@ -74,7 +81,9 @@ class GatewayContextEnforcementMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not enforcement_enabled():
             return await call_next(request)
-        if request.method == "OPTIONS" or request.url.path in _EXEMPT_PATHS:
+        path = request.url.path
+        if (request.method == "OPTIONS" or path in _EXEMPT_PATHS
+                or path.startswith(_EXEMPT_PREFIXES)):
             return await call_next(request)
         try:
             ctx = verify_signed_context(

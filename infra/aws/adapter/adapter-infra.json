@@ -1,0 +1,99 @@
+{
+  "_comment": "DRISHTI protected AWS adapter — infrastructure descriptor (Prompt 14 Part F, items 3+5). This is the single reviewed source of the intended AWS plane in front of the custom model workloads. It holds KEYS and NON-SECRET config only; no secret VALUES, no credentials. Placeholders <ACCOUNT_ID>/<REGION>/<VPC_ID>/<...> are filled at provision time by infra/aws/adapter/provision_adapter.py or an operator in the Console/CLI. Region default ap-south-1 (matches the retained AWS corpus).",
+  "name": "drishti-aws-adapter",
+  "region": "ap-south-1",
+  "topology": "Catalyst AppSail -> app/predict/adapter.py (signed HTTPS client) -> AWS API Gateway (TLS/throttle/size) -> Lambda|ECS adapter (services/aws-adapter) -> SageMaker (async/realtime) | AWS Batch | Batch Transform -> (only where necessary) read-only PostGIS/pgRouting analytics RDS",
+
+  "api_gateway": {
+    "type": "HTTP_API",
+    "protocol": "HTTPS_ONLY",
+    "min_tls_version": "TLS1_2",
+    "disable_execute_api_endpoint": false,
+    "routes": [
+      { "route_key": "POST /predict", "integration": "lambda:drishti-aws-adapter", "note": "dispatch a validated prediction envelope" },
+      { "route_key": "GET /predict/{request_id}", "integration": "lambda:drishti-aws-adapter", "note": "poll a signed result envelope" },
+      { "route_key": "GET /ping", "integration": "lambda:drishti-aws-adapter", "note": "health; no signature required" }
+    ],
+    "payload_max_bytes": 5000000,
+    "throttling": { "rate_limit_rps": 20, "burst_limit": 40 },
+    "usage_plan": {
+      "enabled": true,
+      "api_key_required": true,
+      "_auth_note": "The API key is ONLY a usage-plan throttling handle. It is NOT authentication (F.4). Authentication is the HMAC signature (X-DRISHTI-Signature over ts|nonce|body) verified in services/aws-adapter/signing.py. Preferred hardening: front the route with a JWT/OIDC authorizer (e.g. Cognito) and mint tokens via Catalyst Connections."
+    },
+    "access_logging": {
+      "enabled": true,
+      "log_group": "/aws/apigw/drishti-aws-adapter",
+      "redacted_fields": ["authorization", "x-drishti-signature", "body"]
+    },
+    "waf": { "recommended": true, "note": "attach an AWS WAF web ACL for IP rate-based rules + common-rule-set as the primary rate control." }
+  },
+
+  "lambda": {
+    "function_name": "drishti-aws-adapter",
+    "runtime": "python3.12",
+    "handler": "handler.lambda_handler",
+    "source_dir": "services/aws-adapter",
+    "architectures": ["arm64"],
+    "timeout_s": 60,
+    "memory_mb": 512,
+    "reserved_concurrency": 10,
+    "ephemeral_storage_mb": 512,
+    "tracing": "Active",
+    "vpc_config": {
+      "subnet_ids": ["<PRIVATE_SUBNET_A>", "<PRIVATE_SUBNET_B>"],
+      "security_group_ids": ["<ADAPTER_SG_ID>"],
+      "_note": "Private subnets only (no public IP). The adapter reaches SageMaker/Batch/S3 via VPC endpoints; it never egresses to the internet. The security group allows egress to the SageMaker/Batch/S3 VPC endpoints and, only where necessary, to the analytics RDS SG on 5432."
+    },
+    "environment_keys": [
+      "DRISHTI_AWS_ADAPTER_SECRET_ARN",
+      "DRISHTI_SM_REALTIME_ENDPOINT",
+      "DRISHTI_SM_ASYNC_ENDPOINT",
+      "DRISHTI_BATCH_JOB_QUEUE",
+      "DRISHTI_BATCH_JOB_DEFINITION",
+      "DRISHTI_ADAPTER_S3_STAGING",
+      "DRISHTI_ADAPTER_MAX_SKEW_S",
+      "DRISHTI_ADAPTER_RATE_PER_MIN",
+      "DRISHTI_ADAPTER_MAX_BODY_BYTES",
+      "DRISHTI_ADAPTER_CB_FAILURES",
+      "DRISHTI_ADAPTER_CB_RESET_S"
+    ],
+    "_secret_note": "The HMAC secret is delivered by reference (DRISHTI_AWS_ADAPTER_SECRET_ARN -> Secrets Manager) and read at cold start with secretsmanager:GetSecretValue; the raw value is never an env var, never committed, never logged.",
+    "execution_role": "arn:aws:iam::<ACCOUNT_ID>:role/drishti-aws-adapter-exec"
+  },
+
+  "ecs_alternative": {
+    "_comment": "If run as a long-lived service instead of Lambda, use the same image behind an internal ALB in private subnets; identical env keys + execution/task role. Entry: services/aws-adapter/handler.py:create_app (gunicorn).",
+    "launch_type": "FARGATE",
+    "cpu": "512",
+    "memory": "1024",
+    "assign_public_ip": false
+  },
+
+  "downstream": {
+    "sagemaker": {
+      "endpoints": ["drishti-tabfm", "drishti-timesfm", "drishti-stgnn"],
+      "modes": ["sagemaker_async", "sagemaker_realtime", "batch_transform"],
+      "note": "GPU containers are services/gpu-worker/ pushed to a private ECR repo by immutable digest. Real-time only after a measured latency benchmark; async/batch preferred; never SageMaker Serverless for GPU."
+    },
+    "aws_batch": {
+      "job_queue": "drishti-model-queue",
+      "job_definition": "drishti-model-jobdef",
+      "compute": "GPU (g5/g6) scale-to-zero managed compute; CPU queue for near-repeat/KDE",
+      "note": "preferred for offline forecasts, backfills and evaluation."
+    },
+    "analytics_rds": {
+      "use": "only-where-necessary",
+      "access": "read-only (drishti_readonly role, IAM DB auth preferred)",
+      "note": "PostGIS/pgRouting geospatial routing that Catalyst does not provide. Kept PRIVATE — see infra/aws/rds-network-posture.json. Never on the operational CRUD path."
+    }
+  },
+
+  "capability_gap_ref": "services/ml/app/predict/capability_gaps.py + infra/aws/capability-gaps.json",
+  "iam": {
+    "trust_policy": "infra/aws/adapter/iam/lambda-trust-policy.json",
+    "execution_policy": "infra/aws/adapter/iam/lambda-execution-policy.json",
+    "managed_policies": ["arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"],
+    "_managed_note": "VPC ENI management (ec2:CreateNetworkInterface/...) requires Resource '*' and is provided ONLY by the AWS-managed VPC-access policy, so the inline execution policy stays free of '*' resources except read-only actions AWS does not scope."
+  }
+}

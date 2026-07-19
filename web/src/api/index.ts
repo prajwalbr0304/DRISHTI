@@ -1,6 +1,9 @@
 import { apiClient } from "@/api/client";
+import { adminApi } from "@/api/endpoints/admin";
 import { analyticsApi } from "@/api/endpoints/analytics";
+import { boardApi } from "@/api/endpoints/board";
 import { casesApi } from "@/api/endpoints/cases";
+import { disasterApi } from "@/api/endpoints/disaster";
 import { caseworkApi } from "@/api/endpoints/casework";
 import { chatApi } from "@/api/endpoints/chat";
 import { evidenceApi } from "@/api/endpoints/evidence";
@@ -13,6 +16,9 @@ import { identityApi } from "@/api/endpoints/identity";
 import { importsApi } from "@/api/endpoints/imports";
 import { intakeApi } from "@/api/endpoints/intake";
 import { moneyApi } from "@/api/endpoints/money";
+import { notificationsApi } from "@/api/endpoints/notifications";
+import { ragApi } from "@/api/endpoints/rag";
+import { reportsApi } from "@/api/endpoints/reports";
 import { riskApi } from "@/api/endpoints/risk";
 import { workloadApi } from "@/api/endpoints/workload";
 
@@ -39,6 +45,12 @@ export const api = {
   chat: chatApi,
   governance: governanceApi,
   workload: workloadApi,
+  admin: adminApi,
+  notifications: notificationsApi,
+  reports: reportsApi,
+  rag: ragApi,
+  board: boardApi,
+  disaster: disasterApi,
 };
 
 export { apiClient };

@@ -10,6 +10,7 @@ import { ModeLayout, CanvasLegend } from "@/components/network/ModeLayout";
 import { ENTITY_LEGEND } from "@/components/network/graphEncoding";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Network as NetworkIcon } from "lucide-react";
+import { SendToBoard } from "@/components/board/SendToBoard";
 
 /* Explore: drop an entity, expand neighbours hop-by-hop (never a hairball). */
 export function ExploreMode({
@@ -128,6 +129,20 @@ export function ExploreMode({
               >
                 <RotateCcw /> Reset to seed
               </Button>
+              {/* Send the focal (or selected) graph node to an Investigation Board. */}
+              <SendToBoard
+                className="w-full justify-center"
+                target={{
+                  refTable: "EntityGraph",
+                  refId: selected ? Number(selected) : seed.id,
+                  nodeKind: "entity",
+                  label: selected ? nodesMap.current.get(selected)?.label ?? seed.label : seed.label,
+                }}
+              />
+              <p className="text-11 text-content-dim">
+                Sends the selected node (or seed) as a live reference; on the board,
+                Search Around imports its verified neighbours as evidence.
+              </p>
             </>
           )}
         </div>

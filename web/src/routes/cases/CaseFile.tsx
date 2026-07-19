@@ -30,6 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SendToBoard } from "@/components/board/SendToBoard";
 
 import { OverviewPage } from "@/routes/cases/subpages/OverviewPage";
 import { TimelinePage } from "@/routes/cases/subpages/TimelinePage";
@@ -170,6 +171,11 @@ export function CaseFile() {
             detail
               ? [detail.core.crime_group, detail.core.district, detail.core.status].filter(Boolean).join(" · ")
               : undefined
+          }
+          actions={
+            detail ? (
+              <SendToBoard target={{ refTable: "CaseMaster", refId: caseId, nodeKind: "case", label: crimeNo }} />
+            ) : undefined
           }
         />
 

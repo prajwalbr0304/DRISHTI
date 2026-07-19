@@ -1,30 +1,38 @@
 {
-  "_comment": "DRISHTI Catalyst Signals registry (Phase 14 Part B / matrix rows 21 + 22, workflows §3/§4/§6/§7/§11/§12). Signals is CONSOLE-ONLY - there is no SDK/API to create publishers, rules or webhooks - so this file is the reviewed source that an operator recreates in Console -> Signals. Rules whose enable_flag is listed stay Inactive until the owning phase enables them (and the matching AppSail DRISHTI_*_ENABLED flag is set), so they process no events and cost nothing.",
+  "_comment": "DRISHTI Catalyst Signals registry (Phase 14 Part B + H scoping). Signals is CONSOLE-ONLY (no SDK/API to create publishers/rules/webhooks), so this is the reviewed source an operator recreates in Console -> Signals. H MINIMAL SET: enable exactly ONE rule for the hackathon - 'prediction-requested' -> prediction_event (the one prediction.requested Signal/Event Function). Every other rule is tier=optional (documented but Inactive); Mail/Push rules (report/notify/signup) belong to Prompt 15. All rules stay active=false and cost nothing until their owning phase enables them + the matching AppSail DRISHTI_*_ENABLED flag is set. Authoritative record is always persisted BEFORE the event is emitted (a Data Store row_inserted trigger fires only after the row is committed; the custom drishti_app publisher is emitted only after the AppSail transaction commits).",
+  "minimal_set": {
+    "signal_rule": "prediction-requested",
+    "note": "One prediction.requested Signal/Event Function is the only event kept for the hackathon; see cron-schedules.json for the one minimal forecast cron."
+  },
   "publishers": [
-    { "api_name": "drishti_stratus", "type": "catalyst", "service": "stratus", "event_ordering": false },
-    { "api_name": "drishti_datastore", "type": "catalyst", "service": "datastore", "event_ordering": true },
-    { "api_name": "drishti_auth", "type": "catalyst", "service": "authentication", "event_ordering": false },
+    { "api_name": "drishti_datastore", "type": "catalyst", "service": "datastore", "event_ordering": true, "tier": "minimal" },
     {
       "api_name": "drishti_app",
       "type": "custom",
       "event_ordering": false,
-      "events": ["report.ready", "notify.requested", "prediction.requested"]
-    }
+      "events": ["prediction.requested", "report.ready", "prediction.reviewed", "notification.created", "task.escalated", "source.reconcile"],
+      "tier": "minimal",
+      "note": "Emitted by AppSail ONLY after the authoritative transaction commits (persist-before-emit). Phase 15 adds report.ready / prediction.reviewed / notification.created / task.escalated via services/ml/app/signals.py, all gated by DRISHTI_SIGNALS_ENABLED (off by default)."
+    },
+    { "api_name": "drishti_stratus", "type": "catalyst", "service": "stratus", "event_ordering": false, "tier": "optional" },
+    { "api_name": "drishti_auth", "type": "catalyst", "service": "authentication", "event_ordering": false, "tier": "optional" }
   ],
   "retry_policy": { "mode": "auto", "max_attempts": 20, "backoff": "exponential(1,2,4,8,cap 10)min" },
   "ttl_hours": 24,
-  "dlq_equivalent": "Undelivered events move to Dropped after TTL; monitored in Console -> Signals -> Logs.",
+  "dlq_equivalent": "Undelivered events move to Dropped after TTL; monitored in Console -> Signals -> Logs. A failed prediction_event marks the PredictionRequest Status='failed' (failed-job state) so a rerun is controlled.",
   "rules": [
     {
-      "name": "evidence-uploaded",
-      "publisher": "drishti_stratus",
-      "event": "stratus_object_uploaded",
-      "filter": "$.key startsWith 'evidence/'",
-      "target": { "type": "function", "name": "evidence_event" },
+      "name": "prediction-requested",
+      "publisher": "drishti_datastore",
+      "event": "row_inserted",
+      "filter": "$.table == 'PredictionRequest' AND $.state == 'approved'",
+      "target": { "type": "function", "name": "prediction_event" },
       "dispatch": "instant",
-      "workflow": "4",
-      "enable_flag": "DRISHTI_EVIDENCE_SCAN_ENABLED",
-      "active": false
+      "workflow": "7",
+      "enable_flag": "DRISHTI_PREDICTION_DISPATCH_ENABLED",
+      "tier": "minimal",
+      "active": false,
+      "note": "THE one kept Signal/Event (H). Fires after the PredictionRequest row is committed; the function dispatches to the protected AWS adapter and, on failure, sets Status='failed' with retry per retry_policy."
     },
     {
       "name": "canonical-version-committed",
@@ -35,18 +43,9 @@
       "dispatch": "instant",
       "workflow": "6",
       "enable_flag": "DRISHTI_FEATURE_SNAPSHOT_ENABLED",
-      "active": false
-    },
-    {
-      "name": "prediction-requested",
-      "publisher": "drishti_datastore",
-      "event": "row_inserted",
-      "filter": "$.table == 'PredictionRequest' AND $.state == 'approved'",
-      "target": { "type": "function", "name": "prediction_event" },
-      "dispatch": "instant",
-      "workflow": "7",
-      "enable_flag": "DRISHTI_PREDICTION_DISPATCH_ENABLED",
-      "active": false
+      "tier": "optional",
+      "active": false,
+      "note": "OPTIONAL (H). The AppSail runtime can persist the FeatureSnapshot + PredictionRequest inline, so a separate canonical-version event is not required for the demo."
     },
     {
       "name": "prediction-result-ready",
@@ -57,7 +56,22 @@
       "dispatch": "instant",
       "workflow": "7",
       "enable_flag": null,
-      "active": false
+      "tier": "optional",
+      "active": false,
+      "note": "OPTIONAL (H). Result-ready notice reaches the UI via Gateway polling or the scoped SSE channel; a separate Signal is not required."
+    },
+    {
+      "name": "evidence-uploaded",
+      "publisher": "drishti_stratus",
+      "event": "stratus_object_uploaded",
+      "filter": "$.key startsWith 'evidence/'",
+      "target": { "type": "function", "name": "evidence_event" },
+      "dispatch": "instant",
+      "workflow": "4",
+      "enable_flag": "DRISHTI_EVIDENCE_SCAN_ENABLED",
+      "tier": "optional",
+      "active": false,
+      "note": "OPTIONAL (H) - a separate event per upload action is deferred."
     },
     {
       "name": "report-ready",
@@ -66,18 +80,46 @@
       "target": { "type": "function", "name": "report_event" },
       "dispatch": "instant",
       "workflow": "11",
-      "enable_flag": "DRISHTI_REPORT_DELIVERY_ENABLED",
-      "active": false
+      "enable_flag": "DRISHTI_SIGNALS_ENABLED",
+      "tier": "phase15",
+      "active": false,
+      "note": "Phase 15 IMPLEMENTED. reports.service publishes report.ready AFTER the ReportSnapshot Data Store write commits (data-minimized: ids + hashes only). Emission is gated by DRISHTI_SIGNALS_ENABLED so the demo is cost-free by default."
     },
     {
-      "name": "notify-requested",
+      "name": "prediction-reviewed",
       "publisher": "drishti_app",
-      "event": "notify.requested",
+      "event": "prediction.reviewed",
+      "target": { "type": "function", "name": "notify_dispatch" },
+      "dispatch": "instant",
+      "workflow": "12",
+      "enable_flag": "DRISHTI_SIGNALS_ENABLED",
+      "tier": "phase15",
+      "active": false,
+      "note": "Phase 15 IMPLEMENTED. governance.review publishes prediction.reviewed AFTER the review transaction commits (decision/status only, no model output)."
+    },
+    {
+      "name": "notification-created",
+      "publisher": "drishti_app",
+      "event": "notification.created",
       "target": { "type": "function", "name": "notify_dispatch" },
       "dispatch": "instant",
       "workflow": "12",
       "enable_flag": "DRISHTI_NOTIFY_ENABLED",
-      "active": false
+      "tier": "phase15",
+      "active": false,
+      "note": "Phase 15 IMPLEMENTED. notifications.deliver_notification publishes notification.created AFTER the NotificationMessage write commits; Mail/Push delivery is additionally gated by DRISHTI_NOTIFY_ENABLED. Bodies are data-minimized synthetic summaries only."
+    },
+    {
+      "name": "task-escalated",
+      "publisher": "drishti_app",
+      "event": "task.escalated",
+      "target": { "type": "function", "name": "notify_dispatch" },
+      "dispatch": "instant",
+      "workflow": "12",
+      "enable_flag": "DRISHTI_SIGNALS_ENABLED",
+      "tier": "phase15",
+      "active": false,
+      "note": "Phase 15 IMPLEMENTED. notifications.run_escalations publishes task.escalated AFTER a WorkTask crosses its SLA and is escalated (task id/type only)."
     },
     {
       "name": "user-signedup-onboarding",
@@ -87,9 +129,17 @@
       "dispatch": "instant",
       "workflow": "12",
       "enable_flag": "DRISHTI_NOTIFY_ENABLED",
-      "active": false
+      "tier": "optional",
+      "active": false,
+      "note": "OPTIONAL (H) - Mail/Push belong to Prompt 15."
     }
   ],
+  "deferred_capabilities": {
+    "circuits": "Branch/parallel Circuits orchestration is DEFERRED (also unavailable in the IN DC); the one prediction.requested Signal + idempotent Functions + the one forecast cron replace it.",
+    "per_action_events": "Separate events for every upload/import/report action are DEFERRED (optional rules above).",
+    "mail_push": "Mail + Push notifications are IMPLEMENTED in Phase 15 (services/ml/app/notify_channels.py, data-minimized) and gated by DRISHTI_NOTIFY_ENABLED (off by default so the demo is cost-free; in-app notifications always work).",
+    "multiple_crons_backfills": "Multiple cron schedules + backfill pipelines are DEFERRED (see cron-schedules.json)."
+  },
   "reserved_rules_later_phases": [
     { "name": "board-activity (RESERVED)", "workflow": "13", "owner_phase": "16", "active": false },
     { "name": "hazard-reading-ingested (RESERVED)", "workflow": "14", "owner_phase": "17", "active": false },

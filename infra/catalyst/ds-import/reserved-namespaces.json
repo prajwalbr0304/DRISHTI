@@ -1,14 +1,6 @@
 {
   "note": "Reserved for later phases; NOT created or imported in Phase 14 (phase-order rule). Prompt 16 = Investigation Board; Prompt 17 = Disaster Response.",
   "namespaces": {
-    "investigation_board": [
-      "InvestigationBoard",
-      "BoardNode",
-      "BoardEdge",
-      "BoardAnnotation",
-      "BoardCollaborator",
-      "BoardActivity"
-    ],
     "disaster_response": [
       "HazardType",
       "HazardEvent",
@@ -24,12 +16,6 @@
     ]
   },
   "external_id_prefixes": {
-    "InvestigationBoard": "board",
-    "BoardNode": "bnode",
-    "BoardEdge": "bedge",
-    "BoardAnnotation": "bann",
-    "BoardCollaborator": "bcollab",
-    "BoardActivity": "bact",
     "HazardType": "haztype",
     "HazardEvent": "hazevt",
     "HazardPrediction": "hazpred",

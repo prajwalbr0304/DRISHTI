@@ -30,6 +30,7 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from .circuit import CircuitBreaker, CircuitOpenError
 from .envelope import (BackendKind, DeviceKind, JobState,
                        PredictionRequestEnvelope, PredictionResultEnvelope)
 
@@ -121,13 +122,25 @@ class SignedHttpsAdapter(AwsModelAdapter):
     """
 
     def __init__(self, base_url: Optional[str] = None, secret: Optional[str] = None,
-                 timeout_s: float = 30.0, max_retries: int = 3):
+                 timeout_s: float = 30.0, max_retries: int = 3,
+                 breaker: Optional[CircuitBreaker] = None):
         self.base_url = (base_url or os.getenv("DRISHTI_AWS_ADAPTER_URL", "")).rstrip("/")
         self._secret = secret or os.getenv("DRISHTI_AWS_ADAPTER_SECRET", "")
         self.timeout_s = timeout_s
         self.max_retries = max_retries
+        # F.5 circuit breaker: after repeated backend failures, fail fast for a
+        # cooldown instead of hammering the AWS plane. Tunable server-side.
+        self._breaker = breaker or CircuitBreaker(
+            failure_threshold=int(os.getenv("DRISHTI_AWS_ADAPTER_CB_FAILURES", "5")),
+            reset_timeout_s=float(os.getenv("DRISHTI_AWS_ADAPTER_CB_RESET_S", "30")),
+            name="aws-adapter")
         if not self.base_url or not self._secret:
             raise AdapterError("AWS adapter URL/secret not configured (server-side env).")
+
+    @property
+    def circuit(self) -> CircuitBreaker:
+        """Expose the breaker for redacted health/observability reporting."""
+        return self._breaker
 
     def _headers(self, payload: bytes) -> dict[str, str]:
         ts = str(int(time.time()))
@@ -142,6 +155,22 @@ class SignedHttpsAdapter(AwsModelAdapter):
         }
 
     def _request(self, method: str, path: str, body: Optional[dict] = None) -> dict:
+        # Circuit breaker admission: fail fast if the AWS plane is unhealthy so a
+        # single logical request (with its retry loop) never becomes a stampede.
+        try:
+            self._breaker.before_call()
+        except CircuitOpenError as exc:
+            raise AdapterError(f"AWS adapter circuit open: {exc}") from None
+        try:
+            data = self._request_with_retries(method, path, body)
+        except Exception:
+            self._breaker.record_failure()
+            raise
+        self._breaker.record_success()
+        return data
+
+    def _request_with_retries(self, method: str, path: str,
+                              body: Optional[dict] = None) -> dict:
         import httpx  # local import: keep module importable without httpx
         payload = _canonical(body) if body is not None else b""
         last_exc: Optional[Exception] = None
@@ -156,9 +185,13 @@ class SignedHttpsAdapter(AwsModelAdapter):
                 return resp.json()
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                # exponential backoff with jitter
-                time.sleep(min(2 ** attempt, 8) * (0.5 + 0.5 * (uuid.uuid4().int % 100) / 100))
-        raise AdapterError(f"AWS adapter unreachable after {self.max_retries} attempts") from last_exc
+                # exponential backoff with jitter — but never sleep after the
+                # final attempt (it would only delay the failure).
+                if attempt < self.max_retries - 1:
+                    time.sleep(min(2 ** attempt, 8)
+                               * (0.5 + 0.5 * (uuid.uuid4().int % 100) / 100))
+        raise AdapterError(
+            f"AWS adapter unreachable after {self.max_retries} attempts") from last_exc
 
     def _verify(self, data: dict) -> PredictionResultEnvelope:
         sig = data.get("signature")

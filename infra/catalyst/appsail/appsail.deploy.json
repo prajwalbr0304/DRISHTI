@@ -48,13 +48,27 @@
       "DRISHTI_REPORT_DELIVERY_ENABLED",
       "DRISHTI_NOTIFY_ENABLED",
       "DRISHTI_RECONCILE_ENABLED",
-      "DRISHTI_FORECAST_CRON_ENABLED"
+      "DRISHTI_FORECAST_CRON_ENABLED",
+      "DRISHTI_AWS_ADAPTER_CB_FAILURES",
+      "DRISHTI_AWS_ADAPTER_CB_RESET_S",
+      "DRISHTI_STREAM_CHANNEL_ENABLED",
+      "DRISHTI_CHANNEL_SIGNING_SECRET",
+      "DRISHTI_CHANNEL_ALLOWED_ORIGINS",
+      "DRISHTI_APPSAIL_STREAM_URL",
+      "DRISHTI_CHANNEL_TTL_MS"
     ],
     "key_notes": {
       "DRISHTI_REQUIRE_GATEWAY_CONTEXT": "true in deployment: AppSail verifies the signed gateway/service context (signature/audience/scope/expiry/replay) before handling any non-health request and rejects unauthenticated browser CRUD (items 10/12). Unset/false locally.",
       "DRISHTI_CONTEXT_AUDIENCE": "Expected audience the signed context is minted for; must equal the value embedded by the Node signers (default 'drishti-appsail'). Empty string disables the audience check.",
       "DRISHTI_USE_CATALYST_STRATUS": "true so evidence/import/report objects use Catalyst Stratus (not the in-memory fake).",
-      "DRISHTI_ACCESS_LOG_ENABLED": "true to emit structured, redacted JSON access logs (method/path/status/latency/request_id/role/scope) to stdout."
+      "DRISHTI_ACCESS_LOG_ENABLED": "true to emit structured, redacted JSON access logs (method/path/status/latency/request_id/role/scope) to stdout.",
+      "DRISHTI_AWS_ADAPTER_CB_FAILURES": "Part F item 5: consecutive AWS-adapter failures that trip the client circuit breaker (default 5).",
+      "DRISHTI_AWS_ADAPTER_CB_RESET_S": "Part F item 5: circuit-breaker cooldown seconds before a half-open probe (default 30).",
+      "DRISHTI_STREAM_CHANNEL_ENABLED": "Part F item 1: true to enable the scoped direct-AppSail SSE channel (/stream/predictions). OFF => the endpoint returns 404 (no surface).",
+      "DRISHTI_CHANNEL_SIGNING_SECRET": "HMAC secret for the scoped channel token; falls back to ZOHO_APPSAIL_SIGNING_SECRET. Must match the channel_token function's secret.",
+      "DRISHTI_CHANNEL_ALLOWED_ORIGINS": "Comma-separated EXACT browser origins allowed to open the channel (strict Origin check). Required when the channel is enabled.",
+      "DRISHTI_APPSAIL_STREAM_URL": "Set on the channel_token FUNCTION (not AppSail): https base URL of the AppSail SSE endpoint returned to the browser.",
+      "DRISHTI_CHANNEL_TTL_MS": "Channel-token lifetime in ms (default 300000 = 5 min); the stream self-closes at expiry, forcing a re-handshake through the gateway."
     },
     "must_not_set_for_crud": [
       "DATABASE_URL"

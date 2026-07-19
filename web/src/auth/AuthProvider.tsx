@@ -6,13 +6,12 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import type { UserRole } from "@/config/roles";
 import { createAuthClient } from "@/auth/authClient";
 import { saveOfflineUser } from "@/auth/offline";
 import type { AuthMode, AuthStatus, AuthUser } from "@/auth/types";
-import { LoginGate } from "@/auth/LoginGate";
 
 /* ============================================================================
    AuthProvider — Catalyst Authentication login/session (Phase 14 Part C, item 7).
@@ -69,7 +68,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [client]);
 
   const signOut = useCallback(() => {
-    const redirect = `${window.location.origin}/`;
+    // Return to the sign-in screen after sign-out (offline: hard redirect;
+    // catalyst: Zoho logout then back to /login).
+    const redirect = `${window.location.origin}/login`;
     setUser(null);
     setStatus("unauthenticated");
     void client.signOut(redirect);
@@ -128,11 +129,13 @@ function AuthSplash() {
 
 /**
  * Route guard used as a layout element around the app routes. Renders the app
- * (via <Outlet/>) only when authenticated; otherwise the login gate.
+ * (via <Outlet/>) only when authenticated; otherwise redirects to /login,
+ * preserving the intended destination so sign-in returns the user there.
  */
 export function RequireAuth() {
   const { status } = useAuth();
+  const location = useLocation();
   if (status === "initializing") return <AuthSplash />;
   if (status === "authenticated") return <Outlet />;
-  return <LoginGate />;
+  return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
 }

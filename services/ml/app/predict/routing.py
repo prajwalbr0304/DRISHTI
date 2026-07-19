@@ -10,9 +10,12 @@ can be reused by the intake, evidence, import and feature-snapshot handlers.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .enablement import deferred_tasks as _deferred_tasks
+from .enablement import enabled_tasks
 from .envelope import ModelTask
 
 
@@ -42,6 +45,9 @@ class RoutingDecision:
     coalesced: tuple[ModelTask, ...] = field(default_factory=tuple)   # next approved run
     person_level_forbidden: bool = True
     reason: str = ""
+    # Tasks the route DOCUMENTS but that are deferred/not enabled for the demo
+    # (G.2). Recorded for transparency; they are excluded from ``tasks``.
+    deferred_tasks: tuple[ModelTask, ...] = field(default_factory=tuple)
 
     def as_dict(self) -> dict:
         return {
@@ -52,6 +58,7 @@ class RoutingDecision:
             "coalesced": [t.value for t in self.coalesced],
             "person_level_forbidden": self.person_level_forbidden,
             "reason": self.reason,
+            "deferred_tasks": [t.value for t in self.deferred_tasks],
         }
 
 
@@ -80,8 +87,64 @@ class RoutingContext:
     metadata_schema_lists_fields: bool = False
 
 
+# --- Specialized routes: documented but DISABLED for the demo (G.1) ----------
+# These routes are kept in the code + docs but do NOT invoke a model for the demo
+# unless explicitly enabled with DRISHTI_ROUTE_<EVENT>_ENABLED=true. Graph /
+# similarity investigation support is a separate CPU path and is unaffected.
+_SPECIALIZED_ROUTES: dict[InputEvent, str] = {
+    InputEvent.STRUCTURED_RECORD_APPROVED: "court/laboratory/chargesheet/statement records",
+    InputEvent.STRUCTURED_IMPORT_REVIEWED: "CDR/device/media/financial imports",
+}
+
+
+def route_enabled(event: InputEvent) -> bool:
+    """True unless ``event`` is a specialized route that is off by default."""
+    if event not in _SPECIALIZED_ROUTES:
+        return True
+    return os.getenv(f"DRISHTI_ROUTE_{event.name}_ENABLED", "").strip().lower() == "true"
+
+
 def route(ctx: RoutingContext) -> RoutingDecision:
-    """Decide the model route for an input event. Deterministic; no side effects."""
+    """Decide the model route for an input event, applying the demo enablement
+    scoping (G.1/G.2). Deterministic; no side effects.
+
+    A specialized route (court/lab/CDR/financial) is documented but returns
+    ``invokes_model=False`` unless enabled; otherwise the documented decision is
+    filtered so only ENABLED model tasks remain (deferred models are dropped)."""
+    ev = ctx.event
+    if ev in _SPECIALIZED_ROUTES and not route_enabled(ev):
+        return RoutingDecision(
+            ev, invokes_model=False,
+            reason=(f"Specialized route ({_SPECIALIZED_ROUTES[ev]}) is documented but "
+                    f"DISABLED for the demo — enable with DRISHTI_ROUTE_{ev.name}_ENABLED=true."))
+    return _apply_enablement(_route_documented(ctx))
+
+
+def _apply_enablement(d: RoutingDecision) -> RoutingDecision:
+    """Filter a documented routing decision down to the ENABLED tasks (G.2).
+
+    Deferred/optional-off models are removed from ``tasks``/``immediate``/
+    ``coalesced`` and recorded in ``deferred_tasks``. If every routed model is
+    deferred, the route becomes ``invokes_model=False``."""
+    if not d.invokes_model or not d.tasks:
+        return d
+    kept = enabled_tasks(d.tasks)
+    dropped = _deferred_tasks(d.tasks)
+    if not kept:
+        return RoutingDecision(
+            d.event, invokes_model=False, deferred_tasks=dropped,
+            reason=(d.reason + " [all routed models are deferred/not enabled for the demo: "
+                    + ", ".join(t.value for t in dropped) + "]"))
+    note = (" [deferred for demo: " + ", ".join(t.value for t in dropped) + "]") if dropped else ""
+    return RoutingDecision(
+        d.event, invokes_model=True, tasks=kept,
+        immediate=enabled_tasks(d.immediate), coalesced=enabled_tasks(d.coalesced),
+        person_level_forbidden=d.person_level_forbidden, reason=d.reason + note,
+        deferred_tasks=dropped)
+
+
+def _route_documented(ctx: RoutingContext) -> RoutingDecision:
+    """The FULL documented routing matrix (before demo-enablement filtering)."""
     ev = ctx.event
 
     if ev in _NO_MODEL:

@@ -20,6 +20,7 @@ export function deriveDisplayRole(user: AuthUser | null): UserRole {
 
   const r = (user.catalystRole ?? "").toLowerCase();
   if (/admin|super/.test(r)) return "super_admin";
+  if (/disaster|coordinator|ddma|sdma|emergency/.test(r)) return "disaster_coordinator";
   if (/supervisor|sho|inspector/.test(r)) return "supervisor";
   if (/analyst/.test(r)) return "analyst";
   if (/policy/.test(r)) return "policymaker";

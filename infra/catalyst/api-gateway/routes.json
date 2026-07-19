@@ -14,6 +14,14 @@
       "note": "Authenticated public API. gateway_api derives identity server-side and invokes AppSail with a signed context."
     },
     {
+      "path": "/api/channel-token",
+      "target": { "type": "function", "name": "channel_token" },
+      "methods": ["GET", "POST", "OPTIONS"],
+      "authentication": "required",
+      "throttle": { "general_per_min": 120, "per_ip_per_min": 30 },
+      "note": "Part F item 1: authenticated mint of a short-lived, audience/board/user-bound SSE/WS channel token. Derives identity from Catalyst Auth server-side + strict Origin check; the browser then opens the DIRECT AppSail /stream/* connection with the token (the only permitted non-facade path)."
+    },
+    {
       "path": "/api/public/health",
       "target": { "type": "function", "name": "gateway_api" },
       "methods": ["GET"],

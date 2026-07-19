@@ -36,6 +36,14 @@ from .governance.router import router as governance_router
 from .workload.router import router as workload_router
 from .search.router import router as search_router
 from .internal.router import router as internal_router
+from .stream.router import router as stream_router
+from .predict.router import router as predict_router
+from .admin.router import router as admin_router
+from .notifications.router import router as notifications_router
+from .reports.router import router as reports_router
+from .rag.router import router as rag_router
+from .board.router import router as board_router
+from .disaster.router import router as disaster_router
 from .guards import HonestyMiddleware
 from .hardening import (BodySizeLimitMiddleware, RateLimitMiddleware,
                         install_error_handlers, masked_db_target,
@@ -86,8 +94,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins(),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "X-Role", "X-Request-ID", "X-Demo-Actor"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "Authorization", "X-Role", "X-Request-ID",
+                   "X-Demo-Actor", "X-Idempotency-Key", "If-Match",
+                   "X-Disaster-District", "X-Disaster-Unit"],
     expose_headers=["X-Request-ID", "X-DRISHTI-Causation", "X-DRISHTI-Anonymity", "X-DRISHTI-Use"],
 )
 # Structured redacted access log — outermost so it records the final status +
@@ -113,6 +123,25 @@ app.include_router(workload_router)
 app.include_router(search_router)
 # Internal service-to-service endpoints (require a signed gateway/service context).
 app.include_router(internal_router)
+# Scoped SSE channel (Part F item 1): a direct browser->AppSail stream guarded by
+# a short-lived channel token + strict Origin (its own auth; see stream/router).
+# OFF unless DRISHTI_STREAM_CHANNEL_ENABLED=true.
+app.include_router(stream_router)
+# Part G prediction runtime + ML/RAG placement + dispatch-policy introspection.
+# Reads are open aggregate metadata; job submit/collect are role + write-guarded.
+app.include_router(predict_router)
+# Phase 15 — admin/governance console, notifications/work, reports, optional RAG.
+app.include_router(admin_router)
+app.include_router(notifications_router)
+app.include_router(reports_router)
+app.include_router(rag_router)
+# Phase 16 — Investigation Board (object-backed analytical canvas). Data Store-
+# native persistence; Catalyst-authenticated authorization (policymaker denied).
+app.include_router(board_router)
+# Phase 17 — Emergency Response (disaster forecasting/readiness/allocation/
+# evacuation). Data Store-native; synthetic disaster_coordinator role + district
+# scope; no forecast auto-publishes an alert, auto-dispatches or declares safe.
+app.include_router(disaster_router)
 
 
 @app.get("/health", response_model=HealthReport)

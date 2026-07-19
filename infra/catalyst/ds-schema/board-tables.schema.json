@@ -1,0 +1,678 @@
+{
+  "schema_version": "2026.07.19-1",
+  "note": "Prompt 16 Investigation Board \u2014 Data Store-native tables. Created directly in Catalyst Data Store; app-populated at runtime; NO AWS PostgreSQL source and NO operational PG migration. AWS RLS/FORCE RLS remain disabled (no RLS policy is created).",
+  "limits": {
+    "max_json_bytes": 16384,
+    "max_snapshot_bytes": 32768,
+    "max_label_len": 255,
+    "max_content_len": 4000
+  },
+  "tables": [
+    {
+      "name": "InvestigationBoard",
+      "external_id_prefix": "board",
+      "primary_key": "BoardID",
+      "append_only": false,
+      "search_columns": [
+        "Title",
+        "Description"
+      ],
+      "columns": [
+        {
+          "name": "BoardID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK"
+        },
+        {
+          "name": "Title",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Description",
+          "type": "bigtext",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "OwnerActor",
+          "type": "text",
+          "nullable": false,
+          "note": "Catalyst-auth demo actor key"
+        },
+        {
+          "name": "OwnerEmployeeID",
+          "type": "int",
+          "nullable": true,
+          "note": "optional FK->Employee (synthetic)"
+        },
+        {
+          "name": "CaseMasterID",
+          "type": "int",
+          "nullable": true,
+          "note": "optional case scope (FK->CaseMaster)"
+        },
+        {
+          "name": "UnitID",
+          "type": "int",
+          "nullable": true,
+          "note": "scope for out-of-unit share warnings"
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": "scope for out-of-scope share warnings"
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "active|archived|locked"
+        },
+        {
+          "name": "Visibility",
+          "type": "text",
+          "nullable": false,
+          "note": "private|shared|unit"
+        },
+        {
+          "name": "IsLocked",
+          "type": "bool",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": "optimistic concurrency counter"
+        },
+        {
+          "name": "ParentBoardID",
+          "type": "int",
+          "nullable": true,
+          "note": "set when this board is a branch of a locked parent"
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_board_owner",
+          "columns": [
+            "OwnerActor"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_board_status",
+          "columns": [
+            "Status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_board_case",
+          "columns": [
+            "CaseMasterID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_board_parent",
+          "columns": [
+            "ParentBoardID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "BoardNode",
+      "external_id_prefix": "bnode",
+      "primary_key": "BoardNodeID",
+      "append_only": false,
+      "search_columns": [
+        "Label"
+      ],
+      "columns": [
+        {
+          "name": "BoardNodeID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK"
+        },
+        {
+          "name": "BoardID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "NodeKind",
+          "type": "text",
+          "nullable": false,
+          "note": "whitelisted object kind"
+        },
+        {
+          "name": "RefTable",
+          "type": "text",
+          "nullable": true,
+          "note": "whitelisted canonical object table"
+        },
+        {
+          "name": "RefID",
+          "type": "text",
+          "nullable": true,
+          "note": "canonical object id (string form)"
+        },
+        {
+          "name": "CanonicalEntityID",
+          "type": "int",
+          "nullable": true,
+          "note": "canonical graph entity id when known"
+        },
+        {
+          "name": "Label",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "PosX",
+          "type": "numeric",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "PosY",
+          "type": "numeric",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Width",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Height",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "StyleJSON",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "SnapshotJSON",
+          "type": "json",
+          "nullable": true,
+          "note": "pin-time projection (bounded, never file bytes)"
+        },
+        {
+          "name": "SourceVersion",
+          "type": "text",
+          "nullable": true,
+          "note": "source record version at pin time"
+        },
+        {
+          "name": "SourceHash",
+          "type": "text",
+          "nullable": true,
+          "note": "hash of the pinned projection (integrity)"
+        },
+        {
+          "name": "CreatedBy",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": "soft-delete (Data Store has no hard delete; keeps chain-of-custody)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_bnode_board",
+          "columns": [
+            "BoardID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_bnode_ref",
+          "columns": [
+            "RefTable",
+            "RefID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_bnode_entity",
+          "columns": [
+            "CanonicalEntityID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "BoardEdge",
+      "external_id_prefix": "bedge",
+      "primary_key": "BoardEdgeID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "BoardEdgeID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK"
+        },
+        {
+          "name": "BoardID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "SourceNodeID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "TargetNodeID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "EdgeClass",
+          "type": "text",
+          "nullable": false,
+          "note": "evidence|hypothesis"
+        },
+        {
+          "name": "Label",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "RelationshipType",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Directed",
+          "type": "bool",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Confidence",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Rationale",
+          "type": "bigtext",
+          "nullable": true,
+          "note": "required before a hypothesis can be promoted"
+        },
+        {
+          "name": "EvidenceCaseID",
+          "type": "int",
+          "nullable": true,
+          "note": "FK->CaseMaster for imported evidence edges"
+        },
+        {
+          "name": "SourceRecordID",
+          "type": "text",
+          "nullable": true,
+          "note": "provenance of an imported evidence edge"
+        },
+        {
+          "name": "StyleJSON",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "PromotedStatus",
+          "type": "text",
+          "nullable": true,
+          "note": "null|proposed; set on promotion"
+        },
+        {
+          "name": "PromotedRef",
+          "type": "text",
+          "nullable": true,
+          "note": "AlertHistory/proposal id created on promotion"
+        },
+        {
+          "name": "CreatedBy",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": "soft-delete"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_bedge_board",
+          "columns": [
+            "BoardID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_bedge_source",
+          "columns": [
+            "SourceNodeID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_bedge_target",
+          "columns": [
+            "TargetNodeID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_bedge_class",
+          "columns": [
+            "EdgeClass"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "BoardAnnotation",
+      "external_id_prefix": "bann",
+      "primary_key": "BoardAnnotationID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "BoardAnnotationID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK"
+        },
+        {
+          "name": "BoardID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Kind",
+          "type": "text",
+          "nullable": false,
+          "note": "sticky|text|frame|freehand"
+        },
+        {
+          "name": "Content",
+          "type": "bigtext",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "GeometryJSON",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "StyleJSON",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CreatedBy",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": "soft-delete"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_bann_board",
+          "columns": [
+            "BoardID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "BoardCollaborator",
+      "external_id_prefix": "bcollab",
+      "primary_key": "BoardCollaboratorID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "BoardCollaboratorID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK"
+        },
+        {
+          "name": "BoardID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Actor",
+          "type": "text",
+          "nullable": false,
+          "note": "collaborator demo actor key"
+        },
+        {
+          "name": "EmployeeID",
+          "type": "int",
+          "nullable": true,
+          "note": "optional FK->Employee (synthetic)"
+        },
+        {
+          "name": "Role",
+          "type": "text",
+          "nullable": false,
+          "note": "owner|editor|viewer"
+        },
+        {
+          "name": "AddedBy",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "AddedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": "soft-remove of a collaborator"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_bcollab_board",
+          "columns": [
+            "BoardID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ux_bcollab_board_actor",
+          "columns": [
+            "BoardID",
+            "Actor"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "BoardActivity",
+      "external_id_prefix": "bact",
+      "primary_key": "BoardActivityID",
+      "append_only": true,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "BoardActivityID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK; monotonic per board"
+        },
+        {
+          "name": "BoardID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Actor",
+          "type": "text",
+          "nullable": false,
+          "note": "demo actor who made the change"
+        },
+        {
+          "name": "Action",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "TargetType",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "TargetID",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DiffJSON",
+          "type": "json",
+          "nullable": true,
+          "note": "compact before/after (data-minimised)"
+        },
+        {
+          "name": "RequestID",
+          "type": "text",
+          "nullable": true,
+          "note": "X-Request-ID correlation"
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_bact_board_seq",
+          "columns": [
+            "BoardID",
+            "BoardActivityID"
+          ],
+          "unique": false
+        }
+      ]
+    }
+  ],
+  "mapping_version": "2026.07.19-1",
+  "generated_from": "services/ml/app/datastore/board_schema.py",
+  "provisioning": {
+    "mechanism": "Catalyst Data Store table create/verify via the Admin SDK (provision_board_tables.py); idempotent create-if-absent.",
+    "rls": "AWS PostgreSQL RLS/FORCE RLS remain DISABLED; no RLS policy is created for any optional analytics mirror. Catalyst Authentication + API Gateway/AppSail authorization is the enforced access boundary.",
+    "pg_migration": "NONE \u2014 these tables are Data Store-native and are never added to the operational PostgreSQL schema."
+  }
+}

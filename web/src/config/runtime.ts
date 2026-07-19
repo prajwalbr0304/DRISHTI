@@ -2,9 +2,9 @@
    Runtime configuration — the SINGLE place the app reads build-time env vars.
 
    Phase 14 Part C rule: only PUBLIC, non-secret values may live in VITE_* (they
-   are inlined into the static browser bundle). No DATABASE_URL, signing secret,
-   AWS URL/creds, or any credential is ever read here. Every field below is safe
-   to ship to the browser:
+   are inlined into the static browser bundle). No database connection string,
+   signing secret, AWS URL/creds, or any credential is ever read here. Every
+   field below is safe to ship to the browser:
 
      - VITE_API_BASE_URL      public API base (localhost in dev; the Catalyst API
                               Gateway origin in the deployed build). NEVER an AWS
