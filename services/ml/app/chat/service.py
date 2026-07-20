@@ -131,7 +131,9 @@ def _outcome_to_response(o: "_engine.AskOutcome") -> AskResponse:
         cited_record_ids=o.cited_record_ids, confidence=o.confidence,
         needs_clarification=o.needs_clarification, blocked=o.blocked,
         model_version=o.model_version, row_count=o.row_count, columns=o.columns,
-        rows_preview=o.rows_preview)
+        rows_preview=o.rows_preview, planner_source=o.planner_source,
+        planner_primary=o.planner_primary, planner_degraded=o.planner_degraded,
+        visualization=o.visualization)
 
 
 def ask(x_role: Optional[str], question: str, language: Optional[str] = None,
@@ -149,38 +151,82 @@ def explain(x_role: Optional[str], context: str, language: Optional[str] = None,
     return _outcome_to_response(outcome)
 
 
-def translate(text: str, target: str) -> TranslateResponse:
-    """Best-effort EN<->KN translation for the bilingual PDF export (Phase 5).
-
-    Uses the configured LLM; when none is configured it returns no translation
-    (available=False) rather than fabricating — the PDF then shows the original
-    with an honest 'translation unavailable' note.
-    """
-    tgt = "kn" if target == "kn" else "en"
-    settings = get_settings()
-    text = (text or "").strip()
-    if not text or not settings.llm_api_key:
-        return TranslateResponse(text=text, translated=None, target=tgt, available=False)
+def _provider_chat(messages: list[dict]) -> Optional[str]:
+    """Provider-neutral chat completion for translate / auxiliary text (Prompt 19
+    §B/§E). Routes to Catalyst QuickML LLM Serving when configured, else a
+    self-hosted OpenAI-compatible runtime, else returns None. Fail-closed: there is
+    NO commercial default, so an unconfigured provider yields no fabricated text."""
+    s = get_settings()
+    provider = s.primary_planner_name()
     try:
         import httpx
 
-        target_name = "Kannada" if tgt == "kn" else "English"
-        messages = [
-            {"role": "system", "content":
-                f"Translate the user's text to {target_name}. Keep police/legal terms and "
-                "identifiers (FIR, IPC/section numbers, district and station names) intact. "
-                "Reply with ONLY the translation — no quotes, no notes."},
-            {"role": "user", "content": text},
-        ]
-        resp = httpx.post(
-            f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {settings.llm_api_key}",
-                     "Content-Type": "application/json"},
-            json={"model": settings.llm_model, "temperature": 0, "messages": messages},
-            timeout=settings.llm_timeout_s,
-        )
+        if provider == "catalyst-quickml-llm":
+            endpoint = s.quickml_llm_endpoint.rstrip("/")
+            url = endpoint if endpoint.endswith("/chat/completions") else f"{endpoint}/chat/completions"
+            headers = {"Content-Type": "application/json"}
+            if s.quickml_llm_api_key.strip():
+                headers["Authorization"] = f"Bearer {s.quickml_llm_api_key.strip()}"
+            model, timeout = s.quickml_llm_model, s.quickml_llm_timeout_s
+        elif provider == "openai-compatible":
+            url = f"{s.llm_base_url.rstrip('/')}/chat/completions"
+            headers = {"Authorization": f"Bearer {s.llm_api_key}", "Content-Type": "application/json"}
+            model, timeout = s.llm_model, s.llm_timeout_s
+        else:
+            return None      # no semantic provider configured -> no fabrication
+        resp = httpx.post(url, headers=headers,
+                          json={"model": model, "temperature": 0, "messages": messages},
+                          timeout=timeout)
         resp.raise_for_status()
-        out = (resp.json()["choices"][0]["message"]["content"] or "").strip()
-        return TranslateResponse(text=text, translated=out or None, target=tgt, available=bool(out))
+        return (resp.json()["choices"][0]["message"]["content"] or "").strip() or None
     except Exception:
+        return None
+
+
+def translate(text: str, target: str) -> TranslateResponse:
+    """Best-effort EN<->KN translation for the bilingual PDF export (Phase 5).
+
+    Provider-neutral: routes through the configured semantic provider (Catalyst
+    QuickML LLM Serving preferred). When none is configured it returns no
+    translation (available=False) rather than fabricating — the PDF then shows the
+    original with an honest 'translation unavailable' note. (Catalyst Zia does not
+    expose a translation service in the IN DC; see app/zia_voice.py.)
+    """
+    tgt = "kn" if target == "kn" else "en"
+    text = (text or "").strip()
+    if not text:
         return TranslateResponse(text=text, translated=None, target=tgt, available=False)
+    target_name = "Kannada" if tgt == "kn" else "English"
+    messages = [
+        {"role": "system", "content":
+            f"Translate the user's text to {target_name}. Keep police/legal terms and "
+            "identifiers (FIR, IPC/section numbers, district and station names) intact. "
+            "Reply with ONLY the translation — no quotes, no notes."},
+        {"role": "user", "content": text},
+    ]
+    out = _provider_chat(messages)
+    return TranslateResponse(text=text, translated=out or None, target=tgt, available=bool(out))
+
+
+def capabilities() -> "CapabilitiesResponse":
+    """Truthful Ask-DRISHTI capabilities the SPA reads to label itself honestly:
+    the semantic planner primary + fallback, the voice provider (browser vs Zia),
+    supported languages, allowed visualization kinds and the scope flags."""
+    from ..nlsql.viz import ALLOWED_KINDS
+    from .. import zia_voice
+    from .schemas import CapabilitiesResponse, SemanticPlannerInfo, ScopeFlags
+
+    s = get_settings()
+    return CapabilitiesResponse(
+        semantic_planner=SemanticPlannerInfo(
+            primary=s.primary_planner_name(),
+            provider=s.semantic_provider(),
+            quickml_llm_configured=s.quickml_llm_configured(),
+            fallback="deterministic-fallback"),
+        voice=zia_voice.voice_capability_status(),
+        languages=["en", "kn"],
+        visualization_kinds=sorted(ALLOWED_KINDS),
+        scope=ScopeFlags(
+            query_voice_enabled=bool(s.query_voice_enabled),
+            evidence_extraction_enabled=bool(s.evidence_extraction_enabled)),
+    )

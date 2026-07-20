@@ -6,19 +6,47 @@ intelligence system: risk scoring, hotspot/geospatial analytics, entity & gang
 network graphs, semantic similar-case search, forecasting, and a natural-language
 "Ask DRISHTI" assistant.
 
-> Built on PostgreSQL (Supabase) + PostGIS + pgvector, a FastAPI ML/analytics
-> service, and a Vite + React + TypeScript web front end.
+> Built on a FastAPI ML/analytics service, a PostgreSQL + PostGIS + pgvector
+> analytics database, and a Vite + React + TypeScript web front end. The
+> submitted product is deployed on **Zoho Catalyst**; **AWS RDS PostgreSQL** is
+> the retained historical/analytics corpus. See the architecture note below.
 
 ---
 
 ## Architecture
 
+DRISHTI has two clearly separated planes (this is a **synthetic hackathon demo**,
+not a production system):
+
+- **Deployed serving plane — Zoho Catalyst.** The submitted frontend (Slate /
+  Web Client Hosting), Authentication, API Gateway, the FastAPI backend (AppSail)
+  and Functions, the operational relational store (**Catalyst Data Store**) and
+  the application object store (**Catalyst Stratus**). The browser only ever talks
+  to Catalyst — never to AWS or a database directly.
+- **Retained analytics plane — AWS.** **AWS RDS PostgreSQL** (PostGIS / pgvector /
+  pg_trgm) holds the full historical/analytics corpus and drives the justified
+  custom ML/GPU/geospatial workloads. It is reached only server-to-server through a
+  protected adapter — never from the browser and never as the submitted app's
+  operational CRUD path.
+
+For **local development** you run the FastAPI service and the React app directly
+against a PostgreSQL analytics database (an AWS RDS instance, or any local
+PostgreSQL 15+ with the required extensions). `DATABASE_URL` is that analytics
+connection; it is server-side only and is never shipped to the browser.
+
+> Row-Level Security (RLS/FORCE RLS) is **intentionally disabled** for this
+> synthetic hackathon (see the security note below). Server-side Catalyst
+> Authentication + API-Gateway checks + role/scope authorization remain the
+> access boundary in every mode.
+
 | Layer | Path | Stack |
 | --- | --- | --- |
-| Database schema & migrations | `*.sql`, `services/ml/sql/` | PostgreSQL 15+, PostGIS, pgvector, pg_trgm |
+| Database schema & migrations | `*.sql`, `services/ml/sql/` | PostgreSQL 15+ (AWS RDS), PostGIS, pgvector, pg_trgm |
 | Synthetic data generator | `generate.py`, `datagen/` | Python, psycopg2 (COPY) |
 | ML / analytics API | `services/ml/` | FastAPI, Uvicorn, scikit-learn, NetworkX, (optional) PyTorch / TabFM / TimesFM |
 | Web front end | `web/` | Vite, React 18, TypeScript, Tailwind, deck.gl, MapLibre |
+| Deployed serving | `infra/catalyst/` | Zoho Catalyst: Slate, Auth, API Gateway, AppSail, Data Store, Stratus |
+| Retained analytics / model plane | `infra/aws/` | AWS RDS PostgreSQL (adapter-only), SageMaker/Batch (GPU) |
 
 ---
 
@@ -27,8 +55,8 @@ network graphs, semantic similar-case search, forecasting, and a natural-languag
 - **Python 3.12** (the service Docker image is `python:3.12-slim`)
 - **Node.js 18+** and npm (for the `web/` front end)
 - **PostgreSQL 15+** with the `postgis`, `vector` (pgvector) and `pg_trgm`
-  extensions — a **Supabase** project provides all of these. `pgrouting` is
-  optional.
+  extensions — an **AWS RDS PostgreSQL** instance (the retained analytics corpus)
+  or any local PostgreSQL 15+ with these extensions. `pgrouting` is optional.
 - Optional: **Docker** (to run the ML service in a container)
 
 ---
@@ -63,29 +91,34 @@ DRISHTI/
 Create a file named `.env` in the repository root:
 
 ```dotenv
-# Full Postgres connection URI (Supabase: Project Settings -> Database ->
-# Connection string -> URI). URL-encode special characters in the password
-# (for example @ becomes %40).
-DATABASE_URL=postgresql://postgres:<your-password>@db.<project-ref>.supabase.co:5432/postgres
+# Full Postgres connection URI for the analytics database (AWS RDS PostgreSQL,
+# or a local PostgreSQL 15+ with PostGIS/pgvector/pg_trgm). Server-side ONLY —
+# never shipped to the browser. URL-encode special characters in the password
+# (for example @ becomes %40). AWS RDS strongly prefers TLS (sslmode=require).
+DATABASE_URL=postgresql://<user>:<password>@<db-host>.<region>.rds.amazonaws.com:5432/drishti
 
 # Restricted read-only role used by the NL->SQL executor (created by
 # services/ml/sql/001_readonly_role.sql). Default shown.
 READONLY_ROLE=drishti_readonly
 
-# Optional Supabase API values (not required to run the DB/data generator).
-SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_PUBLISHABLE_KEY=<publishable-key>
-SUPABASE_SECRET_KEY=<secret-key>
-
-# Optional: enables the LLM-backed "Ask DRISHTI" assistant. Without a key the
-# service uses a deterministic offline planner, so chat still works.
+# Optional: enables the LLM-backed "Ask DRISHTI" assistant (provider-neutral,
+# OpenAI-compatible chat API). Without a key the service uses a deterministic
+# offline planner, so chat still works. The deployed submission's primary
+# semantic path is finalised in a later phase (Catalyst QuickML).
 LLM_API_KEY=
 LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o-mini
+LLM_MODEL=
+
+# CORS is an exact allow-list (localhost + this origin). Do NOT use a wildcard
+# for a deployed build. A purely-local throwaway demo may set
+# DRISHTI_CORS_ALLOW_ALL=true, but the deployed AppSail never does.
+DEMO_FRONTEND_ORIGIN=
 ```
 
-> The API keys **cannot** open a direct Postgres/COPY connection — a real
-> database password (`DATABASE_URL`) is required for data generation.
+> `DATABASE_URL` points at the **retained analytics** database and is required
+> for local data generation and the analytics API. The **deployed** operational
+> serving path (Catalyst AppSail) uses Catalyst Data Store / Stratus and runs
+> **without** `DATABASE_URL`.
 
 ### Web `web/.env`
 
@@ -123,8 +156,9 @@ psql "$DATABASE_URL" -f services/ml/sql/003_risk_matview.sql
 psql "$DATABASE_URL" -f services/ml/sql/004_case_evidence.sql
 ```
 
-On Windows PowerShell, reference the variable as `$env:DATABASE_URL`, or paste
-the files into the **Supabase SQL Editor** and run them in the same order.
+On Windows PowerShell, reference the variable as `$env:DATABASE_URL`, or run the
+files in the same order through any PostgreSQL client (psql, `pgAdmin`, or your
+RDS query editor).
 
 ---
 
@@ -220,8 +254,32 @@ npm run preview    # serve the build at http://localhost:4173
 - **Secrets stay local.** `.env`, `web/.env` and `web/.env.local` are
   git-ignored. Never commit real keys or database passwords. Rotate any secret
   that has been shared.
-- **Row Level Security is disabled** on the database tables by design (see the
-  security notices in the SQL files). Only deploy on a trusted/private network,
-  or enable RLS + policies and revoke anon grants before exposing publicly.
+- **Row Level Security is disabled** on the database tables by design for this
+  synthetic hackathon (see the security notices in the SQL files). This does NOT
+  disable the real access boundary: Catalyst Authentication, API-Gateway checks
+  and server-side role/scope authorization still gate every request. The browser
+  has no direct database or AWS access. Production RLS/privacy hardening is
+  tracked as post-hackathon work.
 - **Ports:** local `uvicorn` uses `8000` (matches the web default); Docker uses
   `8080`. Keep `VITE_API_BASE_URL` in sync with whichever you run.
+
+---
+
+## Legacy / historical note (Supabase migration)
+
+Earlier iterations of DRISHTI were bootstrapped on a **Supabase**-hosted
+PostgreSQL instance, and older revisions of this README and `services/ml/app/db.py`
+described a Supabase-first setup (`SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` /
+`SUPABASE_SECRET_KEY`, the Supabase connection-string UI and SQL editor). The
+project has since moved to the architecture described above:
+
+- the retained analytics/historical database is **AWS RDS PostgreSQL** (reached
+  server-to-server through a protected adapter, never from the browser);
+- the deployed operational serving layer is **Zoho Catalyst** (Data Store +
+  Stratus + Auth + API Gateway + AppSail + Slate).
+
+The Supabase-era `SUPABASE_*` environment keys are no longer used by the running
+code. `DATABASE_URL` now points at the AWS RDS (or a local PostgreSQL) analytics
+instance. This note is retained so the migration history is explicit and the old
+references are not mistaken for the current setup. Schema files and migrations are
+unchanged and remain portable across any conforming PostgreSQL 15+ instance.

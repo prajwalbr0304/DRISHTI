@@ -8,7 +8,6 @@ import {
   ShieldAlert,
   Sparkles,
   Square,
-  Table2,
   TriangleAlert,
   Volume2,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import { parseSourceRecord } from "@/lib/provenance";
 import { cn, confidenceBand, formatPercent } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { AnswerVisualization } from "@/components/ask/AnswerVisualization";
 
 /* ============================================================================
    Assistant turn (doc 01 §4.7). A grounded answer shows all four parts:
@@ -63,6 +63,11 @@ export function AnswerCard({ message, tts }: { message: AskMessage; tts?: Answer
           <Badge variant="neutral"><HelpCircle className="size-3" /> needs detail</Badge>
         )}
         {message.error && <Badge variant="high"><TriangleAlert className="size-3" /> error</Badge>}
+        {message.plannerDegraded && !message.error && (
+          <SimpleTooltip label="The primary semantic planner was unavailable; a deterministic fallback answered this.">
+            <Badge variant="neutral">offline fallback</Badge>
+          </SimpleTooltip>
+        )}
         {message.confidence != null && !message.blocked && !message.error && !message.needsClarification && (
           <ConfidenceChip value={message.confidence} />
         )}
@@ -94,10 +99,8 @@ export function AnswerCard({ message, tts }: { message: AskMessage; tts?: Answer
 
       {cites.length > 0 && <SourcesRow ids={cites} />}
 
-      {/* grounded result preview */}
-      {message.rowsPreview && message.rowsPreview.length > 0 && message.columns && (
-        <ResultPreview columns={message.columns} rows={message.rowsPreview} total={message.rowCount ?? 0} />
-      )}
+      {/* typed visualization (or the results table when no spec is present) */}
+      <AnswerVisualization message={message} />
 
       {/* 3. collapsible read-only SQL */}
       {message.generatedSql && <SqlBlock sql={message.generatedSql} />}
@@ -198,56 +201,6 @@ function SourcesRow({ ids }: { ids: (number | string)[] }) {
           </button>
         );
       })}
-    </div>
-  );
-}
-
-/* --------------------------- result preview ------------------------------- */
-function ResultPreview({ columns, rows, total }: { columns: string[]; rows: unknown[][]; total: number }) {
-  const [open, setOpen] = useState(false);
-  const shown = rows.slice(0, 10);
-  return (
-    <div className="overflow-hidden rounded-control border border-hairline">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 bg-surface-2/50 px-2.5 py-1.5 text-12 text-content-dim transition-colors hover:text-content"
-      >
-        <Table2 className="size-3.5" />
-        <span className="font-medium text-content">Results</span>
-        <span className="tnum rounded bg-surface-2 px-1.5 py-0.5 text-[11px]">{total} row(s)</span>
-        <ChevronDown className={cn("ml-auto size-3.5 transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div className="max-h-64 overflow-auto">
-          <table className="w-full text-12">
-            <thead className="sticky top-0 bg-surface">
-              <tr className="border-b border-hairline text-left text-content-dim">
-                {columns.map((c) => (
-                  <th key={c} className="px-2.5 py-1.5 font-medium">{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row, ri) => (
-                <tr key={ri} className="border-b border-hairline/60 last:border-0">
-                  {row.map((cell, ci) => (
-                    <td key={ci} className="tnum px-2.5 py-1.5 text-content">
-                      {cell == null ? "—" : String(cell)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {total > shown.length && (
-            <p className="px-2.5 py-1.5 text-[11px] text-content-dim">
-              Showing {shown.length} of {total} rows.
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

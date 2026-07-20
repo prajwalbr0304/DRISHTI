@@ -202,6 +202,25 @@ _RUNNERS = {
 }
 
 
+# release_evidence kinds that a PASS can legitimately rely on for a RELEASE claim.
+# 'config_only' is deliberately excluded: a Signals/cron JSON declaration proves
+# intent, never a live Signal delivery / cron execution / Data Store write / auth
+# flow / GPU invocation (strict-mode rule, Prompt 18 §E.4).
+_RELEASE_OK_EVIDENCE = {"live", "local_ok", "ops"}
+
+
+def _release_gap(item: dict, status: str) -> str | None:
+    """In strict/release mode, return None if the mandatory item is genuinely
+    proven, else a short reason it is NOT release-ready."""
+    if status != PASS:
+        return f"{status} (not proven)"
+    evidence = item.get("release_evidence", "live")
+    if evidence not in _RELEASE_OK_EVIDENCE:
+        # PASS but only a configuration declaration — cannot prove the live capability
+        return "config declaration only — a live invocation is required"
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="DRISHTI Part K reduced demo acceptance.")
     ap.add_argument("--base-url", default="")
@@ -210,27 +229,61 @@ def main() -> int:
     ap.add_argument("--result-endpoint", default="")
     ap.add_argument("--endpoint-name", default="drishti-gpu-async")
     ap.add_argument("--tabfm-live", action="store_true")
+    ap.add_argument("--strict", "--release", dest="strict", action="store_true",
+                    help="strict RELEASE gate: any mandatory HELD/MANUAL/FAIL/UNKNOWN/"
+                         "skipped/config-only check exits non-zero (no release success).")
     a = ap.parse_args()
 
+    mode = "STRICT RELEASE GATE" if a.strict else "diagnostic (offline-tolerant)"
     checklist = json.load(open(_CHECKLIST, encoding="utf-8"))
-    print("DRISHTI Part K — reduced demo acceptance\n" + "=" * 44)
+    print(f"DRISHTI Part K — reduced demo acceptance [{mode}]\n" + "=" * 56)
     counts = {PASS: 0, FAIL: 0, HELD: 0, MANUAL: 0}
+    release_gaps: list[tuple[str, str]] = []
     for item in checklist["required"]:
         runner = _RUNNERS.get(item["runner"], r_manual)
         status, detail = runner(a)
         counts[status] += 1
         detail = detail or item["how"]
-        print(f"[{status:6}] {item['id']}  {item['proves']}")
+        gap = _release_gap(item, status)
+        tag = ""
+        if a.strict:
+            tag = "  <= RELEASE-BLOCKING" if gap else "  (release-proven)"
+        if gap:
+            release_gaps.append((item["id"], gap))
+        print(f"[{status:6}] {item['id']}  {item['proves']}{tag}")
         print(f"          {detail}")
 
     print("\ntest only when the feature is enabled: " +
           ", ".join(f["feature"] for f in checklist["test_only_when_enabled"]))
     print(f"\nsummary: {counts[PASS]} PASS, {counts[FAIL]} FAIL, "
           f"{counts[HELD]} HELD, {counts[MANUAL]} MANUAL")
+
+    if a.strict:
+        # Strict RELEASE gate: every mandatory check must be genuinely proven.
+        if release_gaps:
+            print(f"\n{len(release_gaps)} mandatory check(s) NOT release-proven:")
+            for cid, why in release_gaps:
+                print(f"  - {cid}: {why}")
+            print("\nRELEASE ACCEPTANCE: BLOCKED — not ready for a hackathon demonstration "
+                  "(mandatory checks are HELD/MANUAL/config-only or failing).")
+            return 1
+        print("\nRELEASE ACCEPTANCE: PASS — every mandatory check is proven by a live/real "
+              "invocation. DRISHTI is ready for a synthetic hackathon demonstration.")
+        return 0
+
+    # Non-strict diagnostic mode: a runnable failure still fails; HELD/MANUAL make
+    # the run INCOMPLETE. It must NEVER print release success.
     if counts[FAIL]:
         print("ACCEPTANCE: FAIL (a runnable check failed)")
         return 1
-    print("ACCEPTANCE: OK for what is runnable now; HELD items await the deploy/GPU plane.")
+    if counts[HELD] or counts[MANUAL]:
+        print("ACCEPTANCE: INCOMPLETE — all runnable checks passed, but "
+              f"{counts[HELD]} HELD + {counts[MANUAL]} MANUAL check(s) await the live "
+              "deploy/GPU plane. Run with --strict for the release gate (this is NOT a "
+              "release-ready result).")
+        return 0
+    print("ACCEPTANCE: all mandatory checks passed. Run with --strict to assert the "
+          "release gate.")
     return 0
 
 

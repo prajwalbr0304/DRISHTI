@@ -5,6 +5,7 @@ import {
   AssistantPanel, AuditPanel, IdentityPanel, ModelsPanel, NotificationsPanel, QueuesPanel,
   ReconciliationPanel, ReportsPanel, RetentionPanel, StatusPanel, UsagePanel,
 } from "./panels";
+import { OrgAccessPanel } from "./OrgAccessPanel";
 
 /* Phase-15 Admin / governance console. Replaces the model-registry-only
    placeholder with the hackathon administration + observability surface:
@@ -15,12 +16,13 @@ import {
    synthetic-demo data; writes are role-gated + write-guarded server-side. */
 
 type Tab =
-  | "status" | "identity" | "reconciliation" | "retention" | "models"
+  | "status" | "identity" | "access" | "reconciliation" | "retention" | "models"
   | "queues" | "usage" | "audit" | "reports" | "notifications" | "assistant";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "status", label: "Status" },
   { id: "identity", label: "Identity & roles" },
+  { id: "access", label: "Access & hierarchy" },
   { id: "reconciliation", label: "Reconciliation" },
   { id: "retention", label: "Retention & legal hold" },
   { id: "models", label: "Model review" },
@@ -60,6 +62,7 @@ export function AdminConsole() {
 
       {tab === "status" && <StatusPanel />}
       {tab === "identity" && <IdentityPanel />}
+      {tab === "access" && <OrgAccessPanel />}
       {tab === "reconciliation" && <ReconciliationPanel />}
       {tab === "retention" && <RetentionPanel />}
       {tab === "models" && <ModelsPanel />}

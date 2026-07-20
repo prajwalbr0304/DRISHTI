@@ -67,4 +67,10 @@ export const forecastApi = {
   /** Data-as-of per source + approved external context + valid-geography scope. */
   freshness: (signal?: AbortSignal) =>
     apiClient.get<FreshnessResponse>("/forecast/freshness", undefined, signal),
+
+  /** Prompt 20 §F — advertised forecast horizons + how each is validated.
+   *  Day-ahead crime forecasting is declared future work (no held-out eval);
+   *  7/14-day views are a transparent linear scaling of the validated 30-day base. */
+  horizons: (signal?: AbortSignal) =>
+    apiClient.get<Record<string, unknown>>("/forecast/horizons", undefined, signal),
 };

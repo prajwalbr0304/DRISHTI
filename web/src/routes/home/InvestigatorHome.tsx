@@ -6,7 +6,7 @@ import { formatNumber } from "@/lib/utils";
 import { Widget } from "@/components/widget/Widget";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { StatusPipeline, CASE_STAGES } from "@/components/dashboard/StatusPipeline";
-import { MiniDensity } from "@/components/dashboard/MiniDensity";
+import { JurisdictionMap } from "@/components/dashboard/JurisdictionMap";
 import { EventList, alertToEvent } from "@/components/dashboard/EventList";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
@@ -35,9 +35,9 @@ export function InvestigatorHome() {
     (a) => a.severity === "critical" || a.severity === "high",
   ).length;
 
-  const densityPoints = (hotspots.data?.hotspots ?? [])
-    .filter((h) => h.centroid_lon != null && h.centroid_lat != null)
-    .map((h) => ({ lon: h.centroid_lon!, lat: h.centroid_lat!, weight: h.intensity ?? 0.5 }));
+  const mappableHotspots = (hotspots.data?.hotspots ?? []).filter(
+    (h) => h.centroid_lon != null && h.centroid_lat != null,
+  );
 
   const tiles: DashTile[] = [
     {
@@ -138,12 +138,13 @@ export function InvestigatorHome() {
       el: (
         <Widget
           gridTile
+          flush
           title="My jurisdiction"
           contextChip="last window"
           provenance={hotspots.data?.result}
           loading={hotspots.isLoading}
           error={hotspots.error}
-          empty={!hotspots.isLoading && !hotspots.error && densityPoints.length === 0}
+          empty={!hotspots.isLoading && !hotspots.error && mappableHotspots.length === 0}
           emptyLabel="No mapped incidents in this scope."
           onRefresh={() => hotspots.refetch()}
           menuItems={[
@@ -155,7 +156,7 @@ export function InvestigatorHome() {
             },
           ]}
         >
-          {hotspots.data && <MiniDensity points={densityPoints} />}
+          {hotspots.data && <JurisdictionMap hotspots={mappableHotspots} />}
         </Widget>
       ),
     },

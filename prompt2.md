@@ -1742,8 +1742,9 @@ E. Catalyst Data Store, Stratus, NoSQL and Cache migration
      graph/index remains in AWS;
    - only reserved ExternalID/namespace/adapter contracts for Investigation Board
      and Disaster Response at this phase. Do not create or claim their domain
-     tables/workflows until Prompts 17-18, unless an existing completed phase
-     report proves those modules are already implemented.
+     tables/workflows until Prompts 16-17 (Investigation Board = Prompt 16,
+     Disaster Response = Prompt 17), unless an existing completed phase report
+     proves those modules are already implemented.
 2. Add a stable `ExternalID` or equivalent unique migration key to every imported
    table and make imports idempotent. Preserve referential identifiers, synthetic
    data labels, timestamps and lineage. Never import credentials or real PII.
@@ -3108,6 +3109,12 @@ Definition of Done:
 
 # Prompt 18 - Final hackathon testing, CI/CD, recovery, and demo release
 
+> **SUPERSEDED (2026-07-20).** This old Prompt 18 is replaced by the Prompt 18-26
+> sequence in `prompt3.md`. The final live release phase is now `prompt3.md`
+> Prompt 25 and the independent audit is Prompt 26; the NEW `PHASE_18_REPORT.md`
+> is the truth-reconciliation/baseline-repair report, not this final-release step.
+> Retained below as historical evidence — do not run this first.
+
 Objective: perform the final verification of the complete synthetic hackathon build
 after Investigation Board and Disaster Response are complete, then release the demo.
 
@@ -3359,9 +3366,12 @@ Before starting Prompt N+1, verify:
 Prompt 6 is the only sequencing exception: after Prompt 5 is Complete, leave
 Prompt 6 as Deferred and continue directly to Prompt 7.
 
-Prompt 18 is the final release phase. Run it only after Prompts 16-17 are Complete;
-PHASE_18_REPORT.md must include the Investigation Board and Disaster Response
-journeys before calling the overall hackathon build demo-ready.
+Prompt 18 (in THIS file) was originally the final release phase. **Superseded
+(2026-07-20):** `prompt3.md` redefines Prompt 18 as truth reconciliation + scope
+freeze + baseline repair, and moves the final live release to `prompt3.md` Prompt
+25 (with an independent audit in Prompt 26). The new `PHASE_18_REPORT.md` documents
+that reconciliation; the Investigation Board and Disaster Response live journeys are
+verified in `prompt3.md` Prompts 23-25.
 
 If a phase is partially complete, rerun the same prompt with:
 
@@ -3374,6 +3384,17 @@ the same phase report, and mark Complete only when every gate passes.
 
 ## Recommended first command/session
 
+> **STATUS UPDATE (2026-07-20, reconciled in Prompt 18).** Prompts 1-17 in this
+> file are **implemented locally** and regression-tested. The authoritative
+> continuation is now **`prompt3.md`** — paste its Global Execution Contract and
+> its **Prompt 18** first, then proceed through Prompts 18-26 in order. The **old
+> Prompt 18 below is superseded** by `prompt3.md`'s Prompt 18-26; do not run it
+> first. This file is retained as historical evidence.
+>
+> Cloud-acceptance caveat: Prompts 14, 16 and 17 are locally implemented, but
+> their **live Catalyst/AWS acceptance is continued in `prompt3.md`** (Prompts
+> 21-25), not proven here. Do not read "implemented locally" as "deployed".
+
 Start at:
 
 ~~~powershell
@@ -3381,10 +3402,13 @@ Set-Location "C:\Users\Prajwal\Desktop\DRISHTI"
 kiro-cli chat
 ~~~
 
-Then paste:
+Then paste (current continuation):
 
-1. Global Execution Contract
-2. Prompt 9 only
+1. The Global Execution Contract from `prompt3.md`
+2. `prompt3.md` Prompt 18 (truth reconciliation, scope freeze, baseline repair)
 
-Prompts 1-8 are recorded as Complete (Prompt 6 remains intentionally Deferred).
-Start with Prompt 9 and proceed in numerical order; Prompt 18 is the final release gate.
+Historical note: Prompts 1-8 were recorded Complete (Prompt 6 intentionally
+Deferred); Prompts 9-17 were then implemented locally and proceed in numerical
+order. The line "Prompt 18 is the final release gate" refers to the OLD Prompt 18
+in this file and is superseded — the final live release phase is now
+`prompt3.md` Prompt 25, with an independent audit in Prompt 26.

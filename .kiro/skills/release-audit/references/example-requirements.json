@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "requirements": [
+    {
+      "id": "validation-readme",
+      "phase": 19,
+      "mandatory": true
+    }
+  ]
+}

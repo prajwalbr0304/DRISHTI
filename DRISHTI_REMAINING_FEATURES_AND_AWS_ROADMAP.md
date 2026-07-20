@@ -1,8 +1,18 @@
 # DRISHTI: Remaining Features and AWS Implementation Roadmap
 
-Status: implementation roadmap, updated from a read-only live Supabase and datagen audit on 2026-07-16  
-Primary hosting decision: AWS, using the available AWS credits  
-Scope: finish the current React, FastAPI, PostgreSQL/Supabase prototype safely, then deploy it as a governed investigation-support system.
+> **CORRECTION (2026-07-20).** This roadmap was written during the Supabase era
+> and several passages below (e.g. "Keep Supabase PostgreSQL initially",
+> "Supabase PostgreSQL remains the one database of record") are **now stale**.
+> The project has **fully migrated off Supabase**: the retained analytics/
+> historical database is **AWS RDS PostgreSQL** and the deployed serving layer is
+> **Zoho Catalyst** (Data Store / Stratus / Auth / Gateway / AppSail / Slate).
+> Supabase is no longer used anywhere in the running code. Read "Supabase" below
+> as historical context only; the current architecture is described in `README.md`
+> and `docs/deployment/CURRENT_STATE_MATRIX.md`.
+
+Status: implementation roadmap, updated from a read-only live database and datagen audit on 2026-07-16  
+Primary hosting decision: AWS + Zoho Catalyst, using the available credits  
+Scope: finish the current React, FastAPI, PostgreSQL (AWS RDS) prototype safely, then deploy it as a governed investigation-support system.
 
 ## 1. Executive decision
 

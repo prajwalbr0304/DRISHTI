@@ -15,8 +15,12 @@ import { graphApi } from "@/api/endpoints/graph";
 import { identityApi } from "@/api/endpoints/identity";
 import { importsApi } from "@/api/endpoints/imports";
 import { intakeApi } from "@/api/endpoints/intake";
+import { investigateApi } from "@/api/endpoints/investigate";
+import { livefeedApi } from "@/api/endpoints/livefeed";
 import { moneyApi } from "@/api/endpoints/money";
 import { notificationsApi } from "@/api/endpoints/notifications";
+import { orgApi } from "@/api/endpoints/org";
+import { performanceApi } from "@/api/endpoints/performance";
 import { ragApi } from "@/api/endpoints/rag";
 import { reportsApi } from "@/api/endpoints/reports";
 import { riskApi } from "@/api/endpoints/risk";
@@ -37,6 +41,8 @@ export const api = {
   identity: identityApi,
   imports: importsApi,
   intake: intakeApi,
+  investigate: investigateApi,
+  livefeed: livefeedApi,
   analytics: analyticsApi,
   risk: riskApi,
   money: moneyApi,
@@ -46,6 +52,8 @@ export const api = {
   governance: governanceApi,
   workload: workloadApi,
   admin: adminApi,
+  org: orgApi,
+  performance: performanceApi,
   notifications: notificationsApi,
   reports: reportsApi,
   rag: ragApi,

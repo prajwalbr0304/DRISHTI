@@ -1,0 +1,4 @@
+interface:
+  display_name: "DRISHTI Test Triage"
+  short_description: "Reproduce and classify failures with durable logs"
+  default_prompt: "Use $test-triage to reproduce the smallest failing test and record a concise failure ledger."

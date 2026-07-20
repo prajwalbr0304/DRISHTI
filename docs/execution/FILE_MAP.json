@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "phase": null,
+  "contracts": [],
+  "assignments": [],
+  "rules": [
+    "Exactly one writable owner per path.",
+    "Shared contracts freeze before dependent implementation.",
+    "Catalyst and AWS mutations run sequentially through their designated operator."
+  ]
+}

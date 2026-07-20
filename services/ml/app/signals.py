@@ -45,12 +45,17 @@ EVENT_FEED_STALE = "feed.stale"
 EVENT_FORECAST_COMPLETED = "forecast.completed"
 EVENT_ALERT_REVIEW_REQUIRED = "alert.review_required"
 EVENT_ALLOCATION_APPROVED = "allocation.approved"
+# Prompt 20 §E — published AFTER an approved FIR's canonical case write commits.
+# Payload carries only {case_id, district_id, station_id, crime_head_id,
+# source_ts}; it drives the Live Command Center projection/freshness flow. It
+# NEVER triggers a person risk score or an automatic resource dispatch.
+EVENT_CASE_COMMITTED = "case.committed"
 
 _VALID_EVENTS = (
     EVENT_REPORT_READY, EVENT_PREDICTION_REVIEWED, EVENT_NOTIFICATION_CREATED,
     EVENT_TASK_ESCALATED, EVENT_SOURCE_RECONCILE, EVENT_BOARD_ACTIVITY,
     EVENT_FEED_STALE, EVENT_FORECAST_COMPLETED, EVENT_ALERT_REVIEW_REQUIRED,
-    EVENT_ALLOCATION_APPROVED,
+    EVENT_ALLOCATION_APPROVED, EVENT_CASE_COMMITTED,
 )
 
 

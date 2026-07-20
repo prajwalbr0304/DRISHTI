@@ -46,8 +46,10 @@ def _connect():
     s = get_settings()
     if not s.database_url:
         raise RuntimeError(
-            "DATABASE_URL is not set. Provide the full Supabase Postgres URI "
-            "(Project Settings -> Database -> Connection string)."
+            "DATABASE_URL is not set. Provide the full AWS RDS PostgreSQL URI for the "
+            "retained analytics/historical corpus (server-side only; never shipped to "
+            "the browser). The deployed operational serving path uses Catalyst Data "
+            "Store / Stratus and does NOT require DATABASE_URL."
         )
     return psycopg2.connect(s.database_url, connect_timeout=s.db_connect_timeout)
 
@@ -59,11 +61,11 @@ def rw_conn():
     try:
         # Ensure this explicitly read-write layer can actually commit even when
         # the database/role carries an inherited read-only default (e.g. a
-        # Supabase over-quota "soft" read-only, or a read-only role default).
-        # Set at session scope while autocommit is on, before the working
-        # transaction begins, so the transaction inherits read-write. This is a
-        # no-op on a normally-configured read-write database; ro_conn() stays
-        # strictly read-only (SET ROLE + read-only session).
+        # managed-Postgres over-quota "soft" read-only, or a read-only role
+        # default). Set at session scope while autocommit is on, before the
+        # working transaction begins, so the transaction inherits read-write.
+        # This is a no-op on a normally-configured read-write database; ro_conn()
+        # stays strictly read-only (SET ROLE + read-only session).
         conn.autocommit = True
         with conn.cursor() as cur:
             try:

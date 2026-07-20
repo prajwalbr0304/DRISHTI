@@ -1,5 +1,5 @@
 import { apiClient } from "@/api/client";
-import type { AskResponse, ChatSessionDetail, ChatSessionsResponse } from "@/api/types";
+import type { AskResponse, Capabilities, ChatSessionDetail, ChatSessionsResponse } from "@/api/types";
 
 export interface AskVoiceBody {
   confidence?: number;
@@ -49,4 +49,9 @@ export const chatApi = {
   /** GET /chat/sessions/{id} — one session's messages + voice transcripts. */
   session: (sessionId: number, signal?: AbortSignal) =>
     apiClient.get<ChatSessionDetail>(`/chat/sessions/${sessionId}`, undefined, signal),
+
+  /** GET /chat/capabilities — server-declared planner / voice / visualization
+   *  capabilities (Prompt 19). Voice provider is "browser-web-speech" here. */
+  capabilities: (signal?: AbortSignal) =>
+    apiClient.get<Capabilities>("/chat/capabilities", undefined, signal),
 };

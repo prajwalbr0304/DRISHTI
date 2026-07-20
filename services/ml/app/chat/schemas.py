@@ -120,3 +120,32 @@ class AskResponse(BaseModel):
     row_count: int = 0
     columns: list[str] = []
     rows_preview: list[list[Any]] = []      # small result preview for the UI table
+    # Prompt 19 §B: transparent planner provenance (primary vs labelled fallback).
+    planner_source: str = "deterministic-fallback"
+    planner_primary: str = "deterministic-fallback"
+    planner_degraded: bool = False          # fell back from the primary (outage)
+    # Prompt 19 §F: server-validated typed visualization spec (None = text only).
+    visualization: Optional[dict] = None
+
+
+# --- Prompt 19: truthful capability advertisement ---------------------------
+class SemanticPlannerInfo(BaseModel):
+    primary: str                            # planner used in the live-ready contract
+    provider: str                           # configured provider id ("" = none)
+    quickml_llm_configured: bool
+    fallback: str = "deterministic-fallback"
+
+
+class ScopeFlags(BaseModel):
+    query_voice_enabled: bool               # voice dictation IN scope
+    evidence_extraction_enabled: bool       # OCR/extraction OUT of scope (false)
+
+
+class CapabilitiesResponse(BaseModel):
+    """What Ask DRISHTI can actually do — read by the SPA so it never over-claims
+    (e.g. it labels the mic 'browser voice', not Zia, when Zia is unavailable)."""
+    semantic_planner: SemanticPlannerInfo
+    voice: dict                             # app.zia_voice.voice_capability_status()
+    languages: list[str]
+    visualization_kinds: list[str]
+    scope: ScopeFlags

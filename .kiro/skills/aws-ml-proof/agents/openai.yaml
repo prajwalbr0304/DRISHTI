@@ -1,0 +1,4 @@
+interface:
+  display_name: "AWS ML Proof"
+  short_description: "Prove bounded AWS model execution and cleanup"
+  default_prompt: "Use $aws-ml-proof to inventory the DRISHTI AWS plane and capture model execution and cleanup evidence."

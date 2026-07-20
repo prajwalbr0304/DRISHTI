@@ -15,12 +15,20 @@ import datetime as dt
 
 from fastapi import APIRouter, HTTPException, Query
 
+from . import horizons as horizons_mod
 from . import service
 from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapResponse,
                       ForecastRunResponse, FreshnessResponse, LayersResponse,
                       NearRepeatTriggerResponse, ValidationResponse)
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
+
+
+@router.get("/horizons")
+def forecast_horizons():
+    """Prompt 20 §F — the advertised forecast horizons and how each is validated.
+    Day-ahead crime forecasting is declared future work (no held-out evaluation)."""
+    return horizons_mod.horizon_contract()
 
 
 @router.post("/run", response_model=ForecastRunResponse)

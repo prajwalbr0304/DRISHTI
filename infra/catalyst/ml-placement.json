@@ -1,5 +1,5 @@
 {
-  "_comment": "ML/RAG model-placement + regional-availability (Prompt 14 Part G items 1-2). GENERATED from services/ml/app/predict/placement.py — edit that module, not this file. validate_placements() guards parity + the placement rules and cross-checks capability-gaps.json.",
+  "_comment": "ML/RAG model-placement + regional-availability (Prompt 14 Part G items 1-2). GENERATED from services/ml/app/predict/placement.py \u2014 edit that module, not this file. validate_placements() guards parity + the placement rules and cross-checks capability-gaps.json.",
   "version": "2026.07.18-1",
   "placements": [
     {
@@ -27,6 +27,19 @@
       "tasks": [
         "area_workload_band_baseline"
       ],
+      "backend": "",
+      "evidence": "",
+      "fallback": "",
+      "enablement": "optional"
+    },
+    {
+      "engine": "quickml-llm-serving",
+      "capability": "Semantic NL->query planner (QuickML LLM serving, governed open model)",
+      "placement": "catalyst-quickml",
+      "availability": "available",
+      "reason": "Catalyst QuickML LLM Serving hosts a governed open model (e.g. Qwen 2.5 Instruct) behind a deployed endpoint and is the PRIMARY Ask DRISHTI semantic planner. Only the allow-listed role-scoped schema + glossary + bounded context + data-minimised question are sent; the guard + scope layers still enforce read-only + role scope independently of the model.",
+      "runtime": "Catalyst QuickML LLM Serving endpoint (app/nlsql/planner.py CatalystQuickMLServingPlanner); env-gated SEMANTIC_PLANNER_PROVIDER=catalyst_quickml; deterministic offline planner is the labelled fallback. Live invocation verified in Prompt 23.",
+      "tasks": [],
       "backend": "",
       "evidence": "",
       "fallback": "",

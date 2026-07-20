@@ -49,24 +49,26 @@ def _lit(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-# crime keyword -> (target, ILIKE pattern). target: 'group' (CrimeHead) or 'sub' (CrimeSubHead)
+# crime keyword -> (target, ILIKE pattern). target: 'group' (CrimeHead) or 'sub'
+# (CrimeSubHead). Each pattern matches English, Kannada script AND common
+# transliterated (Latin-script Kannada) forms — meaning, not literal substitution.
 _CRIME_KEYWORDS: list[tuple[str, str, str]] = [
-    (r"cyber|ಸೈಬರ್", "group", "%cyber%"),
+    (r"cyber|ಸೈಬರ್|saibar", "group", "%cyber%"),
     (r"economic", "group", "%economic%"),
-    (r"vehicle\s*theft|ವಾಹನ", "sub", "%vehicle theft%"),
-    (r"burglar|ಮನೆಗಳ್ಳತನ", "sub", "%burglar%"),
-    (r"theft|ಕಳ್ಳತನ", "sub", "%theft%"),
-    (r"robbery|ದರೋಡೆ", "sub", "%robbery%"),
-    (r"dacoit|ಡಕಾಯಿತಿ", "sub", "%dacoit%"),
-    (r"murder|homicide|ಕೊಲೆ", "sub", "%murder%"),
-    (r"assault|hurt|ಹಲ್ಲೆ", "sub", "%assault%"),
-    (r"rape|sexual|ಅತ್ಯಾಚಾರ", "sub", "%rape%"),
-    (r"kidnap|abduct|ಅಪಹರಣ", "sub", "%kidnap%"),
-    (r"narcotic|drug|ಮಾದಕ", "sub", "%narcotic%"),
-    (r"riot|ಗಲಭೆ", "sub", "%riot%"),
-    (r"extortion|ಸುಲಿಗೆ", "sub", "%extortion%"),
-    (r"cheat|fraud|ವಂಚನೆ", "sub", "%cheat%"),
-    (r"missing|ನಾಪತ್ತೆ", "sub", "%missing%"),
+    (r"vehicle\s*theft|ವಾಹನ|vahana", "sub", "%vehicle theft%"),
+    (r"burglar|ಮನೆಗಳ್ಳತನ|manegall?atana", "sub", "%burglar%"),
+    (r"theft|ಕಳ್ಳತನ|kalla?tana|kalathana", "sub", "%theft%"),
+    (r"robbery|ದರೋಡೆ|darod[ei]", "sub", "%robbery%"),
+    (r"dacoit|ಡಕಾಯಿತಿ|dakayiti", "sub", "%dacoit%"),
+    (r"murder|homicide|ಕೊಲೆ|kole", "sub", "%murder%"),
+    (r"assault|hurt|ಹಲ್ಲೆ|halle", "sub", "%assault%"),
+    (r"rape|sexual|ಅತ್ಯಾಚಾರ|atyachara", "sub", "%rape%"),
+    (r"kidnap|abduct|ಅಪಹರಣ|apaharana", "sub", "%kidnap%"),
+    (r"narcotic|drug|ಮಾದಕ|madaka", "sub", "%narcotic%"),
+    (r"riot|ಗಲಭೆ|galabhe", "sub", "%riot%"),
+    (r"extortion|ಸುಲಿಗೆ|sulige", "sub", "%extortion%"),
+    (r"cheat|fraud|ವಂಚನೆ|vanchane", "sub", "%cheat%"),
+    (r"missing|ನಾಪತ್ತೆ|napatte", "sub", "%missing%"),
 ]
 
 # common Kannada district cues -> English name fragment for ILIKE
@@ -78,6 +80,11 @@ _KN_DISTRICTS = {
     "ಹಾಸನ": "Hassan", "ಮಂಡ್ಯ": "Mandya", "ಚಿತ್ರದುರ್ಗ": "Chitradurga",
     "ಕೋಲಾರ": "Kolar", "ರಾಯಚೂರು": "Raichur", "ಬೀದರ್": "Bidar",
 }
+
+# English district names (for transliterated word-order like "Mysuru alli …",
+# where there is no "in <place>" cue). Longest first so multi-word names win.
+_DISTRICT_NAMES: tuple[str, ...] = tuple(
+    sorted(set(_KN_DISTRICTS.values()), key=len, reverse=True))
 
 _PLACE_RE = re.compile(
     r"\bin\s+([A-Za-z][\w .]*?)(?=\s+(?:this|last|during|for|over|in|by|with|and|the|between)\b|[?.,;]|$)",
@@ -123,6 +130,13 @@ def _extract(question: str) -> dict:
             if cue in q:
                 out["place"] = name
                 break
+    # transliterated word-order fallback: a bare district name anywhere
+    # ("Mysuru alli kalla estu"), when no "in <place>" cue matched.
+    if "place" not in out:
+        for name in _DISTRICT_NAMES:
+            if re.search(rf"\b{re.escape(name)}\b", q, re.IGNORECASE):
+                out["place"] = name
+                break
     # gravity / status
     if re.search(r"heinous|ಘೋರ", ql):
         out["gravity_cond"] = "g.\"LookupValue\" = 'Heinous'"
@@ -163,7 +177,7 @@ def _where(filters: dict) -> str:
 
 
 class FallbackPlanner:
-    name = "drishti-nlsql-fallback"
+    name = "deterministic-fallback"
 
     def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
         f = _carry_context(question, _extract(question), list(history or []))
@@ -171,20 +185,24 @@ class FallbackPlanner:
         where = _where(f)
         agg_role = requires_aggregate(role)
 
-        # intent: top -> trend -> count -> list -> clarify
+        # intent: top -> trend -> count -> list -> clarify. Cue sets match English,
+        # Kannada script and common transliterated (Latin-script Kannada) forms.
         if f.get("top_n") or re.search(
-            r"\btop\b|ಟಾಪ್|most|highest|ranking|which districts|ಅತಿ ಹೆಚ್ಚು|ಹೆಚ್ಚು", ql):
+            r"\btop\b|ಟಾಪ್|most|highest|ranking|which districts|ಅತಿ ಹೆಚ್ಚು|ಹೆಚ್ಚು|"
+            r"hecchu|adhika|jaasti", ql):
             n = f.get("top_n", 5)
             sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{where} '
                    f'GROUP BY d."DistrictName" ORDER BY case_count DESC LIMIT {n}')
             return Plan(sql=sql, intent="top_districts", confidence=0.72, language=language, filters=f)
 
-        if re.search(r"trend|over time|monthly|per month|by month|each month|ಪ್ರವೃತ್ತಿ|ತಿಂಗಳ", ql):
+        if re.search(r"trend|over time|monthly|per month|by month|each month|ಪ್ರವೃತ್ತಿ|ತಿಂಗಳ|"
+                     r"pravrutti|tingala|maasika|maasa", ql):
             sql = (f'SELECT to_char(date_trunc(\'month\', cm."CrimeRegisteredDate"), \'YYYY-MM\') AS month, '
                    f'COUNT(*) AS case_count {_BASE_FROM}{where} GROUP BY month ORDER BY month')
             return Plan(sql=sql, intent="trend", confidence=0.7, language=language, filters=f)
 
-        if re.search(r"how many|count|number of|total|how much|ಎಷ್ಟು|ಸಂಖ್ಯೆ", ql):
+        if re.search(r"how many|count|number of|total|how much|ಎಷ್ಟು|ಸಂಖ್ಯೆ|"
+                     r"\beshtu\b|\bestu\b|sankhye", ql):
             if re.search(r"by district|per district|each district|across districts", ql) or (
                 not f.get("place") and re.search(r"district", ql)
             ):
@@ -194,7 +212,21 @@ class FallbackPlanner:
             sql = f'SELECT COUNT(*) AS case_count {_BASE_FROM}{where}'
             return Plan(sql=sql, intent="count", confidence=0.72, language=language, filters=f)
 
-        if re.search(r"list|show|which|recent|latest|display|give me|ತೋರಿಸಿ|ಪಟ್ಟಿ|ಇತ್ತೀಚಿನ", ql):
+        if re.search(r"list|show|which|recent|latest|display|give me|ತೋರಿಸಿ|ಪಟ್ಟಿ|ಇತ್ತೀಚಿನ|"
+                     r"torisi|pattilist|ittichina|itichina", ql):
+            has_recency = bool(re.search(r"recent|latest|ಇತ್ತೀಚಿನ|ittichina|itichina", ql))
+            # Prompt 19 §C.5: a completely unconstrained list ("show cases") is
+            # ambiguous about place/crime/time/subject — ask, don't dump the DB.
+            if not agg_role and not where and not has_recency:
+                return Plan(
+                    needs_clarification=True,
+                    clarifying_question=(
+                        "Which cases would you like to see? Narrow it by district, crime "
+                        "type or time window — e.g. “robbery FIRs in Mysuru last month”."
+                        if language != "kn"
+                        else "ಯಾವ ಪ್ರಕರಣಗಳನ್ನು ನೋಡಬೇಕು? ಜಿಲ್ಲೆ, ಅಪರಾಧ ಪ್ರಕಾರ ಅಥವಾ ಕಾಲಾವಧಿಯಿಂದ "
+                        "ಸ್ಪಷ್ಟಪಡಿಸಿ — ಉದಾ: “ಮೈಸೂರಿನಲ್ಲಿ ಕಳೆದ ತಿಂಗಳ ದರೋಡೆ ಪ್ರಕರಣಗಳು”."),
+                    intent="clarify", confidence=0.3, language=language, filters=f)
             if agg_role:
                 # policymaker: no case list -> aggregate by district instead
                 sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{where} '
@@ -246,8 +278,83 @@ def build_system_prompt(role: str) -> str:
     )
 
 
+def _plan_messages(question: str, role: str, history: list[Turn], max_history: int) -> list[dict]:
+    """Compose the DATA-MINIMISED message list for a semantic planner.
+
+    Only the allow-listed role-scoped schema + police glossary (in the system
+    prompt), the bounded prior turns and the question are ever sent. Raw evidence
+    bytes, unrestricted narratives, credentials and result sets are NEVER included
+    — the planner sees intent + schema, not data (Prompt 19 §B.5)."""
+    messages = [{"role": "system", "content": build_system_prompt(role)}]
+    for turn in (history or [])[-max_history:]:
+        messages.append({"role": "assistant" if turn.sender == "assistant" else "user",
+                         "content": turn.text})
+    messages.append({"role": "user", "content": question})
+    return messages
+
+
+def _plan_from_json(content: str, language: str, source: str) -> Plan:
+    """Parse a semantic planner's JSON reply into a Plan (shared by every
+    provider). The guard + scope layers still validate the SQL independently."""
+    data = json.loads(content)
+    sql = data.get("sql")
+    return Plan(
+        sql=sql if sql else None,
+        needs_clarification=bool(data.get("needs_clarification")) or not sql,
+        clarifying_question=data.get("clarifying_question"),
+        intent="llm", source=source,
+        confidence=float(data.get("confidence", 0.75)),
+        language=(data.get("language") or language),
+    )
+
+
+class CatalystQuickMLServingPlanner:
+    """PRIMARY semantic planner — Catalyst QuickML LLM Serving (India DC).
+
+    QuickML LLM Serving hosts a governed open model (e.g. Qwen 2.5 Instruct)
+    behind a deployed endpoint (capability evidence in the Phase 19 report). This
+    adapter posts an OpenAI-compatible chat request carrying only the allow-listed
+    role-scoped schema + glossary + bounded context + data-minimised question, and
+    expects one JSON plan back. Endpoint/model/key are server-side env only; the
+    key is never logged and never reaches the browser. The exact live wire mapping
+    is verified against the deployment in Prompt 23; the offline contract and the
+    fail-closed fallback are proven now.
+    """
+    name = "catalyst-quickml-llm"
+
+    def __init__(self, settings):
+        self._s = settings
+
+    def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
+        import httpx  # local import: only needed on the network path
+
+        messages = _plan_messages(question, role, history, self._s.nlsql_max_history_turns)
+        endpoint = self._s.quickml_llm_endpoint.rstrip("/")
+        url = endpoint if endpoint.endswith("/chat/completions") else f"{endpoint}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        key = self._s.quickml_llm_api_key.strip()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        payload = {
+            "model": self._s.quickml_llm_model,
+            "temperature": 0,
+            "messages": messages,
+            "response_format": {"type": "json_object"},
+        }
+        resp = httpx.post(url, headers=headers, json=payload, timeout=self._s.quickml_llm_timeout_s)
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+        return _plan_from_json(content, language, source="catalyst-quickml-llm")
+
+
+# ===========================================================================
+# LLM planner (generic OpenAI-compatible; self-hosted / governed OSS runtime)
+# ===========================================================================
 class LLMPlanner:
-    name = "drishti-nlsql-llm"
+    """A provider-neutral OpenAI-compatible planner for a self-hosted / governed
+    open-source runtime. There is NO commercial default endpoint or model — both
+    must be configured explicitly (Prompt 19 §B.4)."""
+    name = "openai-compatible"
 
     def __init__(self, settings):
         self._s = settings
@@ -255,12 +362,7 @@ class LLMPlanner:
     def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
         import httpx  # local import: only needed on the LLM path
 
-        messages = [{"role": "system", "content": build_system_prompt(role)}]
-        for turn in (history or [])[-self._s.nlsql_max_history_turns:]:
-            messages.append({"role": "assistant" if turn.sender == "assistant" else "user",
-                             "content": turn.text})
-        messages.append({"role": "user", "content": question})
-
+        messages = _plan_messages(question, role, history, self._s.nlsql_max_history_turns)
         payload = {
             "model": self._s.llm_model,
             "temperature": 0,
@@ -275,25 +377,28 @@ class LLMPlanner:
         )
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
-        data = json.loads(content)
-        sql = data.get("sql")
-        return Plan(
-            sql=sql if sql else None,
-            needs_clarification=bool(data.get("needs_clarification")) or not sql,
-            clarifying_question=data.get("clarifying_question"),
-            intent="llm", source="llm",
-            confidence=float(data.get("confidence", 0.75)),
-            language=(data.get("language") or language),
-        )
+        return _plan_from_json(content, language, source="openai-compatible")
 
 
 _FALLBACK = FallbackPlanner()
 
 
 def get_planner():
-    """LLM when a key is configured, else the deterministic offline planner."""
+    """Select the semantic planner from provider-neutral settings.
+
+    Primary in the live-ready contract: Catalyst QuickML LLM Serving. Fail-closed:
+    when no provider is configured (local/offline demo) or a configured provider
+    is unreachable, the caller uses the deterministic offline planner, LABELLED as
+    a transparent outage fallback — never a silent switch to a commercial API.
+    """
     s = get_settings()
-    if s.llm_api_key:
+    provider = s.semantic_provider()
+    if provider == "catalyst_quickml" and s.quickml_llm_configured():
+        return CatalystQuickMLServingPlanner(s)
+    if provider == "openai_compatible" and s.openai_compatible_configured():
+        return LLMPlanner(s)
+    # Back-compat: bare OpenAI-compatible creds with no explicit provider set.
+    if not provider and s.openai_compatible_configured():
         return LLMPlanner(s)
     return _FALLBACK
 

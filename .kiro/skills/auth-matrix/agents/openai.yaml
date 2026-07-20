@@ -1,0 +1,4 @@
+interface:
+  display_name: "DRISHTI Authorization Matrix"
+  short_description: "Generate and verify role and scope authorization"
+  default_prompt: "Use $auth-matrix to generate and verify the DRISHTI role, unit, resource, and action matrix."

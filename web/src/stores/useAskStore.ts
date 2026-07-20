@@ -1,8 +1,12 @@
 import { create } from "zustand";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
-import type { AskResponse, ChatSessionDetail } from "@/api/types";
+import type { AskResponse, ChatSessionDetail, VizSpec } from "@/api/types";
 import { detectLang } from "@/lib/lang";
+
+/** Voice queries below this confidence must be confirmed before executing
+ *  (Prompt 19 §E.3). Mirrors the composer's dictation threshold. */
+export const VOICE_LOW_CONFIDENCE = 0.6;
 
 /* ============================================================================
    Ask DRISHTI conversation state (doc 01 §4.7). Holds the CURRENT thread, the
@@ -40,6 +44,11 @@ export interface AskMessage {
   columns?: string[];
   rowsPreview?: unknown[][];
   rowCount?: number;
+  /* Prompt 19: typed visualization spec + which planner produced the answer */
+  visualization?: VizSpec | null;
+  plannerSource?: string;
+  plannerPrimary?: string;
+  plannerDegraded?: boolean;
   /* turn state */
   thinking?: boolean;          // awaiting the engine
   needsClarification?: boolean; // engine asked for clarification
@@ -68,7 +77,13 @@ interface AskState {
   syncInput: (text: string) => void;
   send: (
     text: string,
-    opts?: { spoken?: boolean; voiceConfidence?: number; voiceLanguage?: string },
+    opts?: {
+      spoken?: boolean;
+      voiceConfidence?: number;
+      voiceLanguage?: string;
+      /** explicit user confirmation for a low-confidence spoken query. */
+      voiceConfirmed?: boolean;
+    },
   ) => Promise<void>;
   loadSession: (detail: ChatSessionDetail) => void;
   reset: () => void;
@@ -89,6 +104,10 @@ function answerFromResponse(id: string, res: AskResponse): AskMessage {
     columns: res.columns ?? [],
     rowsPreview: res.rows_preview ?? [],
     rowCount: res.row_count ?? 0,
+    visualization: res.visualization ?? null,
+    plannerSource: res.planner_source,
+    plannerPrimary: res.planner_primary,
+    plannerDegraded: res.planner_degraded,
     needsClarification: res.needs_clarification,
     blocked: res.blocked,
     createdAt: Date.now(),
@@ -118,6 +137,18 @@ export const useAskStore = create<AskState>((set, get) => ({
   send: async (text, opts) => {
     const trimmed = text.trim();
     if (!trimmed || get().busy) return;
+    // Low-confidence voice gate (Prompt 19 §E.3): never auto-execute a spoken
+    // query whose transcription confidence is below threshold unless the user
+    // explicitly confirmed it. The composer owns the confirm/edit UX; here we
+    // simply refuse to fire the request so nothing is sent by accident.
+    if (
+      opts?.spoken &&
+      opts.voiceConfidence != null &&
+      opts.voiceConfidence < VOICE_LOW_CONFIDENCE &&
+      !opts.voiceConfirmed
+    ) {
+      return;
+    }
     // In auto mode the asked language is the script of the text actually sent.
     if (get().languageMode === "auto") {
       const detected = detectLang(trimmed);

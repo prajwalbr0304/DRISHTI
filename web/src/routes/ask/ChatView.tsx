@@ -91,7 +91,12 @@ export function ChatView() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
 
-  const submit = (opts?: { spoken?: boolean; voiceConfidence?: number; voiceLanguage?: string }) => {
+  const submit = (opts?: {
+    spoken?: boolean;
+    voiceConfidence?: number;
+    voiceLanguage?: string;
+    voiceConfirmed?: boolean;
+  }) => {
     if (busy || !input.trim()) return;
     void send(input, opts);
     setInput("");

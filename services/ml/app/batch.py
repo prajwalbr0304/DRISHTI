@@ -280,6 +280,77 @@ def _cmd_geo_scan(args) -> int:
     return 0
 
 
+def _cmd_load_derived(args) -> int:
+    """Deterministic, NON-DESTRUCTIVE derived-data refresh (Prompt 18 §D.2).
+
+    Idempotently (re)builds the derived data that the analytics / detector /
+    graph routes and their tests read: materialized views, the hidden-association
+    feed and money-trail flags. Optionally a bounded offender risk-score sample
+    (--with-risk; heavy on CPU). It NEVER truncates or deletes base data — each
+    step is an upsert / REFRESH / re-flag over the existing synthetic dataset, so
+    re-running it is safe and converges to the same state. Use it to bring a fresh
+    analytics DB up to a testable derived-data state without regenerating 100k FIRs.
+    """
+    from .graph import hidden
+    from .money import detection
+    steps: dict = {}
+    with db.rw_conn() as conn:
+        steps["matviews"] = matviews.refresh_all(conn, list(matviews.ALL_MATVIEWS))
+    with db.rw_conn() as conn:
+        steps["hidden_associations"] = hidden.materialize(conn, min_links=args.min_links)
+    with db.rw_conn() as conn:
+        steps["money_flags"] = detection.run_detection(conn)
+    if args.with_risk:
+        from .risk import scoring
+        with db.rw_conn() as conn:
+            steps["risk_scores"] = scoring.score_all(conn, limit=args.risk_limit)
+    print(json.dumps({"loaded": steps,
+                      "note": "non-destructive; idempotent derived-data refresh"},
+                     default=str))
+    return 0
+
+
+# Derived/base data the analytics + detector test suites depend on: (label, SQL,
+# minimum rows expected, owning test module). CrimeRiskScore is optional — the
+# offender-risk read tests skip cleanly when it is empty (Phase 13 retired the
+# individual score in favour of the aggregate workload band), so it is reported
+# but never fails validation.
+_FIXTURE_CHECKS = [
+    ("SocialIndicator", 'SELECT COUNT(*) FROM "SocialIndicator"', 1, "test_analytics", True),
+    ("EconomicIndicator", 'SELECT COUNT(*) FROM "EconomicIndicator"', 1, "test_analytics", True),
+    ("hidden_associations", "SELECT COUNT(*) FROM drishti_hidden_associations", 1,
+     "test_graph_hidden", True),
+    ("money_flags", 'SELECT COUNT(*) FROM "FinancialTransaction" WHERE "IsFlagged"=true', 1,
+     "test_money", True),
+    ("CrimeRiskScore", 'SELECT COUNT(*) FROM "CrimeRiskScore"', 0, "test_risk (optional)", False),
+]
+
+
+def _cmd_validate_fixtures(_args) -> int:
+    """Read-only validation that the derived-data fixtures the test suite depends
+    on are present (Prompt 18 §D.2 fixture validation). Exits non-zero only when a
+    REQUIRED derived table is below its minimum row count (never mutates data)."""
+    results = []
+    with db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            for label, sql, minimum, owner, required in _FIXTURE_CHECKS:
+                try:
+                    cur.execute(sql)
+                    n = int(cur.fetchone()[0])
+                    ok = (n >= minimum) if required else True
+                except Exception as e:  # noqa: BLE001
+                    n, ok = None, (not required)
+                    owner += f" [error: {str(e).splitlines()[0][:50]}]"
+                results.append({"fixture": label, "rows": n, "min": minimum,
+                                "required": required, "ok": ok, "owner": owner})
+    failures = [r for r in results if not r["ok"]]
+    print(json.dumps({"fixtures": results, "all_required_present": not failures,
+                      "remediation": None if not failures
+                      else "run: python -m app.batch load-derived [--with-risk]"},
+                     indent=2, default=str))
+    return 0 if not failures else 1
+
+
 def _cmd_demo_score(args) -> int:
     with db.rw_conn() as conn:
         mv_id = models.get_or_create_model_version(
@@ -330,6 +401,20 @@ def build_parser() -> argparse.ArgumentParser:
     gs = sub.add_parser("geo-scan", help="scan canonical geography for containment failures -> DataQualityIssue")
     gs.add_argument("--scope", default="all", choices=["caseversion", "location_observation", "all"])
     gs.set_defaults(func=_cmd_geo_scan)
+
+    ld = sub.add_parser("load-derived",
+                        help="deterministic, non-destructive derived-data refresh: matviews + "
+                             "hidden-associations + money flags (+ optional risk sample)")
+    ld.add_argument("--min-links", type=int, default=2, help="hidden-association min shared kinds")
+    ld.add_argument("--with-risk", action="store_true",
+                    help="also score a bounded offender risk sample (heavy on CPU)")
+    ld.add_argument("--risk-limit", type=int, default=500, help="offenders to score when --with-risk")
+    ld.set_defaults(func=_cmd_load_derived)
+
+    vf = sub.add_parser("validate-fixtures",
+                        help="read-only check that required derived-data fixtures exist "
+                             "(non-zero exit if a required table is empty)")
+    vf.set_defaults(func=_cmd_validate_fixtures)
 
     # ---- graph jobs (Phase 6) ----
     eg = sub.add_parser("enrich-graph", help="add intermediary nodes + seeded hidden associations")

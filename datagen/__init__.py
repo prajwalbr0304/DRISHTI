@@ -3,7 +3,7 @@ DRISHTI — Synthetic Crime Data Generation Engine
 ================================================
 
 A scalable, reproducible generator that populates the Karnataka Police FIR
-PostgreSQL / Supabase database (base schema + Phase-3 intelligence layer) with
+PostgreSQL database (AWS RDS; base schema + Phase-3 intelligence layer) with
 criminologically realistic, foreign-key-consistent synthetic data.
 
 The engine does NOT emit random Faker-style rows. Every FIR is drawn from a

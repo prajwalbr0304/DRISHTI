@@ -85,26 +85,25 @@ def _resolve_dsn() -> str:
     """Resolve a libpq DSN / connection URL from the environment.
 
     Priority:
-      1. DATABASE_URL / SUPABASE_DB_URL  (full postgres:// URL, recommended)
-      2. Individual PG* / SUPABASE_DB_* components
+      1. DATABASE_URL  (full postgres:// URL, recommended)
+      2. Individual standard PG* components
 
-    For Supabase, copy the connection string from:
-        Project Settings -> Database -> Connection string (URI)
-    and export it as DATABASE_URL, e.g.:
-        postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
-    The publishable/anon and secret API keys in .env CANNOT be used for a direct
-    Postgres/COPY connection; a database password is required.
+    The target is the AWS RDS PostgreSQL analytics database. Use the RDS endpoint
+    as DATABASE_URL, e.g.:
+        postgresql://<user>:<password>@<db>.<region>.rds.amazonaws.com:5432/drishti?sslmode=require
+    AWS RDS requires TLS. (Supabase is no longer used — the project runs on AWS
+    RDS + Zoho Catalyst.)
     """
-    url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    url = os.getenv("DATABASE_URL")
     if url:
         return url
 
-    host = os.getenv("PGHOST") or os.getenv("SUPABASE_DB_HOST")
+    host = os.getenv("PGHOST")
     if host:
-        user = os.getenv("PGUSER") or os.getenv("SUPABASE_DB_USER") or "postgres"
-        pwd = os.getenv("PGPASSWORD") or os.getenv("SUPABASE_DB_PASSWORD") or ""
-        port = os.getenv("PGPORT") or os.getenv("SUPABASE_DB_PORT") or "5432"
-        db = os.getenv("PGDATABASE") or os.getenv("SUPABASE_DB_NAME") or "postgres"
+        user = os.getenv("PGUSER") or "postgres"
+        pwd = os.getenv("PGPASSWORD") or ""
+        port = os.getenv("PGPORT") or "5432"
+        db = os.getenv("PGDATABASE") or "drishti"
         sslmode = os.getenv("PGSSLMODE", "require")
         return (
             f"postgresql://{user}:{pwd}@{host}:{port}/{db}?sslmode={sslmode}"

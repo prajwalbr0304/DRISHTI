@@ -48,7 +48,7 @@ export function NotificationsBell() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-0">
+      <PopoverContent align="end" className="w-[26rem] p-0">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2.5">
           <div className="text-13 font-semibold text-content">Active alerts</div>
           <Badge variant="neutral" className="tnum">
@@ -56,7 +56,7 @@ export function NotificationsBell() {
           </Badge>
         </div>
 
-        <ScrollArea className="max-h-96">
+        <ScrollArea className="h-[min(24rem,70vh)]" type="always">
           <div className="p-1.5">
             {isLoading && (
               <div className="space-y-2 p-2">
@@ -117,13 +117,13 @@ function AlertRow({ alert, onOpen }: { alert: AlertFeature; onOpen: () => void }
         />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-13 font-medium text-content">{alert.title}</span>
-          <Badge variant={SEV_BADGE[alert.severity]} className="shrink-0 capitalize">
+        <span className="flex items-start gap-2">
+          <span className="text-13 font-medium leading-snug text-content">{alert.title}</span>
+          <Badge variant={SEV_BADGE[alert.severity]} className="mt-0.5 shrink-0 capitalize">
             {alert.severity}
           </Badge>
         </span>
-        {alert.message && <span className="mt-0.5 block truncate text-12 text-content-dim">{alert.message}</span>}
+        {alert.message && <span className="mt-0.5 block text-12 leading-normal text-content-dim">{alert.message}</span>}
         <span className="mt-1 flex items-center gap-2 text-12 text-content-dim">
           {alert.district_name && (
             <span className="inline-flex items-center gap-1">

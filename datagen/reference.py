@@ -301,6 +301,24 @@ CRIME_PROFILES: List[dict] = [
        accused_mean=1.8, victims_mean=1.4, age=(35, 9), repeat=0.25, arrest=0.35,
        known_accused=0.45, gang=0.1, alcohol=0.02, multi_victim=False,
        acts=[("IPC", ["420"])]),
+    # --- Prompt 20 §A: cryptocurrency- / dark-web-enabled (clearly synthetic) --
+    # Low weights; additive so a future full regen also carries these subheads.
+    # Dark-web is a MANUALLY classified source only (no scraping/purchase/creds).
+    _p("Economic & Cyber Crime", "Cryptocurrency Fraud", 1.2, "Serious", "business",
+       "weekday", "uniform", 0.92, {"metro": 2.1, "urban": 1.4},
+       accused_mean=2.2, victims_mean=3.0, age=(27, 6), repeat=0.4, arrest=0.14,
+       known_accused=0.04, gang=0.4, alcohol=0.02, multi_victim=True,
+       acts=[("ITACT", ["66D", "66C"]), ("IPC", ["420"])]),
+    _p("Economic & Cyber Crime", "Crypto Extortion", 0.5, "Serious", "business",
+       "uniform", "uniform", 0.9, {"metro": 1.9, "urban": 1.3},
+       accused_mean=1.6, victims_mean=1.2, age=(28, 7), repeat=0.35, arrest=0.16,
+       known_accused=0.05, gang=0.3, alcohol=0.02, multi_victim=False,
+       acts=[("ITACT", ["66D"]), ("IPC", ["506", "420"])]),
+    _p("Economic & Cyber Crime", "Dark Web Crime", 0.4, "Heinous", "business",
+       "uniform", "uniform", 0.9, {"metro": 1.8, "border": 1.3},
+       accused_mean=2.0, victims_mean=1.5, age=(29, 7), repeat=0.45, arrest=0.10,
+       known_accused=0.03, gang=0.5, alcohol=0.02, multi_victim=True,
+       acts=[("ITACT", ["66", "66C"]), ("NDPS", ["22"]), ("IPC", ["420"])]),
 
     # --- Drugs (NDPS) --------------------------------------------------------
     _p("Drug Offences", "Drug Peddling", 3.0, "Serious", "late_night", "uniform",
@@ -399,6 +417,13 @@ DESIGNATIONS = [
 CASE_CATEGORIES = ["FIR", "UDR", "Zero FIR", "PAR", "NCR"]
 CATEGORY_CODE = {"FIR": 1, "UDR": 3, "Zero FIR": 8, "PAR": 4, "NCR": 5}
 CATEGORY_WEIGHTS = [0.82, 0.05, 0.03, 0.05, 0.05]
+
+# Prompt 20 §A.2 — jurisdiction SCOPE is modelled SEPARATELY from crime type.
+# Governed values (a case/scenario carries one), used by the additive
+# crypto/dark-web/cross-jurisdiction scenario registry (services/ml/app/scenarios).
+JURISDICTION_SCOPES = [
+    "local", "inter_district", "inter_state", "national", "international", "cross_border",
+]
 
 GRAVITY_LEVELS = ["Heinous", "Serious", "Non-Heinous"]
 

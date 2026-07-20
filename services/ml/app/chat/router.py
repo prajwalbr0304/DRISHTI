@@ -13,12 +13,19 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from . import service
-from .schemas import (AskRequest, AskResponse, ChatSessionDetail, ChatSessionsResponse,
-                      ExplainRequest, TranslateRequest, TranslateResponse)
+from .schemas import (AskRequest, AskResponse, CapabilitiesResponse, ChatSessionDetail,
+                      ChatSessionsResponse, ExplainRequest, TranslateRequest, TranslateResponse)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _MAX_Q = 2000
+
+
+@router.get("/capabilities", response_model=CapabilitiesResponse)
+def capabilities():
+    """Truthful Ask-DRISHTI capabilities (semantic planner, voice provider,
+    languages, visualization kinds, scope flags) so the SPA never over-claims."""
+    return service.capabilities()
 
 
 @router.get("/sessions", response_model=ChatSessionsResponse)

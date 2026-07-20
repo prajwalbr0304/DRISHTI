@@ -1,6 +1,6 @@
-"""Reclaim disk on the dev Supabase by truncating the (logically empty but
-physically bloated) fixture tables left by a rolled-back load, then report size.
-Synthetic dev DB only; reference/governance tables are preserved."""
+"""Reclaim disk on the dev database (AWS RDS) by truncating the (logically empty
+but physically bloated) fixture tables left by a rolled-back load, then report
+size. Synthetic dev DB only; reference/governance tables are preserved."""
 from __future__ import annotations
 
 import psycopg2

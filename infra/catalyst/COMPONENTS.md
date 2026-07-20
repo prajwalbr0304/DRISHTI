@@ -38,6 +38,7 @@ confirm Signals rules are console-only while event functions are the code target
 | NoSQL | `../../services/ml/app/nosql.py` + `nosql/segments.json` | `DRISHTI_USE_CATALYST_NOSQL` |
 | Cache | `../../services/ml/app/cache.py` + `cache/namespaces.json` | `DRISHTI_USE_CATALYST_CACHE` |
 | QuickML (RAG + no-code) | `../../services/ml/app/quickml.py` + `quickml/{rag-knowledge-base,nocode-experiment}.json` | `DRISHTI_QUICKML_RAG_ENABLED` |
+| QuickML **LLM Serving** (Ask DRISHTI semantic planner, Prompt 19 §B) | `../../services/ml/app/nlsql/planner.py` (`CatalystQuickMLServingPlanner`) — hosts a governed open model (e.g. Qwen 2.5); deterministic offline planner is the labelled fallback | `SEMANTIC_PLANNER_PROVIDER=catalyst_quickml` |
 | SmartBrowz | `../../services/ml/app/smartbrowz.py` | `DRISHTI_USE_CATALYST_SMARTBROWZ` |
 | Authentication | `functions/gateway_api` + `../../services/ml/app/gateway_context.py` | always on |
 | API Gateway | `api-gateway/routes.json` | `catalyst apig:enable` |
@@ -48,8 +49,28 @@ confirm Signals rules are console-only while event functions are the code target
 | Mail / Push | `functions/notify_dispatch` | `DRISHTI_NOTIFY_ENABLED` |
 | Pipelines | `pipelines/catalyst-pipelines.yaml` | — |
 | Billing Budget/Report | `billing/budget.json` | console-only |
-| Zia OCR/face/voice | **Not used** (digital/manual input) | n/a |
+| Zia speech (STT/TTS) + translation — **voice query** (Prompt 19 §E) | **Not exposed in the IN DC** → browser Web Speech fallback (labelled, never called Zia); bilingual EN/KN text always works (`../../services/ml/app/zia_voice.py`) | `DRISHTI_USE_CATALYST_ZIA_VOICE` (off) |
+| Zia OCR / face / object recognition / evidence extraction | **Not used — OUT of hackathon scope** (`EVIDENCE_EXTRACTION_ENABLED=false`) | n/a |
 
 Every component client is a narrow interface with an in-memory fake (default,
 cost-free) and a Catalyst-SDK implementation selected by its enable flag, so
 nothing here spends credits until deploy + explicit enablement.
+
+## Prompt 19 scope correction — voice vs evidence extraction
+
+Voice **dictation of a question** and spoken **read-back of the answer** are IN
+hackathon scope and named by the independent flag `QUERY_VOICE_ENABLED` (true).
+This is strictly separate from `EVIDENCE_EXTRACTION_ENABLED` (false): OCR,
+uploaded-document parsing, automatic FIR field extraction, evidence-media
+transcription and face/object recognition stay OFF. The two flags are distinct so
+enabling voice query can never silently enable evidence extraction.
+
+The Catalyst **Zia Services** catalogue in the IN DC (OCR, Face Analytics,
+Identity Scanner, Image Moderation, Object Recognition, Barcode Scanner, AutoML,
+Text Analytics — see
+`https://docs.catalyst.zoho.com/en/zia-services/getting-started/components-of-zia-services/`)
+exposes **no** speech-to-text / text-to-speech / translation component, so the
+submitted voice capability is the browser Web Speech API (labelled as such), with
+`app/zia_voice.py` holding a ready, env-gated Zia adapter contract for the day it
+is exposed. Catalyst **QuickML LLM Serving** *is* available and is the primary
+Ask DRISHTI semantic planner (verified live in Prompt 23).

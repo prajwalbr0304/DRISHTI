@@ -4,6 +4,17 @@ Status date: 2026-07-18
 Owner: implementation agent (Kiro)
 Catalyst project: **DHRISTI** (ID `48361000000030003`), India (IN) DC, Development environment.
 
+> **CORRECTION ADDENDUM (2026-07-20, Prompt 18 re-verification).** The statements
+> below that "Docker is not installed" / "Docker absent" are **now stale**.
+> Re-verified on this machine: `docker --version` → **Docker version 29.6.1** (the
+> **CLI is installed**). What is missing is a **running Linux daemon** —
+> `docker info` returns "failed to connect to the docker API at
+> npipe:////./pipe/dockerDesktopLinuxEngine". So the AppSail/GPU image builds are
+> blocked only until Docker Desktop's Linux engine is started (verified/started in
+> `prompt3.md` Prompt 22), not by an absent CLI. Other tool versions re-verified:
+> Node v20.17.0, npm 11.5.2, Python 3.12.10, Catalyst CLI 1.27.0, AWS CLI 2.17.22,
+> git 2.47.1. Historical text retained below unchanged as evidence.
+
 > **Honesty note (read first).** This report distinguishes three states and never
 > conflates them:
 >

@@ -14,6 +14,7 @@ Blocks and DB errors are recorded (audit) but never surface fabricated data.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from dataclasses import dataclass, field
@@ -23,12 +24,16 @@ from psycopg2.extras import Json
 
 from .. import db, models
 from ..config import get_settings
+from .briefing import build_briefing, is_briefing_request
 from .executor import ExecutionError, execute_select
 from .guard import GuardError
 from .planner import Turn, fallback_planner, get_planner
-from .scope import ScopeError, referenced_tables
+from .schema import requires_aggregate
+from .scope import ScopeError, is_aggregate, referenced_tables
+from .viz import build_visualization
 
 _NLSQL_MODEL = ("drishti-nlsql", "nlp", "1.0.0")
+_ROWS_PREVIEW_CAP = 50      # rows sent to the browser for the answer table/chart
 
 # result id-column -> source table, for record-id citations (the evidence trail).
 _ID_COLS = {
@@ -55,6 +60,13 @@ class AskOutcome:
     row_count: int = 0
     columns: list[str] = field(default_factory=list)
     rows_preview: list[list[Any]] = field(default_factory=list)
+    # Prompt 19 §B.7: which planner actually produced the plan, the configured
+    # primary for the live contract, and whether we fell back due to an outage.
+    planner_source: str = "deterministic-fallback"
+    planner_primary: str = "deterministic-fallback"
+    planner_degraded: bool = False
+    # Prompt 19 §F: server-validated typed visualization specification.
+    visualization: Optional[dict] = None
 
 
 def detect_language(text: str) -> str:
@@ -67,25 +79,58 @@ def ask(role: str, question: str, language: Optional[str] = None,
     settings = get_settings()
     t0 = time.time()
     lang = language or detect_language(question)
+    primary_name = settings.primary_planner_name()
+
+    # --- briefing / overview: compose from several role-scoped aggregates ---
+    # (a single SELECT can't answer "give me a briefing for my scope").
+    if is_briefing_request(question):
+        return _briefing(role, question, lang, session_id, voice, t0, primary_name)
+
     history = _load_history(session_id, settings.nlsql_max_history_turns) if session_id else []
 
-    # --- plan (LLM primary, deterministic fallback on any LLM failure) ---
+    # --- plan (semantic provider primary, deterministic LABELLED fallback) ---
+    # Fail-closed: when the configured semantic provider is unreachable we drop to
+    # the deterministic offline planner and MARK the answer as a degraded/fallback
+    # plan — never a silent switch to a commercial API.
     planner = get_planner()
+    planner_source = getattr(planner, "name", "deterministic-fallback")
+    planner_degraded = False
     try:
         plan = planner.plan(question, role, lang, history)
     except Exception:
         plan = fallback_planner().plan(question, role, lang, history)
+        planner_degraded = planner_source != "deterministic-fallback"
+        planner_source = "deterministic-fallback"
     lang = plan.language or lang
+
+    # Aggregate-only roles (e.g. policymaker) must receive an aggregate query.
+    # The semantic planner is NOT trusted to honour that on its own: if it
+    # returned a non-aggregate SELECT (which the scope guard would then block) or
+    # asked to clarify a question the deterministic planner can still map, we
+    # substitute the deterministic aggregate plan so the guarantee never depends
+    # on model cooperation. The scope guard in the executor still enforces the
+    # boundary independently (defence in depth) — this only avoids a needless
+    # block/clarify when a safe aggregate answer is available.
+    if requires_aggregate(role) and (not plan.sql or not is_aggregate(plan.sql)):
+        fb = fallback_planner().plan(question, role, lang, history)
+        if fb.sql and is_aggregate(fb.sql):
+            plan = fb
+            lang = plan.language or lang
+            planner_source = "deterministic-fallback"    # scope-safe substitution
+
+    # planner-label triple carried onto every outcome (transparency).
+    plabels = dict(planner_source=planner_source, planner_primary=primary_name,
+                   planner_degraded=planner_degraded)
 
     # --- clarify: ask, never guess ---
     if plan.needs_clarification or not plan.sql:
         reply = plan.clarifying_question or _clarify_text(lang)
         sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=None,
                            cites=[], confidence=plan.confidence, kind="clarify", voice=voice,
-                           latency_ms=int((time.time() - t0) * 1000))
+                           latency_ms=int((time.time() - t0) * 1000), planner_source=planner_source)
         return AskOutcome(session_id=sid, reply=reply, language=lang, sql=None,
                           confidence=round(plan.confidence, 4), needs_clarification=True,
-                          model_version=mv)
+                          model_version=mv, **plabels)
 
     # --- execute under the guarded, read-only, scoped path ---
     try:
@@ -94,30 +139,62 @@ def ask(role: str, question: str, language: Optional[str] = None,
         reply = _blocked_text(lang, str(exc))
         sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=plan.sql,
                            cites=[], confidence=0.0, kind="blocked", voice=voice,
-                           latency_ms=int((time.time() - t0) * 1000))
+                           latency_ms=int((time.time() - t0) * 1000), planner_source=planner_source)
         return AskOutcome(session_id=sid, reply=reply, language=lang, sql=None,
-                          confidence=0.0, blocked=True, model_version=mv)
+                          confidence=0.0, blocked=True, model_version=mv, **plabels)
     except ExecutionError as exc:
         reply = _error_text(lang, str(exc))
         sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=plan.sql,
                            cites=[], confidence=0.3, kind="error", voice=voice,
-                           latency_ms=int((time.time() - t0) * 1000))
+                           latency_ms=int((time.time() - t0) * 1000), planner_source=planner_source)
         return AskOutcome(session_id=sid, reply=reply, language=lang, sql=None,
-                          confidence=0.3, model_version=mv)
+                          confidence=0.3, model_version=mv, **plabels)
 
     # --- grounded reply + citations + honest confidence ---
     cites = _citations(columns, rows, cleaned_sql, settings.nlsql_max_citations)
     reply = _grounded_reply(columns, rows, lang, settings.nlsql_row_cap)
     confidence = _confidence(plan.confidence, rows)
+    # Prompt 19 §F: deterministic, server-validated typed visualization spec
+    # (never model-generated code) chosen from result shape + intent.
+    viz = build_visualization(
+        columns, rows, intent=plan.intent, language=lang, citations=cites,
+        confidence=confidence, role=role, row_total=len(rows))
     sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=cleaned_sql,
                        cites=cites, confidence=confidence, kind="answer", voice=voice,
-                       latency_ms=int((time.time() - t0) * 1000), row_count=len(rows))
+                       latency_ms=int((time.time() - t0) * 1000), row_count=len(rows),
+                       planner_source=planner_source)
 
     return AskOutcome(
         session_id=sid, reply=reply, language=lang, sql=cleaned_sql, cited_record_ids=cites,
         confidence=confidence, model_version=mv, row_count=len(rows), columns=columns,
-        rows_preview=rows[:20],
+        rows_preview=rows[:_ROWS_PREVIEW_CAP], visualization=viz, **plabels,
     )
+
+
+# --------------------------------------------------------------------------- #
+def _briefing(role: str, question: str, lang: str, session_id: Optional[int],
+              voice: Optional[dict], t0: float, primary_name: str) -> AskOutcome:
+    """Compose + persist a grounded, cited multi-metric briefing."""
+    result = build_briefing(role, lang)
+    kind = "answer" if result.ran else "clarify"
+    sid, mv = _persist(
+        session_id, role, lang, question, result.reply,
+        persisted_sql=result.sql_display, cites=result.citations,
+        confidence=result.confidence, kind=kind, voice=voice,
+        latency_ms=int((time.time() - t0) * 1000), row_count=result.ran,
+        planner_source="deterministic-briefing")
+    cols = ([] if not result.metrics
+            else (["ಮಾಪನ", "ಮೌಲ್ಯ"] if lang == "kn" else ["Metric", "Value"]))
+    viz = build_visualization(
+        cols, result.metrics, intent="briefing", language=lang, citations=result.citations,
+        confidence=result.confidence, role=role, row_total=len(result.metrics)) if result.metrics else None
+    return AskOutcome(
+        session_id=sid, reply=result.reply, language=lang, sql=result.sql_display,
+        cited_record_ids=result.citations, confidence=result.confidence,
+        needs_clarification=(result.ran == 0), model_version=mv,
+        row_count=len(result.metrics), columns=cols, rows_preview=result.metrics,
+        visualization=viz, planner_source="deterministic-briefing",
+        planner_primary=primary_name, planner_degraded=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -161,38 +238,105 @@ def _col(columns: list[str], name: str) -> int:
         return -1
 
 
+_COUNT_WORDS = ("count", "cnt", "total", "number", "num", "qty", "quantity", "tally")
+
+
+def _humanize_label(col: str) -> str:
+    """Turn a column alias into a readable noun: split camelCase + underscores,
+    drop the aggregate word. e.g. 'PoliceStationCount' -> 'police station',
+    'station_count' -> 'station', 'DistrictName' -> 'district name'."""
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", col)     # split camel/Pascal case
+    s = s.replace("_", " ").strip().lower()
+    words = [w for w in s.split() if w and w not in _COUNT_WORDS]
+    return " ".join(words)
+
+
+def _is_num(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _first_col_where(columns: list[str], rows: list[list], want_numeric: bool,
+                     exclude: int = -1) -> int:
+    """Index of the first column whose first non-null value matches the wanted
+    kind (numeric vs. text). Returns -1 if none."""
+    for i in range(len(columns)):
+        if i == exclude:
+            continue
+        for r in rows:
+            v = r[i]
+            if v is None:
+                continue
+            num = _is_num(v)
+            if want_numeric and num:
+                return i
+            if not want_numeric and isinstance(v, str):
+                return i
+            break      # first non-null decided this column's kind
+    return -1
+
+
+def _scalar_reply(col: str, val: Any, kn: bool) -> str:
+    """Report a single aggregate value (COUNT/SUM/AVG/…), whatever it measures."""
+    if val is None:
+        return ("ಈ ಪ್ರಶ್ನೆಗೆ ಮೌಲ್ಯ ಲೆಕ್ಕ ಹಾಕಲಾಗಲಿಲ್ಲ." if kn
+                else "No value could be computed for that query.")
+    if col == "case_count":     # emitted by the offline planner for FIR counts
+        return (f"{val} ಹೊಂದುವ ಎಫ್‌ಐಆರ್‌ಗಳು." if kn else f"{val} matching FIR(s).")
+    is_count = any(w in col.lower() for w in _COUNT_WORDS)
+    if kn:
+        return (f"ಒಟ್ಟು {val}." if is_count else f"ಫಲಿತಾಂಶ: {val}.")
+    label = _humanize_label(col)
+    if is_count and label:
+        if not label.endswith("s"):
+            label += "s"
+        return f"There are {val} {label}."
+    if is_count:
+        return f"Total: {val}."
+    return f"The result is {val}."
+
+
 def _grounded_reply(columns: list[str], rows: list[list], lang: str, cap: int) -> str:
+    """Build an NL reply grounded in the ACTUAL rows. Column names are matched
+    by SHAPE (a scalar / a label+measure / a trend / a case list), not by fixed
+    aliases, so it works whether the SQL came from the LLM or the offline planner."""
     kn = lang == "kn"
     n = len(rows)
     if n == 0:
         return "ಈ ಪ್ರಶ್ನೆಗೆ ಹೊಂದುವ ದಾಖಲೆಗಳಿಲ್ಲ." if kn else "No matching records were found for that query."
 
-    ci_count = _col(columns, "case_count")
-    ci_dist = _col(columns, "DistrictName")
+    # 1) single scalar aggregate (COUNT/SUM/AVG/…): report the value itself
+    if n == 1 and len(columns) == 1:
+        return _scalar_reply(columns[0], rows[0][0], kn)
+
     ci_month = _col(columns, "month")
     ci_crime = _col(columns, "CrimeNo")
 
-    # single aggregate number
-    if n == 1 and ci_count != -1 and len(columns) == 1:
-        val = rows[0][ci_count]
-        return (f"{val} ಹೊಂದುವ ಎಫ್‌ಐಆರ್‌ಗಳು." if kn else f"{val} matching FIR(s).")
-    # grouped counts (top / by-district)
-    if ci_count != -1 and ci_dist != -1:
-        top_name, top_val = rows[0][ci_dist], rows[0][ci_count]
-        return (f"{top_name} ಮುಂಚೂಣಿಯಲ್ಲಿ ({top_val}); ಒಟ್ಟು {n} ಜಿಲ್ಲೆ(ಗಳು)."
-                if kn else f"{top_name} leads with {top_val} FIR(s); {n} district(s) in total.")
-    # monthly trend
-    if ci_month != -1 and ci_count != -1:
-        last = rows[-1]
-        return (f"{n} ತಿಂಗಳ ಪ್ರವೃತ್ತಿ; ಇತ್ತೀಚಿನ {last[ci_month]}: {last[ci_count]}."
-                if kn else f"Monthly counts over {n} month(s); latest {last[ci_month]}: {last[ci_count]}.")
-    # case list
+    # 2) case list (has a CrimeNo column) — individual records
     if ci_crime != -1:
-        first = rows[0]
-        crime_no = first[ci_crime]
+        crime_no = rows[0][ci_crime]
         cap_note = f" (showing up to {cap})" if n >= cap else ""
         return (f"{n} ಎಫ್‌ಐಆರ್{cap_note}. ಇತ್ತೀಚಿನದು: {crime_no}."
                 if kn else f"{n} FIR(s){cap_note}. Most recent: {crime_no}.")
+
+    num_idx = _first_col_where(columns, rows, want_numeric=True)
+
+    # 3) monthly trend (a 'month' column + a numeric measure)
+    if ci_month != -1 and num_idx != -1:
+        last = rows[-1]
+        return (f"{n} ತಿಂಗಳ ಪ್ರವೃತ್ತಿ; ಇತ್ತೀಚಿನ {last[ci_month]}: {last[num_idx]}."
+                if kn else f"Monthly counts over {n} month(s); latest {last[ci_month]}: {last[num_idx]}.")
+
+    # 4) grouped / ranked (a label column + a numeric measure)
+    if num_idx != -1:
+        txt_idx = _first_col_where(columns, rows, want_numeric=False, exclude=num_idx)
+        if txt_idx != -1:
+            top_name, top_val = rows[0][txt_idx], rows[0][num_idx]
+            if n == 1:
+                return f"{top_name}: {top_val}."
+            return (f"{top_name} ಮುಂಚೂಣಿಯಲ್ಲಿ ({top_val}); ಒಟ್ಟು {n} ಗುಂಪುಗಳು."
+                    if kn else f"{top_name} leads with {top_val}; {n} group(s) in total.")
+
+    # 5) fallback: honest row count
     return (f"{n} ಸಾಲು(ಗಳು) ದೊರಕಿದವು." if kn else f"{n} row(s) returned.")
 
 
@@ -221,10 +365,19 @@ def _error_text(lang: str, reason: str) -> str:
 _LOW_CONF_THRESHOLD = 0.6      # below this a voice transcript is flagged (doc 01 §4.7/§9)
 
 
+def _sql_hash(sql: Optional[str]) -> Optional[str]:
+    """SHA-256 of the executed plan/SQL (C6) — a stable, non-sensitive fingerprint
+    for the audit trail (the full SQL is already stored on the assistant turn)."""
+    if not sql:
+        return None
+    return hashlib.sha256(sql.encode("utf-8")).hexdigest()
+
+
 def _persist(session_id: Optional[int], role: str, language: str, question: str,
              reply: str, *, persisted_sql: Optional[str], cites: list[str],
              confidence: float, kind: str, latency_ms: int,
-             row_count: int = 0, voice: Optional[dict] = None) -> tuple[int, str]:
+             row_count: int = 0, voice: Optional[dict] = None,
+             planner_source: str = "deterministic-fallback") -> tuple[int, str]:
     """Write the user + assistant turns (+ audit + optional VoiceTranscript).
     Returns (session_id, model_label)."""
     name, mtype, ver = _NLSQL_MODEL
@@ -269,7 +422,9 @@ def _persist(session_id: Optional[int], role: str, language: str, question: str,
                 (session_id, reply, language, persisted_sql, Json(cites), conf, mv_id))
         models.log_inference(
             conn, mv_id,
-            inputs={"question": question, "role": role, "kind": kind, "sql": persisted_sql},
-            outputs={"rows": row_count, "citations": len(cites), "blocked": kind == "blocked"},
+            inputs={"question": question, "role": role, "kind": kind,
+                    "planner_source": planner_source, "sql_sha256": _sql_hash(persisted_sql)},
+            outputs={"rows": row_count, "citations": len(cites), "blocked": kind == "blocked",
+                     "refusal": kind == "blocked", "sql_sha256": _sql_hash(persisted_sql)},
             confidence=conf, latency_ms=latency_ms)
     return session_id, mv_label

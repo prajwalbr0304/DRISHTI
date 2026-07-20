@@ -1,0 +1,4 @@
+interface:
+  display_name: "Catalyst Deployment"
+  short_description: "Inventory, deploy, verify, and roll back Catalyst"
+  default_prompt: "Use $catalyst-deployment to inventory and safely verify the DRISHTI Catalyst deployment."

@@ -416,6 +416,60 @@ export interface ChatSessionDetail {
   messages: ChatMessageOut[];
 }
 
+/* --- Prompt 19: typed, server-validated visualization spec for an answer ---
+   The server decides the chart kind and hands back column indices into the same
+   `columns` / `rows_preview` the answer already carries. The client renders it
+   deterministically (never evaluates model-authored code) and always keeps the
+   accessible table fallback (accessible_table.row_ref === "rows_preview"). */
+export type VizKind =
+  | "table"
+  | "number"
+  | "bar"
+  | "line"
+  | "choropleth"
+  | "heatmap"
+  | "timeline"
+  | "network"
+  | "sankey"
+  | "link";
+export interface VizDimension {
+  field: string;
+  label: string;
+  /** column index into `columns` / `rows_preview`. */
+  index: number;
+  role: string;
+}
+export interface VizMeasure {
+  field: string;
+  label: string;
+  /** column index into `columns` / `rows_preview`. */
+  index: number;
+  unit: string;
+}
+export interface VizAccessibleTable {
+  columns: string[];
+  /** "rows_preview" => render from the message's own columns + rows_preview. */
+  row_ref: string;
+}
+export interface VizSpec {
+  kind: VizKind;
+  title: string;
+  dimensions: VizDimension[];
+  measures: VizMeasure[];
+  time_field: string | null;
+  geo_field: string | null;
+  source_ids: string[];
+  /** ISO timestamp the data is "as of". */
+  as_of: string;
+  dataset: string; // "synthetic"
+  suppressed: number;
+  confidence: number; // 0..1
+  scope_role: string;
+  row_total: number;
+  language: string; // "en" | "kn"
+  accessible_table: VizAccessibleTable;
+}
+
 /** Live NL->SQL answer (Phase 2). Scoped server-side by role. */
 export interface AskResponse {
   result: AiResult;
@@ -431,6 +485,44 @@ export interface AskResponse {
   row_count: number;
   columns: string[];
   rows_preview: unknown[][];
+  /* Prompt 19: which planner produced the answer + degraded-fallback flag, and
+     the typed visualization spec (null for a text-only answer). */
+  planner_source: string; // e.g. "catalyst-quickml-llm" | "openai-compatible" | "deterministic-fallback" | "deterministic-briefing"
+  planner_primary: string; // configured primary planner for the live contract
+  planner_degraded: boolean; // true when it fell back from the primary due to an outage
+  visualization: VizSpec | null;
+}
+
+/** Prompt 19: server-declared chat capabilities (GET /chat/capabilities). */
+export interface CapabilitiesSemanticPlanner {
+  primary: string;
+  provider: string;
+  quickml_llm_configured: boolean;
+  fallback: string;
+}
+export interface CapabilitiesVoice {
+  voice_query_enabled: boolean;
+  /** "browser-web-speech" in this submission (NOT Zia). */
+  provider: string;
+  zia_voice_available: boolean;
+  zia_translation_available: boolean;
+  browser_fallback: boolean;
+  bilingual_text: boolean;
+  low_confidence_threshold: number;
+  evidence_extraction_enabled: boolean;
+  platform_limitation: string | null;
+  evidence: string | null;
+}
+export interface CapabilitiesScope {
+  query_voice_enabled: boolean;
+  evidence_extraction_enabled: boolean;
+}
+export interface Capabilities {
+  semantic_planner: CapabilitiesSemanticPlanner;
+  voice: CapabilitiesVoice;
+  languages: string[];
+  visualization_kinds: string[];
+  scope: CapabilitiesScope;
 }
 
 /* ---------------------------------- Risk ---------------------------------- */

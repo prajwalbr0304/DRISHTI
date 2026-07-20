@@ -1,8 +1,9 @@
 """Safe, read-only database preflight for DRISHTI Datagen v2.
 
-This module opens a *strictly read-only* connection to the development Supabase
-referenced by ``DATABASE_URL`` and reproduces a schema / row-count baseline so
-the loader can reason about the target before doing anything destructive.
+This module opens a *strictly read-only* connection to the development AWS RDS
+PostgreSQL analytics database referenced by ``DATABASE_URL`` and reproduces a
+schema / row-count baseline so the loader can reason about the target before
+doing anything destructive.
 
 Hard safety rules enforced here (Phase 1, prompt A):
   * The connection runs with ``default_transaction_read_only = on`` AND each
@@ -45,18 +46,18 @@ BASELINE_TABLES = [
 
 
 def resolve_dsn() -> str:
-    """Return DATABASE_URL / SUPABASE_DB_URL (never printed)."""
+    """Return DATABASE_URL (the AWS RDS analytics URI; never printed)."""
     try:
         from dotenv import load_dotenv
 
         load_dotenv()
     except Exception:  # pragma: no cover
         pass
-    return os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL") or ""
+    return os.getenv("DATABASE_URL") or ""
 
 
 def redact_target(dsn: str) -> str:
-    """A safe, non-secret label for logs, e.g. ``db.<ref>...supabase.co:5432``.
+    """A safe, non-secret label for logs, e.g. ``<db>.<region>.rds.amazonaws.com:5432``.
 
     Never includes user, password or query string.
     """
@@ -77,7 +78,7 @@ def redact_target(dsn: str) -> str:
 
 
 def _with_sslmode(dsn: str) -> str:
-    """Supabase requires TLS; add sslmode=require if the caller omitted it."""
+    """AWS RDS requires TLS; add sslmode=require if the caller omitted it."""
     if not dsn:
         return dsn
     if "sslmode=" in dsn:

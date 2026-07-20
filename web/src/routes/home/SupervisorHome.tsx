@@ -1,12 +1,12 @@
-import { AlertTriangle, Flame, TrendingUp, UserCog } from "lucide-react";
+import { AlertTriangle, Flame, TrendingUp } from "lucide-react";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { Widget } from "@/components/widget/Widget";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { DistrictBars, type BarDatum } from "@/components/dashboard/DistrictBars";
 import { EventList, alertToEvent } from "@/components/dashboard/EventList";
-import { EmptyState } from "@/components/common/EmptyState";
 import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { useAlerts, useHotspots, useTrends } from "@/routes/home/useDashboardData";
+import { StationPerformance } from "@/routes/home/StationPerformance";
 
 const REVIEWED = ["resolved", "closed", "acknowledged", "ack", "dismissed", "actioned"];
 
@@ -151,18 +151,20 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "performance", handle: "header", x: 0, y: 9, w: 12, h: 6, minW: 4, minH: 4,
+      key: "performance", handle: "header", x: 0, y: 9, w: 12, h: 8, minW: 4, minH: 5,
       el: (
         <Widget
           gridTile
           title="Station & officer performance"
-          info={<p className="text-content-dim">Per-officer clearance, workload and outcomes. Requires the officer-performance API.</p>}
+          info={
+            <p className="text-content-dim">
+              Aggregate, explainable operational metrics from the committed case record —
+              active workload, ageing, chargesheet throughput, time-to-chargesheet, overdue
+              reviews and workload balance. Scoped server-side; no punitive per-officer ranking.
+            </p>
+          }
         >
-          <EmptyState
-            icon={UserCog}
-            title="Awaiting the performance API"
-            description="Station and officer performance metrics (clearance rate, workload balance, disposal times) land when the transactional Cases/HR endpoints are built."
-          />
+          <StationPerformance />
         </Widget>
       ),
     },

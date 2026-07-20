@@ -236,7 +236,7 @@ def test_llm_planner_parses_json(monkeypatch):
         nlsql_max_history_turns = 6
 
     plan = LLMPlanner(_S()).plan("count cases", "analyst", "en", [])
-    assert plan.source == "llm"
+    assert plan.source == "openai-compatible"     # provider-neutral label (Prompt 19 §B)
     assert plan.sql and guard.validate_select(plan.sql)
     assert not plan.needs_clarification
 

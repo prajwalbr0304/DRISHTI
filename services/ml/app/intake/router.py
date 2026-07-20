@@ -187,6 +187,17 @@ def review_draft(draft_key: str, action: str = Query(..., pattern="^(approve|rej
     result = _call(service.review_draft, draft_key, action, actor, note)
     # approve returns ApprovalResult; reject/return return DraftResponse
     if isinstance(result, ApprovalResult):
+        # Prompt 20 §E — the approved canonical write is committed; emit the
+        # committed-FIR event so the Live Command Center projections refresh.
+        # Best-effort: a flow failure must never break the approval response.
+        try:
+            import datetime as _dt
+            from ..livefeed import flow as _livefeed
+            _livefeed.on_fir_committed(
+                result.case_master_id,
+                source_ts=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        except Exception:  # noqa: BLE001
+            pass
         return result
     return {"draft": result}
 

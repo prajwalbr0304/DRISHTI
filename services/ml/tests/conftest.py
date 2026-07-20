@@ -15,10 +15,19 @@ from app.config import get_settings  # noqa: E402
 
 
 def has_db() -> bool:
+    # Explicit opt-out for a fast, deterministic offline unit run (durable
+    # per-module diagnostics). When DRISHTI_DISABLE_DB_TESTS is set, every
+    # @requires_db test skips cleanly instead of connecting to the (slow, remote)
+    # analytics database. This never turns a failing test green — the DB suite is
+    # simply run in a separate pass with the toggle unset. On Windows an *empty*
+    # env var is dropped before it reaches the child process, so a non-empty
+    # sentinel is used rather than DATABASE_URL="".
+    if os.environ.get("DRISHTI_DISABLE_DB_TESTS", "").strip():
+        return False
     return bool(get_settings().database_url)
 
 
-requires_db = pytest.mark.skipif(not has_db(), reason="DATABASE_URL not configured")
+requires_db = pytest.mark.skipif(not has_db(), reason="DATABASE_URL not configured or DB tests disabled")
 
 
 @pytest.fixture(autouse=True, scope="session")

@@ -11,6 +11,7 @@ import {
   Landmark,
   Lock,
   MessageSquareText,
+  Compass,
   Network,
   Package,
   Paperclip,
@@ -42,6 +43,7 @@ import { NetworkPage } from "@/routes/cases/subpages/NetworkPage";
 import { SimilarPage } from "@/routes/cases/subpages/SimilarPage";
 import { SummaryPage } from "@/routes/cases/subpages/SummaryPage";
 import { LeadsPage } from "@/routes/cases/subpages/LeadsPage";
+import { AssistantPage } from "@/routes/cases/subpages/AssistantPage";
 import { EvidencePage } from "@/routes/cases/subpages/EvidencePage";
 import { StatementsPage } from "@/routes/cases/subpages/StatementsPage";
 import { PropertyPage } from "@/routes/cases/subpages/PropertyPage";
@@ -79,6 +81,7 @@ const SUB_NAV: SubNavItem[] = [
   { key: "similar", label: "Similar cases", icon: GitBranch },
   { key: "summary", label: "AI Summary", icon: Sparkles },
   { key: "leads", label: "Leads", icon: Zap },
+  { key: "assistant", label: "Investigation assistant", icon: Compass },
 ];
 
 export function CaseFile() {
@@ -238,6 +241,8 @@ function SubPage({
       return <SummaryPage caseId={caseId} />;
     case "leads":
       return <LeadsPage caseId={caseId} />;
+    case "assistant":
+      return <AssistantPage caseId={caseId} />;
     default:
       return <OverviewPage detail={detail} goTo={goTo} />;
   }

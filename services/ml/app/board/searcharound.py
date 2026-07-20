@@ -112,11 +112,23 @@ def expand(entity_id: int, hops: int, max_neighbors: int, *,
             nb["relationship_type"], nb["weight"] = rt[0], rt[1]
     neighbors.sort(key=lambda x: x["weight"], reverse=True)
 
+    # Final cap: the recursive BFS fans out to the top-N heaviest neighbours PER
+    # HOP, so a multi-hop expansion can surface more than ``max_neighbors`` nodes
+    # in total. ``max_neighbors`` is the cap on the RETURNED neighbour set, so
+    # keep only the strongest by edge weight — Search Around must never return
+    # more nodes than its cap (no hairball). Then reduce the induced edge set to
+    # the kept nodes so the imported subgraph has no dangling edges.
+    if len(neighbors) > max_neighbors:
+        neighbors = neighbors[:max_neighbors]
+    kept_ids = {int(entity_id)} | {int(nb["entity_id"]) for nb in neighbors}
+    edges = [e for e in edges
+             if int(e["source"]) in kept_ids and int(e["target"]) in kept_ids]
+
     focal_label = next((n.get("label") for n in nodes
                         if int(n["entity_id"]) == int(entity_id)), str(entity_id))
     result = {
         "focal_entity": entity_id, "focal_label": focal_label, "hops": hops,
-        "max_neighbors": max_neighbors, "node_count": len(nodes),
+        "max_neighbors": max_neighbors, "node_count": len(kept_ids),
         "edge_count": len(edges), "neighbors": neighbors, "edges": edges,
         "latency_ms": latency_ms, "cached": False, "exists": exists,
         "answer": (f"{len(neighbors)} verified neighbour(s) within {hops} hop(s) of "

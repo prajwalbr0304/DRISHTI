@@ -43,19 +43,52 @@ class Settings(BaseSettings):
     # sslmode for managed Postgres (AWS RDS requires/strongly prefers TLS).
     db_sslmode: str = "require"
 
-    # --- Phase 2: NL->SQL conversational engine (doc 02 §6) ------------------
-    # Pluggable LLM behind an OpenAI-compatible chat API. When no key is set, the
-    # engine uses a deterministic offline planner (fallback), so Ask DRISHTI works
-    # without any external dependency. The security guards do NOT depend on this.
+    # --- Prompt 19 §A: query-voice vs evidence-extraction scope --------------
+    # Voice DICTATION of a question and spoken read-back of the answer are IN
+    # hackathon scope. This is deliberately kept SEPARATE from evidence
+    # extraction: OCR, uploaded-document parsing, automatic FIR field extraction,
+    # evidence-media transcription and face/object recognition remain OUT of
+    # scope. The two are named as INDEPENDENT flags so enabling voice query can
+    # never silently turn on evidence extraction. query_voice may be true;
+    # evidence_extraction MUST stay false for this submission.
+    query_voice_enabled: bool = True
+    evidence_extraction_enabled: bool = False
+
+    # --- Prompt 19 §B: semantic planner (provider-neutral, fail-closed) ------
+    # The PRIMARY semantic planner in the live-ready contract is Catalyst QuickML
+    # LLM Serving when configured + available for the India-DC project (QuickML
+    # LLM Serving hosts open models, e.g. Qwen 2.5, behind an endpoint — see the
+    # Phase 19 report for capability evidence). There is deliberately NO
+    # hard-coded commercial default model: settings are provider-neutral and the
+    # engine FAILS CLOSED — when no semantic provider is configured, or the
+    # configured provider is unreachable, it uses the deterministic offline
+    # planner, which is LABELLED as a transparent outage fallback in the response
+    # (never a silent switch to an external commercial API).
+    #   "" (unset)         -> deterministic offline planner is the primary
+    #   "catalyst_quickml" -> Catalyst QuickML LLM Serving (primary, deployed)
+    #   "openai_compatible"-> a self-hosted / governed OSS OpenAI-compatible runtime
+    semantic_planner_provider: str = ""
+    # Catalyst QuickML LLM Serving endpoint + deployed serving-model id. Both come
+    # from server-side env ONLY (never the browser); the key is never logged.
+    quickml_llm_endpoint: str = ""
+    quickml_llm_model: str = ""
+    quickml_llm_api_key: str = ""
+    quickml_llm_timeout_s: float = 30.0
+    # Generic OpenAI-compatible provider (self-hosted / governed OSS runtime).
+    # Used ONLY when explicitly configured — provider-neutral, no default endpoint
+    # or model name (the former "gpt-4o-mini" implied production default is gone).
     llm_api_key: str = ""
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o-mini"
+    llm_base_url: str = ""
+    llm_model: str = ""
     llm_timeout_s: float = 30.0
     # Guarded-executor limits.
     nlsql_statement_timeout_ms: int = 5000      # per-query DB statement timeout
     nlsql_row_cap: int = 200                     # hard cap on rows returned
     nlsql_max_history_turns: int = 6             # prior turns fed for multi-turn memory
     nlsql_max_citations: int = 25                # record ids surfaced per answer
+    # Voice transcript below this recogniser confidence is flagged low-confidence
+    # and must be confirmed/edited before it can execute (Prompt 19 §E.3).
+    voice_low_confidence_threshold: float = 0.6
 
     # --- Phase 2/3: FIR/case intake + hackathon access mode ------------------
     # Non-secret hackathon posture flags (HACKATHON_MODE / DEMO_DATA_ONLY). When
@@ -77,9 +110,14 @@ class Settings(BaseSettings):
     synthetic_env_expected: str = "synthetic_hackathon"
 
     # --- Phase 3: network / demo deployment guardrails -----------------------
-    # CORS allows all origins so anyone can run this project from any IP/domain.
+    # CORS is an EXACT allow-list (localhost dev/preview + the configured demo
+    # origin(s)). No wildcard by default: the deployed browser only talks to a
+    # known origin, and the release gate (Prompts 22/25) fails on wildcard
+    # production CORS. A purely-local throwaway demo that must accept any origin
+    # can opt in with DRISHTI_CORS_ALLOW_ALL=true; the deployed AppSail never sets it.
     demo_frontend_origin: str = ""          # e.g. https://drishti-demo.example.com
     extra_cors_origins: str = ""            # comma-separated additional origins
+    cors_allow_all: bool = False            # opt-in wildcard for a local-only demo
     # Conservative per-client-IP request rate limit + request-body size cap.
     rate_limit_enabled: bool = False
     rate_limit_per_minute: int = 240
@@ -139,8 +177,20 @@ class Settings(BaseSettings):
     )
 
     def cors_allow_origins(self) -> list[str]:
-        """Allow all origins so anyone can run the project from any IP/domain."""
-        return ["*"]
+        """Exact allow-list of CORS origins (localhost + configured demo origin).
+        No wildcard in hackathon/deployed mode: the browser only talks to a known
+        origin. ``DRISHTI_CORS_ALLOW_ALL=true`` opts a local-only demo into ``*``.
+        """
+        if self.cors_allow_all:
+            return ["*"]
+        origins = list(self._LOCALHOST_ORIGINS)
+        if self.demo_frontend_origin.strip():
+            origins.append(self.demo_frontend_origin.strip())
+        for extra in self.extra_cors_origins.split(","):
+            e = extra.strip()
+            if e and e not in origins:
+                origins.append(e)
+        return origins
 
     # --- Phase 5 evidence helpers -------------------------------------------
     def s3_configured(self) -> bool:
@@ -153,6 +203,35 @@ class Settings(BaseSettings):
 
     def evidence_allowed_mime_set(self) -> set[str]:
         return {m.strip().lower() for m in self.evidence_allowed_mime.split(",") if m.strip()}
+
+    # --- Prompt 19 semantic-planner helpers ---------------------------------
+    def semantic_provider(self) -> str:
+        """Normalised semantic-planner provider id ("" when none configured)."""
+        return (self.semantic_planner_provider or "").strip().lower()
+
+    def quickml_llm_configured(self) -> bool:
+        """True once a Catalyst QuickML LLM Serving endpoint + model are set."""
+        return bool(self.quickml_llm_endpoint.strip() and self.quickml_llm_model.strip())
+
+    def openai_compatible_configured(self) -> bool:
+        """True once a self-hosted OpenAI-compatible endpoint + model + key are set.
+        There is NO commercial default endpoint or model name."""
+        return bool(self.llm_api_key.strip() and self.llm_base_url.strip()
+                    and self.llm_model.strip())
+
+    def primary_planner_name(self) -> str:
+        """The planner that SHOULD serve in the live-ready contract, given config.
+        The deterministic offline planner is the honest primary when nothing is
+        configured (local/offline demo)."""
+        provider = self.semantic_provider()
+        if provider == "catalyst_quickml" and self.quickml_llm_configured():
+            return "catalyst-quickml-llm"
+        if provider == "openai_compatible" and self.openai_compatible_configured():
+            return "openai-compatible"
+        # Back-compat: bare OpenAI-compatible creds with no explicit provider.
+        if not provider and self.openai_compatible_configured():
+            return "openai-compatible"
+        return "deterministic-fallback"
 
 
 @lru_cache

@@ -28,7 +28,12 @@ export function Composer({
 }: {
   value: string;
   onChange: (v: string) => void;
-  onSend: (opts?: { spoken?: boolean; voiceConfidence?: number; voiceLanguage?: string }) => void;
+  onSend: (opts?: {
+    spoken?: boolean;
+    voiceConfidence?: number;
+    voiceLanguage?: string;
+    voiceConfirmed?: boolean;
+  }) => void;
   /** effective language (drives mic locale, placeholder, text shaping). */
   language: AskLang;
   /** auto | en | kn — how the language is chosen. */
@@ -39,7 +44,11 @@ export function Composer({
 }) {
   const { def } = useRole();
   const baseRef = useRef("");
-  const spokenRef = useRef(false);
+  // `spoken` tracks whether the CURRENT text came from dictation and has not
+  // been edited since. Editing (typing) clears it so the query sends normally.
+  const [spoken, setSpoken] = useState(false);
+  // A low-confidence spoken query must be explicitly confirmed before it runs.
+  const [confirmPending, setConfirmPending] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
   const speech = useSpeech({
@@ -47,10 +56,21 @@ export function Composer({
     onTranscript: (text) => {
       const base = baseRef.current;
       onChange(base ? `${base} ${text}` : text);
+      // A fresh transcript is spoken input awaiting review; reset any prior
+      // confirm so the low-confidence gate re-evaluates the new text.
+      setSpoken(true);
+      setConfirmPending(false);
     },
   });
 
   const canSend = value.trim().length > 0;
+
+  // Typing is a manual edit: it clears the spoken/low-confidence gate.
+  const handleType = (v: string) => {
+    if (spoken) setSpoken(false);
+    if (confirmPending) setConfirmPending(false);
+    onChange(v);
+  };
 
   const handleMic = () => {
     if (speech.listening) {
@@ -58,24 +78,33 @@ export function Composer({
       return;
     }
     baseRef.current = value.trim();
-    spokenRef.current = true;
+    setSpoken(true);
+    setConfirmPending(false);
     speech.start();
   };
+
+  const lowConfidence =
+    spoken && speech.confidence != null && speech.confidence < 0.6 && value.trim().length > 0;
 
   const submit = () => {
     if (!canSend || busy) return;
     if (speech.listening) speech.stop();
+    // Low-confidence dictation never auto-runs: the first attempt asks for an
+    // explicit confirm (or an edit), and only a confirmed send executes.
+    if (lowConfidence && !confirmPending) {
+      setConfirmPending(true);
+      return;
+    }
     onSend({
-      spoken: spokenRef.current,
-      voiceConfidence: spokenRef.current ? speech.confidence ?? undefined : undefined,
+      spoken,
+      voiceConfidence: spoken ? speech.confidence ?? undefined : undefined,
       voiceLanguage: language,
+      voiceConfirmed: confirmPending || undefined,
     });
-    spokenRef.current = false;
+    setSpoken(false);
+    setConfirmPending(false);
     baseRef.current = "";
   };
-
-  const lowConfidence =
-    speech.confidence != null && speech.confidence < 0.6 && value.trim().length > 0;
 
   const handleSave = () => {
     if (!canSend || !onSaveQuery) return;
@@ -112,7 +141,7 @@ export function Composer({
       <textarea
         value={value}
         lang={language}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => handleType(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -128,34 +157,63 @@ export function Composer({
         className="max-h-40 min-h-[3rem] w-full resize-y bg-transparent px-3.5 py-2.5 text-14 text-content placeholder:text-content-dim focus-visible:outline-none"
       />
 
-      {/* Low-confidence dictation warning (doc 01 §4.7 / §9) */}
+      {/* Low-confidence dictation gate (doc 01 §4.7 / §9, Prompt 19 §E). A
+          low-confidence transcript never auto-runs: edit the text to clear the
+          flag, or explicitly confirm to send it as-is. */}
       {lowConfidence && (
-        <div className="mx-3 mb-1 flex items-center gap-1.5 rounded-control bg-severity-high/10 px-2 py-1 text-12 text-severity-high">
+        <div className="mx-3 mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control bg-severity-high/10 px-2 py-1.5 text-12 text-severity-high">
           <AlertTriangle className="size-3.5 shrink-0" />
-          Low-confidence transcription ({Math.round((speech.confidence ?? 0) * 100)}%) — please check
-          the text before sending.
+          <span className="min-w-0">
+            Low-confidence transcription ({Math.round((speech.confidence ?? 0) * 100)}%) —{" "}
+            {confirmPending ? "check the text, then confirm." : "check the text before sending."}
+          </span>
+          {confirmPending && (
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              className="ml-auto"
+              onClick={submit}
+              disabled={busy}
+            >
+              Send anyway
+            </Button>
+          )}
         </div>
       )}
 
       {/* Controls row */}
       <div className="flex items-center gap-1.5 px-3 pb-2.5">
         {speech.supported ? (
-          <SimpleTooltip label={speech.listening ? "Stop dictation" : "Dictate (voice)"}>
-            <Button
-              type="button"
-              variant={speech.listening ? "primary" : "ghost"}
-              size="icon-sm"
-              onClick={handleMic}
-              aria-label={speech.listening ? "Stop dictation" : "Start voice dictation"}
-              aria-pressed={speech.listening}
+          <div className="flex items-center gap-1.5">
+            <SimpleTooltip
+              label={
+                speech.listening
+                  ? "Stop dictation"
+                  : "Dictate with your browser's voice input (on-device Web Speech)"
+              }
             >
-              <Mic className={cn(speech.listening && "animate-pulse")} />
-            </Button>
-          </SimpleTooltip>
+              <Button
+                type="button"
+                variant={speech.listening ? "primary" : "ghost"}
+                size="icon-sm"
+                onClick={handleMic}
+                aria-label={speech.listening ? "Stop dictation" : "Start browser voice dictation"}
+                aria-pressed={speech.listening}
+              >
+                <Mic className={cn(speech.listening && "animate-pulse")} />
+              </Button>
+            </SimpleTooltip>
+            {/* Honest label: this uses the browser's Web Speech API, not Zia. */}
+            <span className="text-11 text-content-dim">Browser voice</span>
+          </div>
         ) : (
-          <SimpleTooltip label="Voice needs a supported browser (Chrome/Edge). Type instead.">
-            <span className="grid size-7 place-items-center rounded-control text-content-dim/50">
-              <MicOff className="size-4" />
+          <SimpleTooltip label="Browser voice needs a supported browser (Chrome/Edge). Type instead.">
+            <span className="inline-flex items-center gap-1.5 text-content-dim/60">
+              <span className="grid size-7 place-items-center rounded-control">
+                <MicOff className="size-4" />
+              </span>
+              <span className="text-11">Browser voice unavailable</span>
             </span>
           </SimpleTooltip>
         )}

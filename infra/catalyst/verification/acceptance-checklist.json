@@ -1,6 +1,6 @@
 {
-  "_comment": "DRISHTI Part K — REDUCED demo acceptance (Prompt 14). This is the single authoritative list of what the demo must prove; it is deliberately small. NoSQL, Cache, Mail, Push, SmartBrowz, QuickML and Circuits are NOT in the minimum set — they are tested only when that feature is actually enabled (see test_only_when_enabled). Each required check maps to how it is proven + its current status. acceptance_check.py reads this file and runs the checks that are runnable, reporting PASS/HELD/MANUAL/FAIL. Status legend: verified_offline = provable now without a deploy; held_on_deploy = needs the live Catalyst deployment; held_on_gpu = needs the AWS SageMaker GPU plane; ops_action = a cleanup action performed after testing.",
-  "version": "2026.07.18-1",
+  "_comment": "DRISHTI Part K — REDUCED demo acceptance (Prompt 14, strict-release-aware since Prompt 18). This is the single authoritative list of what the demo must prove; it is deliberately small. NoSQL, Cache, Mail, Push, SmartBrowz, QuickML and Circuits are NOT in the minimum set — they are tested only when that feature is actually enabled (see test_only_when_enabled). Each required check maps to how it is proven + its current status. acceptance_check.py reads this file and runs the checks that are runnable, reporting PASS/HELD/MANUAL/FAIL. Status legend: verified_offline = provable now without a deploy; held_on_deploy = needs the live Catalyst deployment; held_on_gpu = needs the AWS SageMaker GPU plane; ops_action = a cleanup action performed after testing. RELEASE MODE (Prompt 18): run with --strict (release gate). In strict mode a mandatory check is only satisfied when it is PASS *and* its release_evidence is acceptable for release — a 'config_only' declaration (e.g. a Signals/cron JSON file) can NEVER prove a live Signal, cron, Data Store write, authentication flow or GPU invocation, so strict mode treats it as unproven. Any mandatory HELD/MANUAL/FAIL/UNKNOWN/skipped/config_only check makes --strict exit non-zero. Offline (non-strict) runs report INCOMPLETE and never print release success. release_evidence legend: live = only a real deployed invocation proves it; local_ok = a local source/build/logic check is sufficient release evidence; config_only = a configuration declaration that CANNOT prove the live capability (needs a live runner); ops = an operational teardown confirmation.",
+  "version": "2026.07.20-1",
   "required": [
     {
       "id": "K1",
@@ -8,7 +8,9 @@
       "how": "GET the Slate / Web Client Hosting URL -> 200 and it serves the SPA shell.",
       "evidence": "web/dist + infra/catalyst/client/slate-config.toml; pipeline deploy_dev.",
       "status": "held_on_deploy",
-      "runner": "http_web"
+      "runner": "http_web",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K2",
@@ -16,7 +18,9 @@
       "how": "An unsigned protected call is rejected (401) and a correctly signed/authenticated call succeeds (200). API Gateway -> Function -> signed context -> AppSail.",
       "evidence": "app/gateway_context.py; pipelines/smoke_test.py (unsigned=401, signed=200).",
       "status": "held_on_deploy",
-      "runner": "http_auth"
+      "runner": "http_auth",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K3",
@@ -24,7 +28,9 @@
       "how": "GET /health/live and /health/ready -> 200.",
       "evidence": "services/ml/app/main.py health endpoints; appsail.deploy.json.",
       "status": "held_on_deploy",
-      "runner": "http_health"
+      "runner": "http_health",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K4",
@@ -32,7 +38,9 @@
       "how": "An authenticated API read returns rows sourced from Catalyst Data Store.",
       "evidence": "ds-import/ (106 configs + importer); app/datastore/repository.py.",
       "status": "held_on_deploy",
-      "runner": "http_read"
+      "runner": "http_read",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K5",
@@ -40,7 +48,9 @@
       "how": "Upload ONE evidence file -> object in a private Stratus bucket + hash/size/type metadata in Data Store -> retrievable via a short-lived signed URL.",
       "evidence": "infra/catalyst/stratus/; workflow §4 (evidence ingestion, no OCR).",
       "status": "held_on_deploy",
-      "runner": "manual"
+      "runner": "manual",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K6",
@@ -48,7 +58,9 @@
       "how": "Submit an approved-FIR prediction job -> poll -> a completed result with actual_backend=tabfm and actual_device=cuda (fail-closed otherwise).",
       "evidence": "tests/test_predict_runtime.py::test_real_tabfm_cuda_prediction_succeeds (skipif no GPU); app/predict/{runtime,validation}.py; services/gpu-worker/.",
       "status": "held_on_gpu",
-      "runner": "tabfm_live"
+      "runner": "tabfm_live",
+      "release_evidence": "live",
+      "owner_prompt": "24"
     },
     {
       "id": "K7",
@@ -56,7 +68,9 @@
       "how": "The validated PredictionResult is persisted in Data Store and is visible via an API read / the UI (data-minimized notice via Gateway polling or the scoped SSE channel).",
       "evidence": "app/predict/{runtime,lineage}.py (result -> Data Store, AWS not authoritative); app/stream/.",
       "status": "held_on_deploy",
-      "runner": "http_read"
+      "runner": "http_read",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K8",
@@ -64,15 +78,19 @@
       "how": "Routing for a FIR draft and an evidence upload returns invokes_model=false; the runtime refuses to submit.",
       "evidence": "tests/test_predict_runtime.py::test_fir_draft_produces_no_prediction + ::test_evidence_upload_does_not_invoke_model (PASS offline); app/predict/routing.py.",
       "status": "verified_offline",
-      "runner": "http_routing"
+      "runner": "http_routing",
+      "release_evidence": "live",
+      "owner_prompt": "23"
     },
     {
       "id": "K9",
       "proves": "One Signal and one scheduled job work.",
       "how": "The minimal event plane declares exactly ONE active Signal (prediction-requested) and ONE active cron (drishti-forecast-daily); when enabled, an approved PredictionRequest fires prediction_event and the daily cron dispatches a forecast.",
-      "evidence": "infra/catalyst/jobs/signals-rules.json + cron-schedules.json (tier=minimal).",
+      "evidence": "infra/catalyst/jobs/signals-rules.json + cron-schedules.json (tier=minimal). NOTE: this is a configuration declaration only — it proves the intent, NOT a live Signal delivery or cron execution.",
       "status": "verified_offline",
-      "runner": "config_minimal_events"
+      "runner": "config_minimal_events",
+      "release_evidence": "config_only",
+      "owner_prompt": "23"
     },
     {
       "id": "K10",
@@ -80,7 +98,9 @@
       "how": "No DATABASE_URL / RDS host / :5432 / AWS key / PEM / server-only key in the web env or bundle.",
       "evidence": "infra/aws/check_no_db_url_in_web.py (source) + web/scripts/check-bundle-secrets.mjs (dist).",
       "status": "verified_offline",
-      "runner": "no_browser_secrets"
+      "runner": "no_browser_secrets",
+      "release_evidence": "local_ok",
+      "owner_prompt": "18"
     },
     {
       "id": "K11",
@@ -88,7 +108,9 @@
       "how": "After testing, the SageMaker async endpoint is deleted so there is no standing GPU cost.",
       "evidence": "infra/aws/gpu-worker/deploy_gpu_worker.py --teardown; billing/budget.json cleanup.",
       "status": "ops_action",
-      "runner": "gpu_stopped"
+      "runner": "gpu_stopped",
+      "release_evidence": "ops",
+      "owner_prompt": "24"
     }
   ],
   "test_only_when_enabled": [

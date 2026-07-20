@@ -12,6 +12,12 @@ Catalyst project: **DHRISTI** (`48361000000030003`), India (IN) DC, Development 
 > Nothing below claims a cloud deployment. The image build needs Docker (absent on this
 > machine) and `catalyst deploy appsail` spends credits; both are HELD (§11).
 
+> **CORRECTION ADDENDUM (2026-07-20, Prompt 18).** "Docker (absent on this machine)"
+> is **stale**: the Docker **CLI is installed** (`docker --version` → 29.6.1); only
+> the **Linux daemon is not running** (`docker info` fails on the Desktop Linux
+> engine pipe). The image build is unblocked once Docker Desktop's Linux engine is
+> started (see `prompt3.md` Prompt 22). Historical text retained unchanged below.
+
 ---
 
 ## 0. Item-by-item status (spec Part D, 1–12)

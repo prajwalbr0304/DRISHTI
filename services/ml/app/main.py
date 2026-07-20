@@ -39,6 +39,11 @@ from .internal.router import router as internal_router
 from .stream.router import router as stream_router
 from .predict.router import router as predict_router
 from .admin.router import router as admin_router
+from .org.router import router as org_router
+from .scenarios.router import router as scenarios_router
+from .performance.router import router as performance_router
+from .investigate.router import router as investigate_router
+from .livefeed.router import router as livefeed_router
 from .notifications.router import router as notifications_router
 from .reports.router import router as reports_router
 from .rag.router import router as rag_router
@@ -132,6 +137,21 @@ app.include_router(stream_router)
 app.include_router(predict_router)
 # Phase 15 — admin/governance console, notifications/work, reports, optional RAG.
 app.include_router(admin_router)
+# Prompt 20 Part B — organizational hierarchy (rank->role/scope) + SUPERADMIN
+# credential/role provisioning. Scope is always derived server-side.
+app.include_router(org_router)
+# Prompt 20 Part A — synthetic crypto/dark-web/cross-jurisdiction scenario
+# registry (additive fixtures; searchable; no live collection).
+app.include_router(scenarios_router)
+# Prompt 20 Part C — supervisor station/officer operational performance metrics
+# (scoped server-side; distinct from the ML workload-band prediction).
+app.include_router(performance_router)
+# Prompt 20 Part D — case-scoped investigation assistant (thin orchestration over
+# existing case summary/similar/identity/leads/timeline; sends cited objects to Board).
+app.include_router(investigate_router)
+# Prompt 20 Part E — Live Command Center committed-FIR event flow (idempotent
+# projection/freshness; no person rescore, no auto-dispatch).
+app.include_router(livefeed_router)
 app.include_router(notifications_router)
 app.include_router(reports_router)
 app.include_router(rag_router)

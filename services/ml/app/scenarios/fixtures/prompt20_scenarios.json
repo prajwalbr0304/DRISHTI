@@ -1,0 +1,985 @@
+{
+  "fixture": "prompt20-scenarios",
+  "version": "1",
+  "synthetic": true,
+  "live_collection": false,
+  "counts": {
+    "scenarios": 9,
+    "crypto": 4,
+    "darkweb": 2,
+    "cross_jurisdiction": 8,
+    "jurisdiction_scopes": 6,
+    "crime_families": 6,
+    "nl_examples": 18,
+    "edges_total": 25,
+    "hypothetical_edges": 10
+  },
+  "valid": true,
+  "taxonomy": {
+    "jurisdiction_scopes": [
+      {
+        "code": "local",
+        "label": "Local",
+        "kn": "ಸ್ಥಳೀಯ",
+        "desc": "Confined to a single police station / jurisdiction."
+      },
+      {
+        "code": "inter_district",
+        "label": "Inter-district",
+        "kn": "ಅಂತರ-ಜಿಲ್ಲಾ",
+        "desc": "Spans two or more districts within Karnataka."
+      },
+      {
+        "code": "inter_state",
+        "label": "Inter-state",
+        "kn": "ಅಂತರ-ರಾಜ್ಯ",
+        "desc": "Involves another Indian state; may need coordination."
+      },
+      {
+        "code": "national",
+        "label": "National",
+        "kn": "ರಾಷ್ಟ್ರೀಯ",
+        "desc": "Nation-wide footprint; central-agency referral likely."
+      },
+      {
+        "code": "international",
+        "label": "International",
+        "kn": "ಅಂತರರಾಷ್ಟ್ರೀಯ",
+        "desc": "Actors/servers/funds abroad; MLAT/Interpol channels."
+      },
+      {
+        "code": "cross_border",
+        "label": "Cross-border",
+        "kn": "ಗಡಿಯಾಚೆಗಿನ",
+        "desc": "Movement across a national land/sea border."
+      }
+    ],
+    "crime_families": [
+      {
+        "code": "crypto_fraud",
+        "label": "Cryptocurrency-enabled fraud",
+        "head": "Economic & Cyber Crime",
+        "kn": "ಕ್ರಿಪ್ಟೋ ವಂಚನೆ"
+      },
+      {
+        "code": "crypto_extortion",
+        "label": "Cryptocurrency-enabled extortion",
+        "head": "Economic & Cyber Crime",
+        "kn": "ಕ್ರಿಪ್ಟೋ ಸುಲಿಗೆ"
+      },
+      {
+        "code": "crypto_money_movement",
+        "label": "Cryptocurrency money movement / layering",
+        "head": "Economic & Cyber Crime",
+        "kn": "ಕ್ರಿಪ್ಟೋ ಹಣ ವರ್ಗಾವಣೆ"
+      },
+      {
+        "code": "darkweb_contraband",
+        "label": "Dark-web-enabled contraband (manually classified)",
+        "head": "Economic & Cyber Crime",
+        "kn": "ಡಾರ್ಕ್‌ವೆಬ್ ಕಳ್ಳಸಾಗಣೆ"
+      },
+      {
+        "code": "darkweb_fraud",
+        "label": "Dark-web-enabled fraud / stolen-data trade (manually classified)",
+        "head": "Economic & Cyber Crime",
+        "kn": "ಡಾರ್ಕ್‌ವೆಬ್ ವಂಚನೆ"
+      },
+      {
+        "code": "cross_jurisdiction",
+        "label": "Cross-jurisdiction organised activity",
+        "head": "Economic & Cyber Crime",
+        "kn": "ಅಂತರ-ವ್ಯಾಪ್ತಿ ಅಪರಾಧ"
+      }
+    ],
+    "entity_types": [
+      "person",
+      "wallet_ref",
+      "exchange_account",
+      "device",
+      "phone",
+      "vehicle",
+      "location",
+      "case",
+      "source_record"
+    ],
+    "edge_bases": [
+      "evidence-backed",
+      "hypothetical"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenario_id": "P20-CRYPTO-001",
+      "title": "USDT investment-app fraud drains victims across three districts",
+      "crime_family": "crypto_fraud",
+      "crime_subtype": "Cryptocurrency Fraud",
+      "jurisdiction_scope": "inter_district",
+      "gravity": "Serious",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: victims in Bengaluru City, Mysuru and Tumakuru were induced to deposit into a fake USDT trading app; funds were swept to a synthetic wallet cluster.",
+      "districts": [
+        "Bengaluru City",
+        "Mysuru",
+        "Tumakuru"
+      ],
+      "entities": [
+        {
+          "id": "p_org1",
+          "type": "person",
+          "label": "Synthetic accused (app operator)",
+          "attrs": {}
+        },
+        {
+          "id": "w_usdt1",
+          "type": "wallet_ref",
+          "label": "SYN-WALLET-USDT-0001",
+          "attrs": {
+            "chain": "tron-synthetic"
+          }
+        },
+        {
+          "id": "ex_a1",
+          "type": "exchange_account",
+          "label": "SYN-EXCH-ACC-0001",
+          "attrs": {
+            "exchange": "synthetic-exchange"
+          }
+        },
+        {
+          "id": "ph1",
+          "type": "phone",
+          "label": "SYN-PHONE-900000001",
+          "attrs": {}
+        },
+        {
+          "id": "loc1",
+          "type": "location",
+          "label": "Bengaluru City",
+          "attrs": {}
+        },
+        {
+          "id": "c1",
+          "type": "case",
+          "label": "SYN-FIR-CRYPTO-001",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "p_org1",
+          "rel": "controls",
+          "target": "w_usdt1",
+          "basis": "hypothetical",
+          "note": "wallet control inferred, not confirmed"
+        },
+        {
+          "source": "p_org1",
+          "rel": "uses",
+          "target": "ph1",
+          "basis": "evidence-backed",
+          "note": "number in complaint"
+        },
+        {
+          "source": "w_usdt1",
+          "rel": "cashed_out_via",
+          "target": "ex_a1",
+          "basis": "evidence-backed",
+          "note": "on-chain to exchange deposit (synthetic)"
+        },
+        {
+          "source": "c1",
+          "rel": "reported_at",
+          "target": "loc1",
+          "basis": "evidence-backed",
+          "note": ""
+        }
+      ],
+      "referral": null,
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "Show cryptocurrency fraud cases across districts in the last 90 days"
+        },
+        {
+          "lang": "kn",
+          "q": "ಕಳೆದ 90 ದಿನಗಳಲ್ಲಿ ಜಿಲ್ಲೆಗಳಾದ್ಯಂತ ಕ್ರಿಪ್ಟೋ ವಂಚನೆ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-CRYPTO-002",
+      "title": "Sextortion demanding Bitcoin from a single-station complainant",
+      "crime_family": "crypto_extortion",
+      "crime_subtype": "Crypto Extortion",
+      "jurisdiction_scope": "local",
+      "gravity": "Serious",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: a complainant received threats demanding Bitcoin to a synthetic wallet; confined to one station's jurisdiction.",
+      "districts": [
+        "Dakshina Kannada"
+      ],
+      "entities": [
+        {
+          "id": "p_susp2",
+          "type": "person",
+          "label": "Synthetic suspect (unknown)",
+          "attrs": {}
+        },
+        {
+          "id": "w_btc2",
+          "type": "wallet_ref",
+          "label": "SYN-WALLET-BTC-0002",
+          "attrs": {
+            "chain": "bitcoin-synthetic"
+          }
+        },
+        {
+          "id": "ph2",
+          "type": "phone",
+          "label": "SYN-PHONE-900000002",
+          "attrs": {}
+        },
+        {
+          "id": "dev2",
+          "type": "device",
+          "label": "SYN-DEVICE-IMEI-0002",
+          "attrs": {}
+        },
+        {
+          "id": "c2",
+          "type": "case",
+          "label": "SYN-FIR-CRYPTO-002",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "p_susp2",
+          "rel": "demanded_payment_to",
+          "target": "w_btc2",
+          "basis": "evidence-backed",
+          "note": "wallet in threat message"
+        },
+        {
+          "source": "p_susp2",
+          "rel": "contacted_via",
+          "target": "ph2",
+          "basis": "evidence-backed",
+          "note": ""
+        },
+        {
+          "source": "ph2",
+          "rel": "linked_to",
+          "target": "dev2",
+          "basis": "hypothetical",
+          "note": "handset linkage unconfirmed"
+        }
+      ],
+      "referral": null,
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "How many crypto extortion cases were reported this month?"
+        },
+        {
+          "lang": "kn",
+          "q": "ಈ ತಿಂಗಳು ಎಷ್ಟು ಕ್ರಿಪ್ಟೋ ಸುಲಿಗೆ ಪ್ರಕರಣಗಳು ವರದಿಯಾಗಿವೆ?"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-CRYPTO-003",
+      "title": "Layering scam proceeds through wallets to an overseas exchange",
+      "crime_family": "crypto_money_movement",
+      "crime_subtype": "Crypto Money Laundering",
+      "jurisdiction_scope": "international",
+      "gravity": "Heinous",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: proceeds of an OTP scam were layered across synthetic wallets and cashed out at an exchange registered abroad; flagged for FIU/MLAT coordination.",
+      "districts": [
+        "Bengaluru City"
+      ],
+      "entities": [
+        {
+          "id": "p_mule3",
+          "type": "person",
+          "label": "Synthetic money mule",
+          "attrs": {}
+        },
+        {
+          "id": "w_hop3a",
+          "type": "wallet_ref",
+          "label": "SYN-WALLET-HOP-0003A",
+          "attrs": {}
+        },
+        {
+          "id": "w_hop3b",
+          "type": "wallet_ref",
+          "label": "SYN-WALLET-HOP-0003B",
+          "attrs": {}
+        },
+        {
+          "id": "ex_intl3",
+          "type": "exchange_account",
+          "label": "SYN-EXCH-INTL-0003",
+          "attrs": {
+            "jurisdiction": "overseas-synthetic"
+          }
+        },
+        {
+          "id": "acct3",
+          "type": "exchange_account",
+          "label": "SYN-BANK-ACC-0003",
+          "attrs": {}
+        },
+        {
+          "id": "c3",
+          "type": "case",
+          "label": "SYN-FIR-CRYPTO-003",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "acct3",
+          "rel": "converted_to_crypto",
+          "target": "w_hop3a",
+          "basis": "evidence-backed",
+          "note": ""
+        },
+        {
+          "source": "w_hop3a",
+          "rel": "hopped_to",
+          "target": "w_hop3b",
+          "basis": "evidence-backed",
+          "note": "on-chain hop (synthetic)"
+        },
+        {
+          "source": "w_hop3b",
+          "rel": "cashed_out_via",
+          "target": "ex_intl3",
+          "basis": "hypothetical",
+          "note": "attribution pending MLAT"
+        },
+        {
+          "source": "p_mule3",
+          "rel": "operates",
+          "target": "acct3",
+          "basis": "evidence-backed",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "state_police",
+        "to": "FIU-IND (synthetic)",
+        "kind": "financial_intelligence"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "List international cryptocurrency money-laundering cases flagged for referral"
+        },
+        {
+          "lang": "kn",
+          "q": "ಉಲ್ಲೇಖಕ್ಕಾಗಿ ಗುರುತಿಸಲಾದ ಅಂತರರಾಷ್ಟ್ರೀಯ ಕ್ರಿಪ್ಟೋ ಹಣ ವರ್ಗಾವಣೆ ಪ್ರಕರಣಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-CRYPTO-004",
+      "title": "National fake-token investment scam network",
+      "crime_family": "crypto_fraud",
+      "crime_subtype": "Crypto Investment Scam",
+      "jurisdiction_scope": "national",
+      "gravity": "Serious",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: a fake-token 'guaranteed returns' scheme with victims reported in multiple states; a coordinated network of promoters.",
+      "districts": [
+        "Bengaluru City",
+        "Belagavi"
+      ],
+      "entities": [
+        {
+          "id": "p_prom4",
+          "type": "person",
+          "label": "Synthetic promoter",
+          "attrs": {}
+        },
+        {
+          "id": "w_token4",
+          "type": "wallet_ref",
+          "label": "SYN-WALLET-TOKEN-0004",
+          "attrs": {}
+        },
+        {
+          "id": "ph4",
+          "type": "phone",
+          "label": "SYN-PHONE-900000004",
+          "attrs": {}
+        },
+        {
+          "id": "c4",
+          "type": "case",
+          "label": "SYN-FIR-CRYPTO-004",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "p_prom4",
+          "rel": "promoted",
+          "target": "w_token4",
+          "basis": "evidence-backed",
+          "note": ""
+        },
+        {
+          "source": "p_prom4",
+          "rel": "recruited_via",
+          "target": "ph4",
+          "basis": "hypothetical",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "state_police",
+        "to": "other_state_police (synthetic)",
+        "kind": "inter_state_coordination"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "Show national crypto investment scam networks"
+        },
+        {
+          "lang": "kn",
+          "q": "ರಾಷ್ಟ್ರೀಯ ಕ್ರಿಪ್ಟೋ ಹೂಡಿಕೆ ವಂಚನೆ ಜಾಲಗಳನ್ನು ತೋರಿಸಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-DARKWEB-001",
+      "title": "Dark-web marketplace contraband listing (manually classified)",
+      "crime_family": "darkweb_contraband",
+      "crime_subtype": "Dark Web Contraband",
+      "jurisdiction_scope": "cross_border",
+      "gravity": "Heinous",
+      "source_classification": "manual",
+      "live_collection": false,
+      "summary": "Synthetic: an FIR references a dark-web marketplace listing shipping contraband across a border. Source is MANUALLY classified from the complaint; DRISHTI performs no scraping, purchase or credential use.",
+      "districts": [
+        "Kalaburagi"
+      ],
+      "entities": [
+        {
+          "id": "p_vendor_d1",
+          "type": "person",
+          "label": "Synthetic vendor handle (pseudonymous)",
+          "attrs": {}
+        },
+        {
+          "id": "src_d1",
+          "type": "source_record",
+          "label": "SYN-SRC-DARKWEB-0001",
+          "attrs": {
+            "classification": "manual",
+            "live_collection": false
+          }
+        },
+        {
+          "id": "w_xmr_d1",
+          "type": "wallet_ref",
+          "label": "SYN-WALLET-XMR-0001",
+          "attrs": {
+            "chain": "monero-synthetic"
+          }
+        },
+        {
+          "id": "loc_d1",
+          "type": "location",
+          "label": "Kalaburagi (border transit)",
+          "attrs": {}
+        },
+        {
+          "id": "c_d1",
+          "type": "case",
+          "label": "SYN-FIR-DARKWEB-001",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "src_d1",
+          "rel": "manually_classified_as",
+          "target": "c_d1",
+          "basis": "evidence-backed",
+          "note": "analyst classification of the complaint; no live collection"
+        },
+        {
+          "source": "p_vendor_d1",
+          "rel": "settled_in",
+          "target": "w_xmr_d1",
+          "basis": "hypothetical",
+          "note": "privacy-coin attribution unconfirmed"
+        },
+        {
+          "source": "c_d1",
+          "rel": "transit_through",
+          "target": "loc_d1",
+          "basis": "hypothetical",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "state_police",
+        "to": "NCB / Customs (synthetic)",
+        "kind": "cross_border_contraband"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "Show dark web contraband cases with a cross-border scope"
+        },
+        {
+          "lang": "kn",
+          "q": "ಗಡಿಯಾಚೆಗಿನ ಡಾರ್ಕ್‌ವೆಬ್ ಕಳ್ಳಸಾಗಣೆ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-DARKWEB-002",
+      "title": "Stolen-card data trade referencing a dark-web forum (manually classified)",
+      "crime_family": "darkweb_fraud",
+      "crime_subtype": "Dark Web Fraud",
+      "jurisdiction_scope": "inter_state",
+      "gravity": "Serious",
+      "source_classification": "manual",
+      "live_collection": false,
+      "summary": "Synthetic: a complaint describes stolen card data allegedly traded on a dark-web forum, with buyers in another state. Manually classified; no illegal-content collection is performed.",
+      "districts": [
+        "Bengaluru City"
+      ],
+      "entities": [
+        {
+          "id": "p_buyer_d2",
+          "type": "person",
+          "label": "Synthetic buyer",
+          "attrs": {}
+        },
+        {
+          "id": "src_d2",
+          "type": "source_record",
+          "label": "SYN-SRC-DARKWEB-0002",
+          "attrs": {
+            "classification": "manual",
+            "live_collection": false
+          }
+        },
+        {
+          "id": "dev_d2",
+          "type": "device",
+          "label": "SYN-DEVICE-IMEI-0022",
+          "attrs": {}
+        },
+        {
+          "id": "c_d2",
+          "type": "case",
+          "label": "SYN-FIR-DARKWEB-002",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "src_d2",
+          "rel": "manually_classified_as",
+          "target": "c_d2",
+          "basis": "evidence-backed",
+          "note": ""
+        },
+        {
+          "source": "p_buyer_d2",
+          "rel": "used",
+          "target": "dev_d2",
+          "basis": "hypothetical",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "state_police",
+        "to": "other_state_cyber_cell (synthetic)",
+        "kind": "inter_state_coordination"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "List dark web fraud cases coordinated inter-state"
+        },
+        {
+          "lang": "kn",
+          "q": "ಅಂತರ-ರಾಜ್ಯ ಸಮನ್ವಯದ ಡಾರ್ಕ್‌ವೆಬ್ ವಂಚನೆ ಪ್ರಕರಣಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-XJUR-001",
+      "title": "Inter-district two-wheeler theft ring",
+      "crime_family": "cross_jurisdiction",
+      "crime_subtype": "Vehicle Theft",
+      "jurisdiction_scope": "inter_district",
+      "gravity": "Serious",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: a ring lifts two-wheelers in one district and re-sells them in adjacent districts using tampered plates.",
+      "districts": [
+        "Bengaluru City",
+        "Ramanagara",
+        "Mandya"
+      ],
+      "entities": [
+        {
+          "id": "p_ring1",
+          "type": "person",
+          "label": "Synthetic ring leader",
+          "attrs": {}
+        },
+        {
+          "id": "veh1",
+          "type": "vehicle",
+          "label": "SYN-VEH-KA01-0001",
+          "attrs": {}
+        },
+        {
+          "id": "veh2",
+          "type": "vehicle",
+          "label": "SYN-VEH-KA09-0002",
+          "attrs": {}
+        },
+        {
+          "id": "loc_x1",
+          "type": "location",
+          "label": "Ramanagara",
+          "attrs": {}
+        },
+        {
+          "id": "c_x1",
+          "type": "case",
+          "label": "SYN-FIR-XJUR-001",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "p_ring1",
+          "rel": "linked_to",
+          "target": "veh1",
+          "basis": "evidence-backed",
+          "note": "recovered vehicle"
+        },
+        {
+          "source": "p_ring1",
+          "rel": "linked_to",
+          "target": "veh2",
+          "basis": "hypothetical",
+          "note": "suspected, not recovered"
+        },
+        {
+          "source": "c_x1",
+          "rel": "resold_in",
+          "target": "loc_x1",
+          "basis": "hypothetical",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "district_a",
+        "to": "district_b",
+        "kind": "inter_district_transfer"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "Show inter-district vehicle theft rings"
+        },
+        {
+          "lang": "kn",
+          "q": "ಅಂತರ-ಜಿಲ್ಲಾ ವಾಹನ ಕಳ್ಳತನ ಜಾಲಗಳನ್ನು ತೋರಿಸಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-XJUR-002",
+      "title": "Inter-state cyber-fraud call centre",
+      "crime_family": "cross_jurisdiction",
+      "crime_subtype": "Cyber Fraud",
+      "jurisdiction_scope": "inter_state",
+      "gravity": "Serious",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: a call centre operating from another state defrauds Karnataka victims; requires inter-state coordination.",
+      "districts": [
+        "Bengaluru City",
+        "Dharwad"
+      ],
+      "entities": [
+        {
+          "id": "p_cc2",
+          "type": "person",
+          "label": "Synthetic operator",
+          "attrs": {}
+        },
+        {
+          "id": "ph_cc2",
+          "type": "phone",
+          "label": "SYN-PHONE-900000052",
+          "attrs": {}
+        },
+        {
+          "id": "acct_cc2",
+          "type": "exchange_account",
+          "label": "SYN-BANK-ACC-0052",
+          "attrs": {}
+        },
+        {
+          "id": "c_x2",
+          "type": "case",
+          "label": "SYN-FIR-XJUR-002",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "p_cc2",
+          "rel": "operated_via",
+          "target": "ph_cc2",
+          "basis": "evidence-backed",
+          "note": ""
+        },
+        {
+          "source": "acct_cc2",
+          "rel": "received_proceeds",
+          "target": "c_x2",
+          "basis": "evidence-backed",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "state_police",
+        "to": "other_state_police (synthetic)",
+        "kind": "inter_state_coordination"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "Show vehicle thefts in Bengaluru South during the last 30 days"
+        },
+        {
+          "lang": "kn",
+          "q": "ಅಂತರ-ರಾಜ್ಯ ಸೈಬರ್ ವಂಚನೆ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ"
+        }
+      ]
+    },
+    {
+      "scenario_id": "P20-XJUR-003",
+      "title": "Cross-border trafficking referral",
+      "crime_family": "cross_jurisdiction",
+      "crime_subtype": "Human Trafficking",
+      "jurisdiction_scope": "cross_border",
+      "gravity": "Heinous",
+      "source_classification": "reported_fir",
+      "live_collection": false,
+      "summary": "Synthetic: a trafficking route crosses a national border; flagged for central-agency and international coordination.",
+      "districts": [
+        "Belagavi"
+      ],
+      "entities": [
+        {
+          "id": "p_traf3",
+          "type": "person",
+          "label": "Synthetic accused",
+          "attrs": {}
+        },
+        {
+          "id": "loc_b3",
+          "type": "location",
+          "label": "Belagavi (border)",
+          "attrs": {}
+        },
+        {
+          "id": "veh_b3",
+          "type": "vehicle",
+          "label": "SYN-VEH-KA22-0003",
+          "attrs": {}
+        },
+        {
+          "id": "c_x3",
+          "type": "case",
+          "label": "SYN-FIR-XJUR-003",
+          "attrs": {}
+        }
+      ],
+      "edges": [
+        {
+          "source": "p_traf3",
+          "rel": "used",
+          "target": "veh_b3",
+          "basis": "evidence-backed",
+          "note": ""
+        },
+        {
+          "source": "c_x3",
+          "rel": "crossed_at",
+          "target": "loc_b3",
+          "basis": "hypothetical",
+          "note": ""
+        }
+      ],
+      "referral": {
+        "from": "state_police",
+        "to": "Interpol/central-agency (synthetic)",
+        "kind": "international_referral"
+      },
+      "nl_examples": [
+        {
+          "lang": "en",
+          "q": "List cross-border trafficking cases needing international referral"
+        },
+        {
+          "lang": "kn",
+          "q": "ಅಂತರರಾಷ್ಟ್ರೀಯ ಉಲ್ಲೇಖ ಅಗತ್ಯವಿರುವ ಗಡಿಯಾಚೆಗಿನ ಕಳ್ಳಸಾಗಣೆ ಪ್ರಕರಣಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ"
+        }
+      ]
+    }
+  ],
+  "nl_examples": [
+    {
+      "scenario_id": "P20-CRYPTO-001",
+      "lang": "en",
+      "q": "Show cryptocurrency fraud cases across districts in the last 90 days",
+      "crime_family": "crypto_fraud",
+      "jurisdiction_scope": "inter_district"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-001",
+      "lang": "kn",
+      "q": "ಕಳೆದ 90 ದಿನಗಳಲ್ಲಿ ಜಿಲ್ಲೆಗಳಾದ್ಯಂತ ಕ್ರಿಪ್ಟೋ ವಂಚನೆ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ",
+      "crime_family": "crypto_fraud",
+      "jurisdiction_scope": "inter_district"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-002",
+      "lang": "en",
+      "q": "How many crypto extortion cases were reported this month?",
+      "crime_family": "crypto_extortion",
+      "jurisdiction_scope": "local"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-002",
+      "lang": "kn",
+      "q": "ಈ ತಿಂಗಳು ಎಷ್ಟು ಕ್ರಿಪ್ಟೋ ಸುಲಿಗೆ ಪ್ರಕರಣಗಳು ವರದಿಯಾಗಿವೆ?",
+      "crime_family": "crypto_extortion",
+      "jurisdiction_scope": "local"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-003",
+      "lang": "en",
+      "q": "List international cryptocurrency money-laundering cases flagged for referral",
+      "crime_family": "crypto_money_movement",
+      "jurisdiction_scope": "international"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-003",
+      "lang": "kn",
+      "q": "ಉಲ್ಲೇಖಕ್ಕಾಗಿ ಗುರುತಿಸಲಾದ ಅಂತರರಾಷ್ಟ್ರೀಯ ಕ್ರಿಪ್ಟೋ ಹಣ ವರ್ಗಾವಣೆ ಪ್ರಕರಣಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ",
+      "crime_family": "crypto_money_movement",
+      "jurisdiction_scope": "international"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-004",
+      "lang": "en",
+      "q": "Show national crypto investment scam networks",
+      "crime_family": "crypto_fraud",
+      "jurisdiction_scope": "national"
+    },
+    {
+      "scenario_id": "P20-CRYPTO-004",
+      "lang": "kn",
+      "q": "ರಾಷ್ಟ್ರೀಯ ಕ್ರಿಪ್ಟೋ ಹೂಡಿಕೆ ವಂಚನೆ ಜಾಲಗಳನ್ನು ತೋರಿಸಿ",
+      "crime_family": "crypto_fraud",
+      "jurisdiction_scope": "national"
+    },
+    {
+      "scenario_id": "P20-DARKWEB-001",
+      "lang": "en",
+      "q": "Show dark web contraband cases with a cross-border scope",
+      "crime_family": "darkweb_contraband",
+      "jurisdiction_scope": "cross_border"
+    },
+    {
+      "scenario_id": "P20-DARKWEB-001",
+      "lang": "kn",
+      "q": "ಗಡಿಯಾಚೆಗಿನ ಡಾರ್ಕ್‌ವೆಬ್ ಕಳ್ಳಸಾಗಣೆ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ",
+      "crime_family": "darkweb_contraband",
+      "jurisdiction_scope": "cross_border"
+    },
+    {
+      "scenario_id": "P20-DARKWEB-002",
+      "lang": "en",
+      "q": "List dark web fraud cases coordinated inter-state",
+      "crime_family": "darkweb_fraud",
+      "jurisdiction_scope": "inter_state"
+    },
+    {
+      "scenario_id": "P20-DARKWEB-002",
+      "lang": "kn",
+      "q": "ಅಂತರ-ರಾಜ್ಯ ಸಮನ್ವಯದ ಡಾರ್ಕ್‌ವೆಬ್ ವಂಚನೆ ಪ್ರಕರಣಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ",
+      "crime_family": "darkweb_fraud",
+      "jurisdiction_scope": "inter_state"
+    },
+    {
+      "scenario_id": "P20-XJUR-001",
+      "lang": "en",
+      "q": "Show inter-district vehicle theft rings",
+      "crime_family": "cross_jurisdiction",
+      "jurisdiction_scope": "inter_district"
+    },
+    {
+      "scenario_id": "P20-XJUR-001",
+      "lang": "kn",
+      "q": "ಅಂತರ-ಜಿಲ್ಲಾ ವಾಹನ ಕಳ್ಳತನ ಜಾಲಗಳನ್ನು ತೋರಿಸಿ",
+      "crime_family": "cross_jurisdiction",
+      "jurisdiction_scope": "inter_district"
+    },
+    {
+      "scenario_id": "P20-XJUR-002",
+      "lang": "en",
+      "q": "Show vehicle thefts in Bengaluru South during the last 30 days",
+      "crime_family": "cross_jurisdiction",
+      "jurisdiction_scope": "inter_state"
+    },
+    {
+      "scenario_id": "P20-XJUR-002",
+      "lang": "kn",
+      "q": "ಅಂತರ-ರಾಜ್ಯ ಸೈಬರ್ ವಂಚನೆ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ",
+      "crime_family": "cross_jurisdiction",
+      "jurisdiction_scope": "inter_state"
+    },
+    {
+      "scenario_id": "P20-XJUR-003",
+      "lang": "en",
+      "q": "List cross-border trafficking cases needing international referral",
+      "crime_family": "cross_jurisdiction",
+      "jurisdiction_scope": "cross_border"
+    },
+    {
+      "scenario_id": "P20-XJUR-003",
+      "lang": "kn",
+      "q": "ಅಂತರರಾಷ್ಟ್ರೀಯ ಉಲ್ಲೇಖ ಅಗತ್ಯವಿರುವ ಗಡಿಯಾಚೆಗಿನ ಕಳ್ಳಸಾಗಣೆ ಪ್ರಕರಣಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ",
+      "crime_family": "cross_jurisdiction",
+      "jurisdiction_scope": "cross_border"
+    }
+  ]
+}

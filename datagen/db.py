@@ -105,10 +105,9 @@ def _escape(s: str) -> str:
 def connect(dsn: str):
     if not dsn:
         raise RuntimeError(
-            "No database connection configured. Set DATABASE_URL (or SUPABASE_DB_URL) "
-            "to a postgres:// URL. For Supabase use Project Settings -> Database -> "
-            "Connection string (URI). The API keys in .env cannot open a Postgres "
-            "connection; a database password is required."
+            "No database connection configured. Set DATABASE_URL to the AWS RDS "
+            "PostgreSQL URI (postgresql://<user>:<password>@<db>.<region>."
+            "rds.amazonaws.com:5432/drishti?sslmode=require). AWS RDS requires TLS."
         )
     conn = psycopg2.connect(dsn)
     conn.autocommit = False

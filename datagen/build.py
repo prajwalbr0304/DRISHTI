@@ -113,8 +113,8 @@ def build_fixture(cfg, ctx, *, mode: str, run_key: str, write_files: bool,
     rng = RNG(cfg.seed * 101 + 5)
     world = C.World(cfg, ctx, rng)
     # Golden stays fully rich (coverage). statistical/performance run "lean": the
-    # per-case child volumes are trimmed so a 100k-case fixture fits the dev
-    # Supabase disk. All integrity gates still hold on the leaner data; only the
+    # per-case child volumes are trimmed so a 100k-case fixture fits a modest dev
+    # database disk. All integrity gates still hold on the leaner data; only the
     # golden fixture is gated on scenario-minimum coverage.
     world.lean = mode != "golden"
 

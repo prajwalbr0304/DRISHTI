@@ -92,6 +92,7 @@ class ModelPlacement:
 _ENGINE_ENABLEMENT: dict[str, Enablement] = {
     "quickml-rag": Enablement.OPTIONAL,
     "quickml-nocode-baseline": Enablement.OPTIONAL,
+    "quickml-llm-serving": Enablement.OPTIONAL,
     "zia-automl": Enablement.DEFERRED,
     "google-tabfm-v1": Enablement.ENABLED,
     "timesfm-2": Enablement.ENABLED,
@@ -129,6 +130,21 @@ PLACEMENTS: tuple[ModelPlacement, ...] = (
         runtime="Catalyst QuickML no-code pipeline "
                 "(infra/catalyst/quickml/nocode-experiment.json)",
         tasks=("area_workload_band_baseline",)),
+    # --- Prompt 19 §B: Ask DRISHTI semantic planner on QuickML LLM Serving ----
+    ModelPlacement(
+        engine="quickml-llm-serving",
+        capability="Semantic NL->query planner (QuickML LLM serving, governed open model)",
+        placement=Placement.CATALYST_QUICKML, availability=Availability.AVAILABLE,
+        reason="Catalyst QuickML LLM Serving hosts a governed open model (e.g. Qwen 2.5 "
+               "Instruct) behind a deployed endpoint and is the PRIMARY Ask DRISHTI "
+               "semantic planner. Only the allow-listed role-scoped schema + glossary + "
+               "bounded context + data-minimised question are sent; the guard + scope "
+               "layers still enforce read-only + role scope independently of the model.",
+        runtime="Catalyst QuickML LLM Serving endpoint (app/nlsql/planner.py "
+                "CatalystQuickMLServingPlanner); env-gated SEMANTIC_PLANNER_PROVIDER="
+                "catalyst_quickml; deterministic offline planner is the labelled fallback. "
+                "Live invocation verified in Prompt 23.",
+        tasks=(), backend=""),
     # --- Zia AutoML — item 1: record verified regional unavailability --------
     ModelPlacement(
         engine="zia-automl",

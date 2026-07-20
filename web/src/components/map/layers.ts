@@ -10,7 +10,13 @@ import type {
   StationFeature,
 } from "@/api/types";
 import { categoryColor, SEVERITY } from "@/lib/palette";
-import { hexToRgb, rampRgb, type RGB } from "@/components/map/mapConfig";
+import {
+  BLUE_RAMP_RGB,
+  hexToRgb,
+  rampRgb,
+  type RGB,
+  type RGBA,
+} from "@/components/map/mapConfig";
 
 /* ============================================================================
    deck.gl layer builders (doc 03 §3 / doc 05 §5). Encoding stays on-contract:
@@ -288,6 +294,66 @@ export function shoRegionsLayer(data: BoundaryData): Layer {
     lineJointRounded: true,
     pickable: true,
   });
+}
+
+/* --- Ask DRISHTI choropleth: fill each Karnataka district by an answer value.
+   Reference geography drives the fill (a sequential BLUE or HEAT ramp, never a
+   rainbow); the value is matched to a polygon by its district name. `values`
+   must be keyed by the NORMALISED name (see normalizeDistrictName), because the
+   served district geojson exposes the human name under `district`
+   (e.g. "Bagalkot"). Districts without a value get a faint neutral wash. */
+const DISTRICT_NAME_KEYS = ["district", "DistrictName", "kgis_name", "name", "NAME"] as const;
+
+/** Uppercased, trimmed key so answer rows and polygons compare consistently. */
+export function normalizeDistrictName(name: string): string {
+  return name.trim().toUpperCase();
+}
+
+/** Read a district's human name from a feature's properties (case-insensitive
+ *  across the known key spellings). Returns the raw trimmed value for display. */
+export function pickDistrictName(props: GeoJSON.GeoJsonProperties): string | null {
+  if (!props) return null;
+  const lower = new Map<string, unknown>();
+  for (const [k, v] of Object.entries(props)) lower.set(k.toLowerCase(), v);
+  for (const key of DISTRICT_NAME_KEYS) {
+    const v = lower.get(key.toLowerCase());
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+export function districtChoropleth(
+  data: BoundaryData,
+  valuesByDistrict: Record<string, number>,
+  ramp: RGB[] = BLUE_RAMP_RGB,
+): Layer {
+  const vals = Object.values(valuesByDistrict);
+  const max = vals.length ? Math.max(...vals) : 0;
+  const safeMax = max > 0 ? max : 1;
+  return new GeoJsonLayer({
+    id: "district-choropleth",
+    data,
+    stroked: true,
+    filled: true,
+    getFillColor: (feature) => {
+      const raw = pickDistrictName((feature as GeoJSON.Feature).properties);
+      const v = raw != null ? valuesByDistrict[normalizeDistrictName(raw)] : undefined;
+      if (v == null) return [148, 163, 184, 26] as RGBA; // neutral: no data for this district
+      const [r, g, b] = sampleRgbRamp(ramp, v / safeMax);
+      return [r, g, b, 205] as RGBA;
+    },
+    getLineColor: [255, 255, 255, 36],
+    lineWidthUnits: "pixels",
+    getLineWidth: 0.5,
+    pickable: true,
+    updateTriggers: { getFillColor: [valuesByDistrict, ramp] },
+  });
+}
+
+/** Nearest-stop sampler over an RGB ramp (BLUE_RAMP_RGB / HEAT_RAMP_RGB). */
+function sampleRgbRamp(ramp: RGB[], t: number): RGB {
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0));
+  return ramp[Math.round(clamped * (ramp.length - 1))] ?? ramp[ramp.length - 1];
 }
 
 /* --- Forecast: fine cell surface; radius by count, opacity by confidence -- */

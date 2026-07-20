@@ -342,6 +342,13 @@ def contract_audit() -> ContractAuditResponse:
         "/graph/communities/list", "/graph/communities/{community_id}/subgraph",
         "/chat/sessions", "/chat/sessions/{session_id}",
         "/chat/translate",   # a mechanical EN<->KN utility for PDF export, not an AI answer
+        # Command Center caseload pipeline + geo date-coverage + graph path-finder
+        # seed list (added with the caseload / geospatial / graph enhancement).
+        # These are raw OPERATIONAL reads — present-state lifecycle-stage counts,
+        # dataset min/max-date metadata, and ready-made connected entity pairs for
+        # a one-click demo — NOT model/analytic outputs, so they are exempt exactly
+        # like the raw reads above (/cases, /geo/points, /graph/entities).
+        "/cases/caseload", "/geo/coverage", "/graph/path/suggestions",
     }
     routes: list[ContractRoute] = []
     for r in app.routes:
