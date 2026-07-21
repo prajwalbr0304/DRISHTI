@@ -13,6 +13,7 @@ Catalyst-SDK impl (deployed). Namespaces + TTLs live in
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from abc import ABC, abstractmethod
@@ -78,24 +79,32 @@ class InMemoryCache(CacheClient):
 
 
 class CatalystCache(CacheClient):
-    """Deployed impl over the Catalyst SDK (Cache). SDK import deferred."""
+    """Deployed impl over the Catalyst REST API (see app.catalyst_rest).
 
-    def __init__(self, app=None):
-        import zcatalyst_sdk
-        self._app = app or zcatalyst_sdk.initialize()
-        self._cache = self._app.cache()
+    Segment names map to Catalyst Cache segment IDs via the
+    ``DRISHTI_CATALYST_CACHE_SEGMENTS`` env (JSON: {segment_name: segment_id}).
+    We use REST (self-client admin token) rather than the zcatalyst SDK, which is
+    unusable in a custom container.
+    """
 
-    def _seg(self, segment: str):
-        return self._cache.segment(segment)
+    def __init__(self, segment_map: dict, client=None):
+        from .catalyst_rest import get_rest_client
+        self._c = client or get_rest_client()
+        self._seg = segment_map
+
+    def _sid(self, segment: str) -> str:
+        sid = self._seg.get(segment)
+        if not sid:
+            raise RuntimeError(f"no Catalyst cache segment id configured for '{segment}'")
+        return str(sid)
 
     def get(self, segment, key):
-        v = self._seg(segment).get(key)
-        return None if v is None else str(v)
+        return self._c.cache_get(self._sid(segment), key)
 
     def put(self, segment, key, value, *, ttl_s=None):
         ttl = ttl_s if ttl_s is not None else DEFAULT_TTL_S.get(segment, 300)
         # Catalyst Cache expiry is in hours; round up to at least 1h where required.
-        self._seg(segment).put(key, value, max(1, round(ttl / 3600)))
+        self._c.cache_put(self._sid(segment), key, value, expiry_hours=max(1, round(ttl / 3600)))
 
     def incr(self, segment, key, *, ttl_s=None):
         cur = int(self.get(segment, key) or 0) + 1
@@ -104,6 +113,21 @@ class CatalystCache(CacheClient):
 
 
 def get_cache() -> CacheClient:
+    """Factory: Catalyst REST cache when segments are provisioned, else in-memory.
+
+    Catalyst Cache needs per-segment IDs (segments are created in the Console).
+    When ``DRISHTI_CATALYST_CACHE_SEGMENTS`` maps the segment names to IDs, the
+    deployed REST cache is used; otherwise (and locally) the in-memory fake is
+    used. The AppSail is single-instance, so in-memory remains functionally
+    correct for these bounded, reconstructable values (idempotency/nonce/rate).
+    """
     if os.getenv("DRISHTI_USE_CATALYST_CACHE", "").lower() == "true":
-        return CatalystCache()
+        raw = os.getenv("DRISHTI_CATALYST_CACHE_SEGMENTS", "").strip()
+        if raw:
+            try:
+                seg_map = json.loads(raw)
+                if isinstance(seg_map, dict) and seg_map:
+                    return CatalystCache(seg_map)
+            except Exception:  # noqa: BLE001 — fall back to in-memory on bad config
+                pass
     return InMemoryCache()

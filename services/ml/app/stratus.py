@@ -101,40 +101,43 @@ class InMemoryStratus(StratusClient):
 
 
 class CatalystStratus(StratusClient):
-    """Deployed implementation over the Catalyst SDK (Stratus). SDK import deferred."""
+    """Deployed implementation over the Catalyst REST API (see app.catalyst_rest).
 
-    def __init__(self, app=None):
-        import zcatalyst_sdk  # only present in the AppSail image
-        self._app = app or zcatalyst_sdk.initialize()
-        self._stratus = self._app.stratus()
+    Uses the documented Stratus REST API with the self-client admin token rather
+    than the zcatalyst SDK (unusable in a custom container; see catalyst_rest).
+    Logical buckets resolve to real bucket names via env / buckets.json.
+    """
 
-    def _bucket(self, bucket: str):
+    def __init__(self, client=None):
+        from .catalyst_rest import get_rest_client
+        self._c = client or get_rest_client()
+
+    def _name(self, bucket: str) -> str:
         _check_bucket(bucket)
         name = os.getenv(f"DRISHTI_STRATUS_{bucket.upper()}_BUCKET", "")
         if not name:
             raise RuntimeError(f"DRISHTI_STRATUS_{bucket.upper()}_BUCKET not configured")
-        return self._stratus.bucket(name)
+        return name
 
     def presign_put(self, bucket, key, *, content_type, ttl_s=DEFAULT_PRESIGN_TTL_S):
-        return self._bucket(bucket).generate_presigned_url(
-            key, operation="PUT", expiry_in_seconds=ttl_s, content_type=content_type)
+        return self._c.stratus_presigned_url(
+            self._name(bucket), key, operation="PUT", expiry_in_seconds=ttl_s)
 
     def presign_get(self, bucket, key, *, version_id=None, ttl_s=DEFAULT_PRESIGN_TTL_S):
-        return self._bucket(bucket).generate_presigned_url(
-            key, operation="GET", expiry_in_seconds=ttl_s, version_id=version_id)
+        return self._c.stratus_presigned_url(
+            self._name(bucket), key, operation="GET", expiry_in_seconds=ttl_s)
 
     def head(self, bucket, key, *, version_id=None):
-        obj = self._bucket(bucket).head_object(key, version_id=version_id)
+        obj = self._c.stratus_get_object(self._name(bucket), key, version_id=version_id)
         if not obj:
             return None
-        return ObjectRef(bucket=bucket, key=key, version_id=obj.get("version_id", "1"),
-                         size=obj.get("size"), content_type=obj.get("content_type"),
-                         sha256=obj.get("sha256"))
+        return ObjectRef(bucket=bucket, key=key, version_id=str(obj.get("version_id", "1")),
+                         size=obj.get("size"), content_type=obj.get("content_type"))
 
     def list_versions(self, bucket, key):
-        rows = self._bucket(bucket).list_object_versions(key) or []
-        return [ObjectRef(bucket=bucket, key=key, version_id=r.get("version_id", "1"),
-                          size=r.get("size"), content_type=r.get("content_type")) for r in rows]
+        rows = self._c.stratus_list_versions(self._name(bucket), key) or []
+        return [ObjectRef(bucket=bucket, key=key, version_id=str(r.get("version_id", "1")),
+                          size=r.get("size")) for r in rows]
 
 
 def get_stratus() -> StratusClient:

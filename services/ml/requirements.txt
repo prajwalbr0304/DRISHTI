@@ -43,4 +43,6 @@ torch-geometric>=2.8    # ST-GNN spatial conv (native scatter; no torch-scatter/
 # platform with those wheels to swap in its prebuilt cells.
 # test/dev
 httpx==0.28.1
+# HTTP client backing the Catalyst REST data plane (app/catalyst_rest.py).
+requests==2.34.2
 pytest==8.3.4

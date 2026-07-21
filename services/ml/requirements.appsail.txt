@@ -39,3 +39,7 @@ shapely>=2.0
 
 # HTTP client for the AWS adapter calls + tests.
 httpx==0.28.1
+
+# HTTP client for the Catalyst REST data plane (app/catalyst_rest.py). Pinned
+# explicitly (not relied on transitively) since it backs Data Store/Stratus/Cache.
+requests==2.34.2
