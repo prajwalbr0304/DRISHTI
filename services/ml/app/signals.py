@@ -134,11 +134,18 @@ class CatalystSignals(SignalPublisher):
             return SignalEvent(event_type=event_type, payload=minimized, published=False)
         try:
             signals = self._app.signals() if hasattr(self._app, "signals") else None
-            sid = None
-            if signals is not None:
-                res = signals.publish_event(publisher=self._publisher,
-                                            event_type=event_type, data=minimized)
-                sid = (res or {}).get("signal_id") if isinstance(res, dict) else None
+            if signals is None:
+                # No working custom-publisher publish path in this runtime (the
+                # zcatalyst SDK exposes no signals() in a custom container). Report
+                # honestly as NOT published rather than falsely claiming success.
+                # NOTE: the mandatory `prediction.requested` Signal does NOT rely
+                # on this path — it fires from the Catalyst Data Store
+                # `row_inserted` event on PredictionRequest (drishti_datastore
+                # publisher -> prediction_event; see infra/catalyst/jobs/signals-rules.json).
+                return SignalEvent(event_type=event_type, payload=minimized, published=False)
+            res = signals.publish_event(publisher=self._publisher,
+                                        event_type=event_type, data=minimized)
+            sid = (res or {}).get("signal_id") if isinstance(res, dict) else None
             return SignalEvent(event_type=event_type, payload=minimized, published=True, signal_id=sid)
         except Exception:  # noqa: BLE001 — a Signal failure must never break the request path
             return SignalEvent(event_type=event_type, payload=minimized, published=False)
