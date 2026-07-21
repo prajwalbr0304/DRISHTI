@@ -31,6 +31,21 @@ The four data-boundary classes (Prompt 21 §A.2):
 Plus a non-data INFRASTRUCTURE bucket for health/liveness/readiness and the
 framework's OpenAPI/docs routes (they serve no application data).
 
+DEPLOYMENT NOTE — Prompt 23 Option A (documented deviation). For live-demo
+completeness the deployed AppSail is given a ``DATABASE_URL`` to the synthetic
+AWS RDS (``drishti-db``, ap-south-1) and reaches it SERVER-TO-SERVER for the
+CATALYST_OPERATIONAL domains still marked ``rds_backed_migration_pending``
+(intake/cases/casework/evidence/chat/governance/etc.), and for the AWS_ANALYTICS
+domains. The browser NEVER touches RDS (browser -> API Gateway -> gateway_api ->
+signed context -> AppSail -> RDS). This does not change the classifications
+below (Data-Store migration is still the target for the operational domains, and
+Board/Disaster/Search/Scenarios/Internal stay ``datastore_native``); it only
+records that the RDS-backed reads/writes are now served live rather than being an
+un-served gap. Bounded: the DB is synthetic (startup enforces the
+``synthetic_meta`` marker), RLS is off by explicit hackathon request, and RDS is
+reverted to unreachable simply by removing ``DATABASE_URL``. See
+``infra/catalyst/appsail/appsail.deploy.json`` -> ``database_url_policy``.
+
 The classification is *target-architecture* truth. ``route_data_boundary.py``
 renders it to ``docs/deployment/ROUTE_DATA_BOUNDARY.md`` and the phase test wires
 ``check()`` into CI so the boundary cannot silently regress.

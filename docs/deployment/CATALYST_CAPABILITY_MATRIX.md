@@ -52,6 +52,28 @@
 | **Mail (Email)** | **NOT USED** | Notifications are **in-app, data-minimized** records (`/internal/notify` → Data Store). No external email is sent in a synthetic-data demo (avoids mailing real addresses). Hidden. |
 | **Push (web/mobile notifications)** | **NOT USED** | Same as Mail — the demo surfaces notifications in-app only. Hidden. |
 
+## Operational data plane (Prompt 23 Option A — documented deviation)
+
+The deployed operational data is split across two server-side stores; the
+**browser never reaches either directly** (always browser → API Gateway →
+`gateway_api` → signed context → AppSail):
+
+| Domain group | Live source | Notes |
+|---|---|---|
+| Board, Disaster, Search, Scenarios, Internal | **Catalyst Data Store** (native) | The prompt-aligned operational serving source; no `DATABASE_URL` needed. |
+| FIR/intake, cases, casework, evidence-metadata, chat, imports, notifications, reports, org, admin, governance, livefeed, investigate | **AWS RDS `drishti-db`** (synthetic, ap-south-1) via **AppSail server-to-server** | Still `rds_backed_migration_pending` (Data Store migration is the target). Served live via `DATABASE_URL` on the AppSail for demo completeness. |
+| Heavy analytics (graph, geo, forecast, risk, money, workload, explain, predict, performance) | **AWS RDS via protected adapter** | Adapter-only; never a generic SQL proxy. |
+
+**Deviation, stated honestly:** giving the AppSail a `DATABASE_URL` makes RDS the
+operational serving source for the migration-pending domains instead of the
+Catalyst Data Store. It preserves browser↔DB isolation, is bounded to a
+**synthetic** DB (startup enforces the `synthetic_meta` marker; RLS off by
+explicit hackathon request), and is reverted by removing `DATABASE_URL`. Chosen
+so all five mandatory journeys run on the live deployment; the Data Store
+migration of these domains remains the post-hackathon target. See
+`infra/catalyst/appsail/appsail.deploy.json` → `database_url_policy` and
+`services/ml/app/deployment_boundary.py`.
+
 ## Notes
 - "Hidden" means the capability is not surfaced as a control in the submitted
   demo UI, so acceptance never shows a non-functional button.

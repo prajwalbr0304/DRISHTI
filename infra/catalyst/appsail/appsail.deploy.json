@@ -40,6 +40,7 @@
       "DRISHTI_STRATUS_REPORT_BUCKET"
     ],
     "optional": [
+      "DATABASE_URL",
       "DRISHTI_ACCESS_LOG_ENABLED",
       "DRISHTI_USE_CATALYST_NOSQL",
       "DRISHTI_USE_CATALYST_CACHE",
@@ -76,9 +77,8 @@
       "DRISHTI_APPSAIL_STREAM_URL": "Set on the channel_token FUNCTION (not AppSail): https base URL of the AppSail SSE endpoint returned to the browser.",
       "DRISHTI_CHANNEL_TTL_MS": "Channel-token lifetime in ms (default 300000 = 5 min); the stream self-closes at expiry, forcing a re-handshake through the gateway."
     },
-    "must_not_set_for_crud": [
-      "DATABASE_URL"
-    ],
+    "must_not_set_for_crud": [],
+    "database_url_policy": "Prompt 23 Option A (hackathon deviation, documented): DATABASE_URL IS now set on the AppSail so it accesses the synthetic AWS RDS (drishti-db, ap-south-1) SERVER-TO-SERVER for the operational CRUD domains still on RDS (intake/cases/casework/evidence/chat/governance/etc. - deployment_boundary.py migration=rds_backed_migration_pending). The BROWSER never reaches RDS (browser -> API Gateway -> gateway_api -> signed context -> AppSail -> RDS). Chosen for live-demo completeness instead of the full Data Store migration. Bounded because: the DB is synthetic (verify_hackathon_startup enforces the synthetic_meta.app_environment marker at boot and refuses a non-synthetic DB), RLS is off by explicit hackathon request, and Board/Disaster remain Data Store-native. Revert by removing DATABASE_URL to fall back to Data-Store-only operational serving.",
     "auto_injected_by_catalyst": [
       "X_ZOHO_CATALYST_LISTEN_PORT",
       "CATALYST_PROJECT_ID",
