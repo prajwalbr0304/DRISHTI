@@ -58,14 +58,94 @@ function b64url(buf) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/* Map an authenticated Catalyst user to a synthetic demo role. Server-side only.
- * Real role mapping belongs in Data Store config; this default keeps the facade
- * fail-safe (least privilege) when no explicit mapping row exists. */
-function resolveRole(user) {
-  const roleField = (user && (user.role_details && user.role_details.role_name)) || '';
-  if (/admin|super/i.test(roleField)) return 'admin';
-  if (/supervisor|sho|inspector/i.test(roleField)) return 'supervisor';
-  return 'investigator';
+/* Canonical six functional roles — MUST mirror
+ * services/ml/app/org/hierarchy.py FUNCTIONAL_ROLES. AppSail re-validates the
+ * role against the same set (defence in depth), so the two cannot drift silently. */
+const FUNCTIONAL_ROLES = new Set([
+  'investigator', 'analyst', 'supervisor', 'policymaker',
+  'disaster_coordinator', 'super_admin',
+]);
+
+/* Rank / assignment label -> [functional_role, scope_level]. Mirrors the
+ * synthetic establishment catalogue in org/hierarchy.py (_CATALOG). Keys are
+ * normalized (lowercase, single-spaced). */
+const RANK_MAP = {
+  'dgp': ['supervisor', 'state'], 'director general of police': ['supervisor', 'state'],
+  'adgp': ['supervisor', 'state'], 'igp': ['supervisor', 'range'],
+  'dig': ['supervisor', 'range'], 'sp': ['supervisor', 'district'],
+  'superintendent of police': ['supervisor', 'district'], 'dcp': ['supervisor', 'district'],
+  'addl sp': ['supervisor', 'district'], 'dy sp': ['supervisor', 'subdivision'],
+  'asp': ['supervisor', 'subdivision'], 'acp': ['supervisor', 'subdivision'],
+  'ci': ['supervisor', 'subdivision'], 'circle inspector': ['supervisor', 'subdivision'],
+  'sho': ['supervisor', 'station'], 'station house officer': ['supervisor', 'station'],
+  'station chief': ['supervisor', 'station'], 'pi': ['supervisor', 'station'],
+  'police inspector': ['supervisor', 'station'], 'inspector': ['supervisor', 'station'],
+  'io': ['investigator', 'assigned_case'], 'investigating officer': ['investigator', 'assigned_case'],
+  'psi': ['investigator', 'assigned_case'], 'asi': ['investigator', 'assigned_case'],
+  'head constable': ['investigator', 'assigned_case'], 'police constable': ['investigator', 'assigned_case'],
+  'crime analyst': ['analyst', 'district'], 'analyst': ['analyst', 'district'],
+  'scrb': ['policymaker', 'state'], 'policy': ['policymaker', 'state'],
+  'ddma': ['disaster_coordinator', 'district'], 'disaster coordinator': ['disaster_coordinator', 'district'],
+  'system administrator': ['super_admin', 'state'], 'admin': ['super_admin', 'state'],
+};
+
+const ROLE_DEFAULT_SCOPE = {
+  super_admin: 'state', policymaker: 'state', supervisor: 'district',
+  analyst: 'district', disaster_coordinator: 'district', investigator: 'assigned_case',
+};
+
+function normLabel(s) {
+  return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/* Parse a trusted numeric scope attribute. Returns:
+ *   {value:int}     a valid positive id;
+ *   {value:null}    the attribute is absent (no restriction at that level);
+ *   {invalid:true}  the attribute is PRESENT but not a valid id (ambiguous). */
+function scopeInt(raw) {
+  if (raw === undefined || raw === null || raw === '') return { value: null };
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0 || String(n) !== String(raw).trim()) return { invalid: true };
+  return { value: n };
+}
+
+/* Resolve an authenticated Catalyst user to a functional role + organizational
+ * scope, SERVER-SIDE ONLY (never from a request header). Priority:
+ *   1. explicit DRISHTI role assignment (custom attribute `drishti_role`) — an
+ *      unrecognized value here is REJECTED (unknown/ambiguous role);
+ *   2. the Catalyst role_name mapped through RANK_MAP;
+ *   3. least-privilege default (investigator / assigned_case) when no DRISHTI
+ *      role is asserted — a documented safe default, not an ambiguous coercion.
+ * district_id / unit_id come only from trusted custom attributes; a present-but-
+ * malformed scope value is REJECTED. Returns {role,scope_level,district_id,
+ * unit_id} or {rejected:<reason>}. */
+function resolveIdentity(user) {
+  const attrs = (user && (user.custom_fields || {})) || {};
+  const roleDetails = (user && user.role_details) || {};
+  let role = null, scopeLevel = null;
+
+  const explicit = normLabel(user && (user.drishti_role || attrs.drishti_role));
+  if (explicit) {
+    const compact = explicit.replace(/ /g, '_');
+    if (FUNCTIONAL_ROLES.has(compact)) role = compact;
+    else if (RANK_MAP[explicit]) [role, scopeLevel] = RANK_MAP[explicit];
+    else return { rejected: 'unknown_or_ambiguous_role' };  // asserted but invalid
+  }
+  if (!role) {
+    const rn = normLabel(roleDetails.role_name);
+    const rnCompact = rn.replace(/ /g, '_');
+    if (rn && FUNCTIONAL_ROLES.has(rnCompact)) role = rnCompact;
+    else if (rn && RANK_MAP[rn]) [role, scopeLevel] = RANK_MAP[rn];
+    // an unrecognized built-in role_name is NOT a DRISHTI assertion -> default below
+  }
+  if (!role) { role = 'investigator'; scopeLevel = 'assigned_case'; }
+  if (!scopeLevel) scopeLevel = ROLE_DEFAULT_SCOPE[role] || 'assigned_case';
+
+  const district = scopeInt(user && (user.district_id !== undefined ? user.district_id : attrs.district_id));
+  const unit = scopeInt(user && (user.unit_id !== undefined ? user.unit_id : attrs.unit_id));
+  if (district.invalid || unit.invalid) return { rejected: 'ambiguous_scope' };
+
+  return { role, scope_level: scopeLevel, district_id: district.value, unit_id: unit.value };
 }
 
 function signContext(ctx, secret) {
@@ -107,12 +187,26 @@ module.exports = async (req, res) => {
     return sendJson(res, 401, { error: 'authentication_required', request_id: requestId });
   }
 
-  // 2. Mint a short-lived signed internal context (identity is derived, not trusted).
+  // 2. Resolve the server-trusted functional role + organizational scope. An
+  //    asserted-but-unknown role or a malformed scope is REJECTED (403) rather
+  //    than silently coerced (Prompt 21 §E.2).
+  const identity = resolveIdentity(user);
+  if (identity.rejected) {
+    return sendJson(res, 403, { error: 'role_scope_unresolved',
+      reason: identity.rejected, request_id: requestId });
+  }
+
+  // 3. Mint a short-lived signed internal context. Role + scope are DERIVED
+  //    server-side here and signed; AppSail re-validates the role and trusts the
+  //    signed scope, never a browser-supplied role/district/unit header.
   const now = Date.now();
   const ctx = {
     user_id: String(user.user_id),
     email: user.email_id || '',
-    role: resolveRole(user),
+    role: identity.role,
+    scope_level: identity.scope_level,
+    district_id: identity.district_id,
+    unit_id: identity.unit_id,
     scope: 'gateway',
     aud: 'drishti-appsail',
     ts: now,
@@ -122,7 +216,7 @@ module.exports = async (req, res) => {
   };
   const { payload, signature } = signContext(ctx, secret);
 
-  // 3. Build the upstream request: strip client identity headers, forward the rest.
+  // 4. Build the upstream request: strip client identity headers, forward the rest.
   const prefix = process.env.DRISHTI_GATEWAY_PATH_PREFIX || '/api';
   const parsed = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   let upstreamPath = parsed.pathname;
@@ -145,7 +239,7 @@ module.exports = async (req, res) => {
   const hasBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
   const body = hasBody ? await readBody(req) : undefined;
 
-  // 4. Proxy to AppSail with a bounded timeout (Advanced I/O caps at 30s).
+  // 5. Proxy to AppSail with a bounded timeout (Advanced I/O caps at 30s).
   const timeoutMs = parseInt(process.env.DRISHTI_GATEWAY_TIMEOUT_MS || '25000', 10);
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);

@@ -10,14 +10,20 @@
   "listen_port_env": "X_ZOHO_CATALYST_LISTEN_PORT",
   "memory_mb": 512,
   "disk_mb": 256,
-  "instances": { "min": 1, "max": 2, "scale_up_threshold_pct": 80 },
+  "instances": { "min": 1, "max": 1, "scale_up_threshold_pct": 80 },
+  "instance_correctness": {
+    "decision": "PINNED_SINGLE_INSTANCE",
+    "why": "Prompt 21 §G.1 — for hackathon simplicity AppSail is pinned to exactly ONE instance (min=max=1) so in-process ID allocation (disaster/board next_id seeded from max) and the signed-context nonce replay guard are correct without distributed coordination. Proven by this max=1 setting + the deploy command's single-instance scale.",
+    "shared_state_defence_in_depth": "In addition to the single-instance pin, the signed-context nonce replay guard also records nonces in Catalyst Cache (segment 'nonce') via atomic set-if-absent when DRISHTI_USE_CATALYST_CACHE=true, so replay is caught across instances should the cap ever be raised (app/gateway_context.py _nonce_is_replay).",
+    "backlog": "Multi-instance (max>1) requires shared monotonic ID allocation (Catalyst Data Store sequence / Cache incr) for disaster/board PKs and is tracked in the backlog; do NOT raise instances.max above 1 until that lands."
+  },
   "catalyst_auth": false,
   "health_check_path": "/health/ready",
   "liveness_path": "/health/live",
   "deploy_command": "catalyst deploy appsail --name drishti-api --source docker://drishti-api:appsail --port 9000",
   "notes": [
     "catalyst_auth=false: DRISHTI uses its own gateway facade + signed context; the Catalyst SSO wrapper would break that flow.",
-    "instances.max is capped at 2 for hackathon credit control (scale-to-low).",
+    "instances pinned to min=max=1 (Prompt 21 §G.1 instance correctness): single-instance makes in-process ID allocation + nonce replay correct without distributed coordination, and also controls hackathon credit. See instance_correctness above before raising max.",
     "Public access is via the API Gateway -> gateway_api function -> AppSail. With DRISHTI_REQUIRE_GATEWAY_CONTEXT=true the app ACTIVELY REJECTS (401) any non-health request that lacks a valid signed context, so direct unauthenticated browser CRUD against the AppSail URL is refused (items 10/12).",
     "The image excludes torch/CUDA/TabFM/TabPFN/TimesFM/torch-geometric; model compute is on external AWS GPU (services/gpu-worker).",
     "Build + deploy via infra/catalyst/appsail/deploy.ps1 (CLI-driven; `catalyst deploy appsail --name --source --port` — note: CLI 1.27.0 has NO 'standalone' subcommand). Deploy is credit-spending and opt-in (-Deploy)."

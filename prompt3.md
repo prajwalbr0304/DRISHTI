@@ -232,7 +232,7 @@ For the selected phase:
 | 18 | Truth reconciliation, scope freeze and baseline repair | **Complete (2026-07-20)** — see `docs/phase-reports/PHASE_18_REPORT.md` |
 | 19 | Bilingual semantic conversational intelligence, voice and answer visualizations | **Complete (2026-07-21)** — see `docs/phase-reports/PHASE_19_REPORT.md` |
 | 20 | Organizer domain, hierarchy, supervisor and investigation-flow closure | **Complete (2026-07-21)** — see `docs/phase-reports/PHASE_20_REPORT.md` |
-| 21 | Catalyst operational data boundary and deployment correctness | Pending (next) |
+| 21 | Catalyst operational data boundary and deployment correctness | **Complete (2026-07-21)** — see `docs/phase-reports/PHASE_21_REPORT.md`. Full offline API suite passes with `DATABASE_URL` removed (378 passed, 0 failed); route-data-boundary inventory (335 routes, 0 unclassified, wired static check); six-role Gateway mapper + verified allow/deny matrix; disaster Data Store schema + idempotent provisioner; mandatory `prediction.requested` Signal + forecast cron (idempotent, disabled until P23); readiness fails on broken data plane; protected analytics adapter + Board Search Around; operational READ/reference/authz journeys served from Catalyst Data Store/code. Tracked follow-up: crime-domain WRITE closure (intake/casework/imports create/commit) to Data Store (report §12). |
 | 22 | Local release stabilization and functional CI/CD | Pending |
 | 23 | Live Zoho Catalyst provisioning and deployment | Pending |
 | 24 | Live AWS custom-ML plane and Catalyst-to-AWS prediction proof | Pending |

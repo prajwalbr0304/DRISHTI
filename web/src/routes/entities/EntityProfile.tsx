@@ -62,6 +62,15 @@ export function EntityProfile() {
   const tab = sp.get("tab") ?? "identity";
   const goTo = useCallback((k: string) => setSp({ tab: k }, { replace: true }), [setSp]);
 
+  // Hooks must run unconditionally and in a stable order (React Rules of
+  // Hooks), so this query is declared BEFORE the policymaker early-return
+  // below; it is simply disabled for policymaker (who is blocked anyway).
+  const detailQ = useQuery({
+    queryKey: ["entity", "detail", entityId],
+    queryFn: ({ signal }) => api.graph.entityDetail(entityId, signal),
+    enabled: role !== "policymaker" && Number.isFinite(entityId) && entityId > 0,
+  });
+
   if (role === "policymaker") {
     return (
       <div>
@@ -74,12 +83,6 @@ export function EntityProfile() {
       </div>
     );
   }
-
-  const detailQ = useQuery({
-    queryKey: ["entity", "detail", entityId],
-    queryFn: ({ signal }) => api.graph.entityDetail(entityId, signal),
-    enabled: Number.isFinite(entityId) && entityId > 0,
-  });
 
   if (detailQ.error) {
     const is404 = detailQ.error instanceof ApiError && detailQ.error.status === 404;

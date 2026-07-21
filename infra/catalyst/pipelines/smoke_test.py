@@ -72,9 +72,15 @@ def sign_service_context(secret: str) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base-url", required=True)
+    ap.add_argument("--base-url", required=True,
+                    help="direct AppSail base URL (health/auth/prediction plane).")
+    ap.add_argument("--gateway-url", default="",
+                    help="public API Gateway origin (e.g. https://<proj>.../server or the "
+                         "serverless domain). Smokes the Auth + API Gateway path (/api/*), "
+                         "NOT only the direct AppSail URL (Prompt 22 E.4).")
     args = ap.parse_args()
     base = args.base_url.rstrip("/")
+    gateway = args.gateway_url.rstrip("/")
     failures: list[str] = []
 
     def check(name: str, ok: bool, detail: str = "") -> None:
@@ -106,6 +112,24 @@ def main() -> int:
     code, body = _get(f"{base}/predict/enablement")
     ok = code == 200 and "enabled_tasks" in body and "station_workload_band" in body
     check("GET /predict/enablement == 200 (enabled tasks present)", ok, f"got {code} {body[:120]}")
+
+    # --- Auth + API Gateway smoke (Prompt 22 E.4) --------------------------
+    # The public path is the browser -> API Gateway (/api/*) -> gateway_api
+    # function -> signed context -> AppSail. Smoke that path directly, proving
+    # the Gateway ROUTES to AppSail (health is exempt) AND that the Auth +
+    # signed-context boundary REJECTS an unauthenticated protected read (401/403)
+    # — Data Store-backed reference reads never leak without a Catalyst session.
+    if gateway:
+        code, _ = _get(f"{gateway}/api/health/live")
+        check("Gateway GET /api/health/live == 200 (routes to AppSail)", code == 200, f"got {code}")
+        code, _ = _get(f"{gateway}/api/health/ready")
+        check("Gateway GET /api/health/ready == 200 (operational Data Store reachable)", code == 200, f"got {code}")
+        # Unauthenticated protected read through the Gateway must be refused.
+        code, _ = _get(f"{gateway}/api/cases?limit=1")
+        check("Gateway GET /api/cases unauthenticated in (401,403) (Auth boundary)",
+              code in (401, 403), f"got {code}")
+    else:
+        print("[SKIP] Auth + API Gateway smoke (pass --gateway-url after apig:enable + deploy)")
 
     if failures:
         print(f"\nSMOKE FAILED: {len(failures)} check(s) failed: {failures}")

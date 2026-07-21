@@ -97,6 +97,15 @@ export function CaseFile() {
     [setSearchParams],
   );
 
+  // Hooks must run unconditionally and in a stable order (React Rules of
+  // Hooks), so this query is declared BEFORE the policymaker early-return
+  // below; it is simply disabled for policymaker (who is blocked anyway).
+  const q = useQuery({
+    queryKey: ["cases", "detail", caseId],
+    queryFn: ({ signal }) => api.cases.detail(caseId, signal),
+    enabled: role !== "policymaker" && Number.isFinite(caseId) && caseId > 0,
+  });
+
   // Policymaker full-file block.
   if (role === "policymaker") {
     return (
@@ -110,12 +119,6 @@ export function CaseFile() {
       </div>
     );
   }
-
-  const q = useQuery({
-    queryKey: ["cases", "detail", caseId],
-    queryFn: ({ signal }) => api.cases.detail(caseId, signal),
-    enabled: Number.isFinite(caseId) && caseId > 0,
-  });
 
   if (q.error) {
     const is404 = q.error instanceof ApiError && q.error.status === 404;

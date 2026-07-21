@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Optional
 
 from .. import db
+from ..config import get_settings
+from ..datastore import seed as ds_seed
 from . import workflow as wf
 
 
@@ -18,7 +20,65 @@ def _rows(cur, sql, params=None):
     return cur.fetchall()
 
 
+def _ds_ref(table: str, where: Optional[dict] = None, limit: int = 5000) -> list[dict]:
+    return ds_seed.reference_repo().query(table, where=where, limit=limit)
+
+
+def _reference_lookups_datastore(unit_id: Optional[int], officer_limit: int) -> dict:
+    """Deployed operational reference reads from Catalyst Data Store (seeded from
+    the serving-export subset) — used when no RDS ``DATABASE_URL`` is configured.
+    Mirrors the RDS projection's output shape (Prompt 21 §B)."""
+    def _n(row, *keys, default=None):
+        for k in keys:
+            if row.get(k) is not None:
+                return row[k]
+        return default
+
+    categories = [{"id": r.get("CaseCategoryID"), "name": _n(r, "LookupValue", "CategoryName")}
+                  for r in _ds_ref("CaseCategory")]
+    gravities = [{"id": r.get("GravityOffenceID"), "name": _n(r, "LookupValue", "Name")}
+                 for r in _ds_ref("GravityOffence")]
+    districts = [{"id": r.get("DistrictID"), "name": r.get("DistrictName")}
+                 for r in _ds_ref("District")]
+    units = [{"id": r.get("UnitID"), "name": r.get("UnitName"), "parent_id": r.get("DistrictID")}
+             for r in _ds_ref("Unit", limit=2000)]
+    crime_heads = [{"id": r.get("CrimeHeadID"), "name": _n(r, "CrimeGroupName", "HeadName")}
+                   for r in _ds_ref("CrimeHead")]
+    crime_subheads = [{"id": r.get("CrimeSubHeadID"), "name": _n(r, "CrimeHeadName", "Name"),
+                       "parent_id": r.get("CrimeHeadID")} for r in _ds_ref("CrimeSubHead")]
+    statuses = [{"id": r.get("CaseStatusID"), "name": r.get("CaseStatusName")}
+                for r in _ds_ref("CaseStatusMaster")]
+    officers = [{"id": r.get("EmployeeID"), "name": _n(r, "FirstName", "EmployeeName"),
+                 "parent_id": r.get("UnitID")}
+                for r in _ds_ref("Employee", where=({"UnitID": unit_id} if unit_id else None),
+                                 limit=officer_limit)]
+    acts = [{"act_code": r.get("ActCode"), "short_name": r.get("ShortName"),
+             "description": r.get("ActDescription")} for r in _ds_ref("Act")]
+    sections = [{"section_code": r.get("SectionCode"), "act_code": r.get("ActCode"),
+                 "description": r.get("SectionDescription")} for r in _ds_ref("Section")]
+    party_roles = [{"value": v, "label": wf.PARTY_ROLE_LABELS.get(v, v.title())}
+                   for v in wf.PARTY_ROLES]
+    return {
+        "categories": categories, "gravities": gravities, "districts": districts,
+        "units": units, "crime_heads": crime_heads, "crime_subheads": crime_subheads,
+        "statuses": statuses, "officers": officers, "courts": [],
+        "acts": acts, "sections": sections, "party_roles": party_roles,
+    }
+
+
 def reference_lookups(unit_id: Optional[int] = None, officer_limit: int = 500) -> dict:
+    # Deployed AppSail has no DATABASE_URL: serve operational reference data from
+    # Catalyst Data Store (§B). The RDS path below is used only when an analytics
+    # DATABASE_URL is configured (dev / the DB test pass) — byte-identical.
+    if get_settings().database_url:
+        try:
+            return _reference_lookups_rds(unit_id, officer_limit)
+        except Exception:  # noqa: BLE001 — RDS unreachable/over-quota -> Data Store
+            pass
+    return _reference_lookups_datastore(unit_id, officer_limit)
+
+
+def _reference_lookups_rds(unit_id: Optional[int], officer_limit: int) -> dict:
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             categories = [{"id": r[0], "name": r[1]} for r in _rows(
@@ -83,10 +143,17 @@ def workflow_metadata() -> dict:
                    for v in wf.PARTY_ROLES]
 
     categories = sorted({ck.category for ck in wf.CASE_KINDS.values()})
-    transitions_by_category: dict[str, list[dict]] = {}
-    with db.ro_conn() as conn:
-        for cat in categories:
-            transitions_by_category[cat] = wf.load_transitions(conn, cat)
+    transitions_by_category: dict[str, list[dict]] = {cat: [] for cat in categories}
+    # Kinds/statuses/party-roles are static (in code). Per-category transitions
+    # come from the operational store: RDS when configured (dev / DB pass), else
+    # the Data Store-native workflow (deployed AppSail has no DATABASE_URL).
+    if get_settings().database_url:
+        try:
+            with db.ro_conn() as conn:
+                for cat in categories:
+                    transitions_by_category[cat] = wf.load_transitions(conn, cat)
+        except Exception:  # noqa: BLE001 — RDS unreachable -> empty transitions offline
+            transitions_by_category = {cat: [] for cat in categories}
     return {
         "kinds": kinds,
         "statuses": statuses,

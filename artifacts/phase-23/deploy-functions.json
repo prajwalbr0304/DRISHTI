@@ -1,0 +1,22 @@
+{
+  "step": "C.1 deploy functions",
+  "command": "catalyst deploy --only functions",
+  "cwd": "infra/catalyst",
+  "exit_code": 0,
+  "result": "Catalyst deploy complete",
+  "timestamp": "2026-07-21T19:35:00+05:30",
+  "serverless_domain": "dhristi-60075362708.development.catalystserverless.in",
+  "server_side_npm_install": "confirmed (added 5 packages, 0 vulnerabilities per function)",
+  "functions": [
+    { "name": "gateway_api", "type": "advancedio", "status": "DEPLOYMENT SUCCESSFUL", "url": "https://dhristi-60075362708.development.catalystserverless.in/server/gateway_api/" },
+    { "name": "channel_token", "type": "advancedio", "status": "DEPLOYMENT SUCCESSFUL", "url": "https://dhristi-60075362708.development.catalystserverless.in/server/channel_token/" },
+    { "name": "evidence_event", "type": "event", "status": "DEPLOYMENT SUCCESSFUL" },
+    { "name": "datastore_event", "type": "event", "status": "DEPLOYMENT SUCCESSFUL" },
+    { "name": "prediction_event", "type": "event", "status": "DEPLOYMENT SUCCESSFUL" },
+    { "name": "report_event", "type": "event", "status": "DEPLOYMENT SUCCESSFUL" },
+    { "name": "notify_dispatch", "type": "event", "status": "DEPLOYMENT SUCCESSFUL" },
+    { "name": "cron_reconcile", "type": "cron", "status": "DEPLOYMENT SUCCESSFUL" },
+    { "name": "cron_forecast", "type": "cron", "status": "DEPLOYMENT SUCCESSFUL" }
+  ],
+  "note": "gateway_api returns 503 until ZOHO_APPSAIL_BASE_URL + ZOHO_APPSAIL_SIGNING_SECRET are set in the Console (expected pre-config state). API Gateway was enabled just before this step (catalyst apig:enable = ENABLED)."
+}

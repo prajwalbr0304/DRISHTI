@@ -1,0 +1,1736 @@
+{
+  "schema_version": "2026.07.19-1",
+  "note": "Prompt 17 Disaster Response \u2014 Data Store-native tables. Created directly in Catalyst Data Store; app-populated at runtime; the authoritative operational store. The optional AWS PostGIS/pgRouting mirror (023_disaster_response.sql) is reconstructable and keyed by the same ExternalIDs. AWS RLS/FORCE RLS remain disabled (no RLS policy is created).",
+  "limits": {
+    "max_json_bytes": 16384,
+    "max_geojson_bytes": 65536,
+    "max_label_len": 255,
+    "max_notes_len": 4000
+  },
+  "tables": [
+    {
+      "name": "HazardType",
+      "external_id_prefix": "haztype",
+      "primary_key": "HazardTypeID",
+      "append_only": false,
+      "search_columns": [
+        "Name",
+        "Code"
+      ],
+      "columns": [
+        {
+          "name": "HazardTypeID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Code",
+          "type": "text",
+          "nullable": false,
+          "note": "one of HAZARD_CODES"
+        },
+        {
+          "name": "Name",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Category",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DefaultLeadTimeHours",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Active",
+          "type": "bool",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_haztype_code",
+          "columns": [
+            "Code"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "HazardEvent",
+      "external_id_prefix": "hazevt",
+      "primary_key": "HazardEventID",
+      "append_only": false,
+      "search_columns": [
+        "Description"
+      ],
+      "columns": [
+        {
+          "name": "HazardEventID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardCode",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "predicted|watch|warning|active|recovery|closed"
+        },
+        {
+          "name": "Severity",
+          "type": "text",
+          "nullable": false,
+          "note": "minor|moderate|severe|extreme"
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "UnitID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "GeoJSON",
+          "type": "json",
+          "nullable": true,
+          "note": "validated point or polygon extent (EPSG:4326)"
+        },
+        {
+          "name": "CanonicalCRS",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CentroidLon",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CentroidLat",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "OnsetAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "PredictedPeakAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Source",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "SourceVersion",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Description",
+          "type": "bigtext",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": "optimistic concurrency counter"
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": "soft-delete (no hard delete in DS)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_hazevt_district",
+          "columns": [
+            "DistrictID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hazevt_status",
+          "columns": [
+            "Status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hazevt_code",
+          "columns": [
+            "HazardCode"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hazevt_onset",
+          "columns": [
+            "OnsetAt"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "HazardPrediction",
+      "external_id_prefix": "hazpred",
+      "primary_key": "HazardPredictionID",
+      "append_only": true,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "HazardPredictionID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardCode",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardEventID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ModelVersionLabel",
+          "type": "text",
+          "nullable": true,
+          "note": "ModelName@Version or rule@version"
+        },
+        {
+          "name": "FeatureSnapshotID",
+          "type": "text",
+          "nullable": true,
+          "note": "immutable input snapshot id"
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "UnitID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "GeoJSON",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ForecastStart",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ForecastEnd",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "HorizonHours",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DataAsOf",
+          "type": "timestamp",
+          "nullable": true,
+          "note": "observation cutoff"
+        },
+        {
+          "name": "Probability",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "PredictedSeverity",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ExpectedImpact",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Confidence",
+          "type": "numeric",
+          "nullable": true,
+          "note": "calibrated confidence in [0,1]"
+        },
+        {
+          "name": "Factors",
+          "type": "json",
+          "nullable": true,
+          "note": "visible explanation / factor list"
+        },
+        {
+          "name": "BaselineComparison",
+          "type": "json",
+          "nullable": true,
+          "note": "baseline vs model skill"
+        },
+        {
+          "name": "QualityState",
+          "type": "text",
+          "nullable": false,
+          "note": "ok|low_confidence|stale|superseded|rejected"
+        },
+        {
+          "name": "SupersededByID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CreatedBy",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_hazpred_district",
+          "columns": [
+            "DistrictID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hazpred_code",
+          "columns": [
+            "HazardCode"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hazpred_window",
+          "columns": [
+            "ForecastStart",
+            "ForecastEnd"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hazpred_quality",
+          "columns": [
+            "QualityState"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "HazardRiskZone",
+      "external_id_prefix": "riskzone",
+      "primary_key": "HazardRiskZoneID",
+      "append_only": false,
+      "search_columns": [
+        "Name"
+      ],
+      "columns": [
+        {
+          "name": "HazardRiskZoneID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardCode",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "ZoneKind",
+          "type": "text",
+          "nullable": false,
+          "note": "static|dynamic"
+        },
+        {
+          "name": "Name",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "GeoJSON",
+          "type": "json",
+          "nullable": true,
+          "note": "polygon (EPSG:4326)"
+        },
+        {
+          "name": "CentroidLon",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CentroidLat",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "RiskLevel",
+          "type": "text",
+          "nullable": false,
+          "note": "low|medium|high|critical"
+        },
+        {
+          "name": "Score",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Factors",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ValidFrom",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ValidTo",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Source",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "SourceVersion",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "IsActive",
+          "type": "bool",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_riskzone_district",
+          "columns": [
+            "DistrictID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_riskzone_code",
+          "columns": [
+            "HazardCode"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_riskzone_active",
+          "columns": [
+            "IsActive"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "HydroMetReading",
+      "external_id_prefix": "hydromet",
+      "primary_key": "HydroMetReadingID",
+      "append_only": true,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "HydroMetReadingID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "StationCode",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "SourceAgency",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "MetricType",
+          "type": "text",
+          "nullable": false,
+          "note": "one of HYDROMET_METRICS"
+        },
+        {
+          "name": "Value",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Unit",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Lon",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Lat",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ObservedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "ReceivedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "QualityFlag",
+          "type": "text",
+          "nullable": false,
+          "note": "valid|suspect|missing|superseded|late"
+        },
+        {
+          "name": "SourceRecordID",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "IngestionRunID",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "FeedCode",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "SupersededByID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_hydromet_station",
+          "columns": [
+            "StationCode",
+            "ObservedAt"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hydromet_metric",
+          "columns": [
+            "MetricType",
+            "ObservedAt"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_hydromet_district",
+          "columns": [
+            "DistrictID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "Resource",
+      "external_id_prefix": "resource",
+      "primary_key": "ResourceID",
+      "append_only": false,
+      "search_columns": [
+        "Name"
+      ],
+      "columns": [
+        {
+          "name": "ResourceID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "ResourceType",
+          "type": "text",
+          "nullable": false,
+          "note": "one of RESOURCE_TYPES"
+        },
+        {
+          "name": "Name",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Quantity",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Unit",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "HomeUnitID",
+          "type": "int",
+          "nullable": true,
+          "note": "FK->Unit (synthetic)"
+        },
+        {
+          "name": "EmployeeID",
+          "type": "int",
+          "nullable": true,
+          "note": "FK->Employee for deployable personnel"
+        },
+        {
+          "name": "Lon",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Lat",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Capacity",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Capabilities",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "available|deployed|maintenance"
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "LastUpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_resource_home",
+          "columns": [
+            "HomeUnitID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_resource_status",
+          "columns": [
+            "Status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_resource_type",
+          "columns": [
+            "ResourceType"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "ReliefShelter",
+      "external_id_prefix": "shelter",
+      "primary_key": "ReliefShelterID",
+      "append_only": false,
+      "search_columns": [
+        "Name"
+      ],
+      "columns": [
+        {
+          "name": "ReliefShelterID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Name",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Lon",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Lat",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Capacity",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CurrentOccupancy",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Facilities",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "open|full|closed"
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_shelter_district",
+          "columns": [
+            "DistrictID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "ResourceAllocation",
+      "external_id_prefix": "alloc",
+      "primary_key": "ResourceAllocationID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "ResourceAllocationID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardEventID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ResourceID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "TargetZoneID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "QuantityAllocated",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "one of ALLOCATION_STATUSES"
+        },
+        {
+          "name": "Score",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Reason",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ProposedByActor",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ApprovedByActor",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ApprovedByEmployeeID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ProposedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ApprovedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "DispatchedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "EnrouteAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "OnsiteAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ReleasedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_alloc_event",
+          "columns": [
+            "HazardEventID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_alloc_resource",
+          "columns": [
+            "ResourceID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_alloc_status",
+          "columns": [
+            "Status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_alloc_district",
+          "columns": [
+            "DistrictID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "EvacuationRoute",
+      "external_id_prefix": "evacroute",
+      "primary_key": "EvacuationRouteID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "EvacuationRouteID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardEventID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "FromZoneID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ToShelterID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "GeoJSON",
+          "type": "json",
+          "nullable": true,
+          "note": "LineString (EPSG:4326)"
+        },
+        {
+          "name": "DistanceKm",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "EstMinutes",
+          "type": "numeric",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "RoadGraphVersion",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "HazardExclusionVersion",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "proposed|selected|no_route"
+        },
+        {
+          "name": "Notes",
+          "type": "bigtext",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_evacroute_event",
+          "columns": [
+            "HazardEventID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_evacroute_status",
+          "columns": [
+            "Status"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "ResponsePlan",
+      "external_id_prefix": "resplan",
+      "primary_key": "ResponsePlanID",
+      "append_only": false,
+      "search_columns": [
+        "Title"
+      ],
+      "columns": [
+        {
+          "name": "ResponsePlanID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "HazardEventID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "HazardCode",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Title",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "TemplateCode",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "active|complete|archived"
+        },
+        {
+          "name": "DistrictID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_resplan_event",
+          "columns": [
+            "HazardEventID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_resplan_status",
+          "columns": [
+            "Status"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "ResponseTask",
+      "external_id_prefix": "restask",
+      "primary_key": "ResponseTaskID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "ResponseTaskID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "ResponsePlanID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Title",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Sequence",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "AssignedToActor",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "AssignedToEmployeeID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "open|in_progress|done|overdue"
+        },
+        {
+          "name": "DueAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CompletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Version",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "UpdatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DeletedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_restask_plan",
+          "columns": [
+            "ResponsePlanID"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "FeedSource",
+      "external_id_prefix": "feedsrc",
+      "primary_key": "FeedSourceID",
+      "append_only": false,
+      "search_columns": [
+        "Name"
+      ],
+      "columns": [
+        {
+          "name": "FeedSourceID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Code",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Name",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Provider",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ConnectorKind",
+          "type": "text",
+          "nullable": false,
+          "note": "synthetic_replay|recorded_sample|live"
+        },
+        {
+          "name": "Licence",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Attribution",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "FreshnessSlaMinutes",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "ExternalAccessRequired",
+          "type": "bool",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_feedsrc_code",
+          "columns": [
+            "Code"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "FeedIngestionRun",
+      "external_id_prefix": "feedrun",
+      "primary_key": "FeedIngestionRunID",
+      "append_only": false,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "FeedIngestionRunID",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "FeedSourceID",
+          "type": "int",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "FeedCode",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "StartedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "FinishedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Status",
+          "type": "text",
+          "nullable": false,
+          "note": "ok|partial|failed|stale"
+        },
+        {
+          "name": "AcceptedCount",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DuplicateCount",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "RejectedCount",
+          "type": "int",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "LastObservedAt",
+          "type": "timestamp",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "Detail",
+          "type": "json",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_feedrun_source",
+          "columns": [
+            "FeedSourceID",
+            "StartedAt"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "DisasterActivity",
+      "external_id_prefix": "dact",
+      "primary_key": "DisasterActivityID",
+      "append_only": true,
+      "search_columns": [],
+      "columns": [
+        {
+          "name": "DisasterActivityID",
+          "type": "int",
+          "nullable": false,
+          "note": "identity PK; monotonic"
+        },
+        {
+          "name": "SubjectType",
+          "type": "text",
+          "nullable": false,
+          "note": "hazard_event|allocation|route|plan|..."
+        },
+        {
+          "name": "SubjectID",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Actor",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "Action",
+          "type": "text",
+          "nullable": false,
+          "note": ""
+        },
+        {
+          "name": "DiffJSON",
+          "type": "json",
+          "nullable": true,
+          "note": "compact before/after (data-minimised)"
+        },
+        {
+          "name": "RequestID",
+          "type": "text",
+          "nullable": true,
+          "note": ""
+        },
+        {
+          "name": "CreatedAt",
+          "type": "timestamp",
+          "nullable": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_dact_subject",
+          "columns": [
+            "SubjectType",
+            "SubjectID"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_dact_seq",
+          "columns": [
+            "DisasterActivityID"
+          ],
+          "unique": false
+        }
+      ]
+    }
+  ],
+  "mapping_version": "2026.07.19-2",
+  "generated_from": "services/ml/app/datastore/disaster_schema.py",
+  "provision_order": [
+    "HazardType",
+    "FeedSource",
+    "Resource",
+    "ReliefShelter",
+    "HazardEvent",
+    "HydroMetReading",
+    "HazardRiskZone",
+    "HazardPrediction",
+    "ResourceAllocation",
+    "EvacuationRoute",
+    "ResponsePlan",
+    "ResponseTask",
+    "FeedIngestionRun",
+    "DisasterActivity"
+  ],
+  "demo_subset": {
+    "HazardType": {
+      "rows": 9,
+      "mandatory": true,
+      "note": "all HAZARD_CODES seeded deterministically"
+    },
+    "FeedSource": {
+      "rows": 3,
+      "mandatory": true,
+      "note": "synthetic_replay + recorded_sample + live (Open-Meteo)"
+    },
+    "Resource": {
+      "rows": 24,
+      "mandatory": true,
+      "note": "deployable resources per demo district"
+    },
+    "ReliefShelter": {
+      "rows": 8,
+      "mandatory": true,
+      "note": "evacuation destinations"
+    },
+    "HazardEvent": {
+      "rows": 6,
+      "mandatory": true,
+      "note": "golden-journey hazard events"
+    },
+    "HydroMetReading": {
+      "rows": 120,
+      "mandatory": true,
+      "note": "recent readings window"
+    },
+    "HazardRiskZone": {
+      "rows": 10,
+      "mandatory": true,
+      "note": "static + dynamic zones"
+    },
+    "HazardPrediction": {
+      "rows": 6,
+      "mandatory": false,
+      "note": "seeded on demand; empty until a forecast runs (Prompt 23)"
+    },
+    "ResourceAllocation": {
+      "rows": 4,
+      "mandatory": false,
+      "note": "empty until a coordinator proposes; human-approved before dispatch"
+    },
+    "EvacuationRoute": {
+      "rows": 4,
+      "mandatory": false,
+      "note": "computed on demand; no_route surfaced"
+    },
+    "ResponsePlan": {
+      "rows": 3,
+      "mandatory": true,
+      "note": "per-hazard SOP plan headers"
+    },
+    "ResponseTask": {
+      "rows": 18,
+      "mandatory": true,
+      "note": "SOP checklist tasks"
+    },
+    "FeedIngestionRun": {
+      "rows": 6,
+      "mandatory": false,
+      "note": "heartbeat/freshness runs"
+    },
+    "DisasterActivity": {
+      "rows": 0,
+      "mandatory": false,
+      "note": "append-only; grows from demo actions (empty at seed)"
+    }
+  },
+  "provisioning": {
+    "mechanism": "Catalyst Data Store table create/verify via the Admin SDK (provision_disaster_tables.py); idempotent create-if-absent.",
+    "seed": "Deterministic golden-journey rows are seeded idempotently by services/ml/app/disaster/seed.py (upsert by ExternalID).",
+    "rls": "AWS PostgreSQL RLS/FORCE RLS remain DISABLED; no RLS policy is created for the optional analytics mirror. Catalyst Authentication + API Gateway/AppSail authorization is the enforced access boundary.",
+    "pg_migration": "NONE \u2014 Data Store-native tables. The optional AWS PostGIS/pgRouting mirror (services/ml/sql/023_disaster_response.sql) is a reconstructable analytics artifact keyed by the same ExternalIDs."
+  }
+}

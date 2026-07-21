@@ -41,8 +41,8 @@ export function ExploreMode({
       });
     }
     for (const e of edges) {
-      nodesMap.current.has(String(e.source)) &&
-        nodesMap.current.has(String(e.target)) &&
+      // Only add an edge when BOTH endpoints are present on the canvas.
+      if (nodesMap.current.has(String(e.source)) && nodesMap.current.has(String(e.target))) {
         edgesMap.current.set(String(e.edge_id), {
           id: e.edge_id,
           source: e.source,
@@ -50,6 +50,7 @@ export function ExploreMode({
           relationship_type: e.relationship_type,
           weight: e.weight,
         });
+      }
     }
     setVersion((v) => v + 1);
   }, []);

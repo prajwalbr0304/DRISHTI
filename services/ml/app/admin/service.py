@@ -459,14 +459,41 @@ def _flag_runtime_effective(key: str, db_enabled: bool) -> Optional[bool]:
     return db_enabled
 
 
+# Default feature-flag catalogue (config, enforced in code — mirrors the seed in
+# services/ml/sql/022_admin_notifications_reports.sql). Feature flags are
+# configuration, not RDS operational data, so they are served without a database
+# in the deployed AppSail (Prompt 21 §B); runtime env gates are overlaid below.
+_DEFAULT_FEATURE_FLAGS: tuple[tuple[str, bool, str, str], ...] = (
+    ("rag_assistant", False, "rag",
+     "Optional approved-text QuickML RAG assistant. Also requires DRISHTI_QUICKML_RAG_ENABLED."),
+    ("notifications_email", False, "notifications",
+     "Catalyst Mail delivery for synthetic summaries. Also requires DRISHTI_NOTIFY_ENABLED."),
+    ("notifications_push", False, "notifications",
+     "Catalyst Push delivery for synthetic summaries. Also requires DRISHTI_NOTIFY_ENABLED."),
+    ("reports_smartbrowz", True, "reports",
+     "Use Catalyst SmartBrowz for report rendering (else AppSail fallback)."),
+    ("signals_enabled", True, "admin",
+     "Publish Catalyst Signals after the Data Store commit."),
+)
+
+
 def list_feature_flags() -> list[dict]:
-    with db.ro_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute('SELECT "Key","Enabled","Category","Description" FROM "FeatureFlag" '
-                        'ORDER BY "Category","Key"')
-            rows = cur.fetchall()
-    return [{"key": r[0], "enabled": bool(r[1]), "category": r[2], "description": r[3],
-             "runtime_effective": _flag_runtime_effective(r[0], bool(r[1]))} for r in rows]
+    from ..config import get_settings
+    if get_settings().database_url:
+        try:
+            with db.ro_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT "Key","Enabled","Category","Description" FROM "FeatureFlag" '
+                                'ORDER BY "Category","Key"')
+                    rows = cur.fetchall()
+            return [{"key": r[0], "enabled": bool(r[1]), "category": r[2], "description": r[3],
+                     "runtime_effective": _flag_runtime_effective(r[0], bool(r[1]))} for r in rows]
+        except Exception:  # noqa: BLE001 — RDS unreachable -> code-based catalogue
+            pass
+    # Deployed AppSail (no DATABASE_URL): code-based flag catalogue.
+    return [{"key": k, "enabled": en, "category": cat, "description": desc,
+             "runtime_effective": _flag_runtime_effective(k, en)}
+            for (k, en, cat, desc) in sorted(_DEFAULT_FEATURE_FLAGS, key=lambda x: (x[2], x[0]))]
 
 
 def usage() -> dict:

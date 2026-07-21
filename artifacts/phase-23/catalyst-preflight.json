@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-07-21T19:16:25+05:30",
+  "expected": {
+    "project_id": "48361000000030003",
+    "organization_id": "60075362708",
+    "dc": "in"
+  },
+  "cli_checks": [
+    {
+      "command": [
+        "C:\\Users\\Prajwal\\AppData\\Roaming\\npm\\catalyst.CMD",
+        "--version"
+      ],
+      "exit_code": 0,
+      "output": "1.27.0"
+    },
+    {
+      "command": [
+        "C:\\Users\\Prajwal\\AppData\\Roaming\\npm\\catalyst.CMD",
+        "project:list"
+      ],
+      "exit_code": 0,
+      "output": ""
+    }
+  ],
+  "placeholder_findings": [],
+  "ready": true,
+  "note": "This preflight does not prove live component existence or invocation."
+}

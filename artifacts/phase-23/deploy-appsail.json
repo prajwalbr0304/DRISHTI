@@ -1,0 +1,15 @@
+{
+  "step": "C.3 deploy AppSail",
+  "command": "catalyst deploy appsail --name drishti-api --source docker://drishti-api:appsail --port 9000",
+  "cwd": "infra/catalyst",
+  "exit_code": 0,
+  "result": "DEPLOYMENT SUCCESSFUL: drishti-api",
+  "timestamp": "2026-07-21T19:45:00+05:30",
+  "appsail_url": "https://drishti-api-50044118953.development.catalystappsail.in",
+  "image": "drishti-api:appsail (linux/amd64, id 81b08d8083a3, the Phase 22 tested artifact)",
+  "health_checks_pre_config": {
+    "GET /health/live": { "status": 200, "body": {"status": "live", "app": "drishti-ml", "version": "0.1.0"} },
+    "GET /health/ready": { "status": 200, "body": {"status": "ready", "ready": true, "checks": {"config": "ok", "environment": "synthetic_hackathon", "hackathon_mode": "on", "operational_datastore": "ok", "gateway_auth": "not_required", "object_store": "not_required", "analytics_db": "unavailable"}} }
+  },
+  "pre_config_note": "AppSail is running the tested image. Readiness passes via the in-memory Data Store fallback because env is not yet set. gateway_auth=not_required means DRISHTI_REQUIRE_GATEWAY_CONTEXT is unset -> the signed-context boundary is NOT yet enforced (direct CRUD would be accepted). MUST set env in Console: ZOHO_APPSAIL_SIGNING_SECRET, DRISHTI_REQUIRE_GATEWAY_CONTEXT=true, DRISHTI_CONTEXT_AUDIENCE=drishti-appsail, DRISHTI_USE_CATALYST_DATASTORE=true, DRISHTI_USE_CATALYST_STRATUS=true + bucket names. After that, readiness will REQUIRE real Data Store + signing secret + Stratus (Prompt 21 G.2)."
+}

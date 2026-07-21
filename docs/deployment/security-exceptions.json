@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "description": "Accepted dependency-vulnerability exceptions for the DRISHTI hackathon-demo release (Prompt 22 D.2). The dependency-audit gate (scripts/security/dep_audit.py) BLOCKS on any high/critical finding NOT listed here, and warns when an exception is past its expiry. Each exception records the deployment-context mitigation, the owner, an expiry that forces re-review, and the concrete fix path. This is a synthetic-hackathon posture, never a production waiver.",
+  "reviewed_at": "2026-07-21",
+  "owner": "DRISHTI maintainer (hackathon)",
+  "default_expiry": "2026-09-30",
+  "npm": {
+    "note": "Shipped (production) npm dependencies are clean: `npm audit --omit=dev` reports 0 vulnerabilities. The 5 dev-toolchain findings (vite, vitest, @vitest/mocker, vite-node, esbuild) are build/test-only, are NOT emitted into the static browser bundle, and the high/critical ones require running the dev/test server AND visiting a malicious site. They are therefore out of the shipped-artifact scope; tracked for a dev-toolchain bump.",
+    "dev_toolchain_findings": ["vite", "vitest", "@vitest/mocker", "vite-node", "esbuild"]
+  },
+  "pip_exceptions": [
+    {
+      "package": "starlette",
+      "observed_version": "0.41.3",
+      "transitive_via": "fastapi==0.115.6 (pins starlette>=0.40,<0.42)",
+      "ids": [
+        "PYSEC-2026-161", "CVE-2026-48710",
+        "PYSEC-2026-248", "CVE-2026-54282",
+        "PYSEC-2026-249", "CVE-2026-54283",
+        "PYSEC-2026-1942", "CVE-2025-62727",
+        "PYSEC-2026-1941", "CVE-2025-54121",
+        "PYSEC-2026-2281", "CVE-2026-48818",
+        "PYSEC-2026-2280", "CVE-2026-48817"
+      ],
+      "applicability": [
+        "CVE-2026-48818 (StaticFiles UNC SSRF) is Windows-only; AppSail deploys on linux/amd64 and DRISHTI serves NO StaticFiles from user-controlled paths.",
+        "CVE-2025-54121 (multipart spool) + CVE-2026-54283 (request.form bounds): the AppSail API is JSON-only; it does not parse untrusted multipart form uploads (evidence objects use Catalyst Stratus / S3 pre-signed URLs, not multipart through Starlette).",
+        "CVE-2025-62727 (FileResponse Range quadratic DoS): DRISHTI does not serve user-controlled FileResponse with Range headers from AppSail.",
+        "CVE-2026-48710 + CVE-2026-54282 (Host/path used to rebuild request.url): DRISHTI authorization uses the signed gateway context, never request.url host/path; all traffic is fronted by the Catalyst API Gateway which validates Host and caps request size/rate.",
+        "CVE-2026-48817 (HTTPEndpoint handler lowercasing): DRISHTI routes are APIRouter function endpoints, not case-varying HTTPEndpoint classes."
+      ],
+      "severity_note": "Advisories are DoS or feature-specific and are not exploitable in the DRISHTI AppSail deployment context (linux, JSON API, behind the Catalyst API Gateway, synthetic-only data).",
+      "mitigation": "Catalyst API Gateway request validation + size/rate caps; single-instance AppSail; synthetic-only data; no untrusted multipart/StaticFiles/FileResponse-Range surface.",
+      "fix_path": "Upgrade fastapi to >=0.139.2 and starlette to >=1.3.1 (crosses the starlette 1.0 major) in a tested maintenance window; deferred here because the cross-major framework upgrade cannot be landed AND regression-verified safely within Prompt 22 without risking the working 378-test backend. Re-evaluated at Prompt 25 (final release).",
+      "owner": "DRISHTI maintainer (hackathon)",
+      "expiry": "2026-09-30"
+    }
+  ]
+}

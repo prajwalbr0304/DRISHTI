@@ -1,0 +1,2805 @@
+{
+  "total_routes": 335,
+  "domain_count": 33,
+  "route_count_by_class": {
+    "CATALYST_OPERATIONAL": 254,
+    "AWS_ANALYTICS": 69,
+    "DISABLED_OUT_OF_SCOPE": 4,
+    "LOCAL_TOOLING_ONLY": 0,
+    "INFRASTRUCTURE": 8,
+    "UNCLASSIFIED": 0
+  },
+  "unclassified_domains": [],
+  "domains": {
+    "admin": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/status",
+          "endpoint": "app.admin.router:status"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/rls-status",
+          "endpoint": "app.admin.router:rls_status"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/identity",
+          "endpoint": "app.admin.router:identity"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/units",
+          "endpoint": "app.admin.router:units"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/source-systems",
+          "endpoint": "app.admin.router:source_systems"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/reconciliation",
+          "endpoint": "app.admin.router:reconciliation"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/reconciliation/repair",
+          "endpoint": "app.admin.router:reconciliation_repair"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/audit",
+          "endpoint": "app.admin.router:audit_search"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/audit/export",
+          "endpoint": "app.admin.router:audit_export"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/retention",
+          "endpoint": "app.admin.router:retention"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/retention/policies",
+          "endpoint": "app.admin.router:upsert_retention_policy"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/legal-holds",
+          "endpoint": "app.admin.router:legal_holds"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/legal-holds",
+          "endpoint": "app.admin.router:place_legal_hold"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/legal-holds/{legal_hold_id}/release",
+          "endpoint": "app.admin.router:release_legal_hold"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/models",
+          "endpoint": "app.admin.router:models"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/models/{model_version_id}/review",
+          "endpoint": "app.admin.router:review_model"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/queues",
+          "endpoint": "app.admin.router:queues"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/usage",
+          "endpoint": "app.admin.router:usage"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/feature-flags/{key}",
+          "endpoint": "app.admin.router:set_feature_flag"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/saved-filters",
+          "endpoint": "app.admin.router:saved_filters"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/admin/saved-filters",
+          "endpoint": "app.admin.router:create_saved_filter"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/admin/saved-filters/{saved_filter_id}",
+          "endpoint": "app.admin.router:delete_saved_filter"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/admin/report-templates",
+          "endpoint": "app.admin.router:report_templates"
+        }
+      ],
+      "route_count": 23,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store/code reads (done); RDS for the rest",
+      "rationale": "Admin/governance console. Feature flags + usage/plan baseline are code-based config (work without DATABASE_URL); the deeper governance read models still use RDS (tracked closure).",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.admin.service"
+      ]
+    },
+    "analytics": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/analytics/socioeconomic",
+          "endpoint": "app.analytics.router:socioeconomic"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/analytics/patterns",
+          "endpoint": "app.analytics.router:patterns"
+        }
+      ],
+      "route_count": 2,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Cross-district correlation/socioeconomic patterns (aggregate, k-anonymised, correlational-not-causal).",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.analytics.service"
+      ]
+    },
+    "board": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/meta/object-kinds",
+          "endpoint": "app.board.router:object_kinds"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards",
+          "endpoint": "app.board.router:create_board"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards",
+          "endpoint": "app.board.router:list_boards"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}",
+          "endpoint": "app.board.router:get_board"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/boards/{board_id}",
+          "endpoint": "app.board.router:patch_board"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/archive",
+          "endpoint": "app.board.router:archive_board"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/lock",
+          "endpoint": "app.board.router:lock_board"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/branch",
+          "endpoint": "app.board.router:branch_board"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/nodes",
+          "endpoint": "app.board.router:add_node"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/boards/{board_id}/nodes/{node_id}",
+          "endpoint": "app.board.router:patch_node"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/boards/{board_id}/nodes/{node_id}",
+          "endpoint": "app.board.router:delete_node"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/edges",
+          "endpoint": "app.board.router:add_edge"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/boards/{board_id}/edges/{edge_id}",
+          "endpoint": "app.board.router:patch_edge"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/boards/{board_id}/edges/{edge_id}",
+          "endpoint": "app.board.router:delete_edge"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/annotations",
+          "endpoint": "app.board.router:add_annotation"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/boards/{board_id}/annotations/{annotation_id}",
+          "endpoint": "app.board.router:patch_annotation"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/boards/{board_id}/annotations/{annotation_id}",
+          "endpoint": "app.board.router:delete_annotation"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/collaborators",
+          "endpoint": "app.board.router:list_collaborators"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/collaborators",
+          "endpoint": "app.board.router:add_collaborator"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/boards/{board_id}/collaborators/{collaborator_id}",
+          "endpoint": "app.board.router:remove_collaborator"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/search-around",
+          "endpoint": "app.board.router:search_around"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/import/subgraph",
+          "endpoint": "app.board.router:import_subgraph"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/promote-edge/{edge_id}",
+          "endpoint": "app.board.router:promote_edge"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/activity",
+          "endpoint": "app.board.router:activity"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/table",
+          "endpoint": "app.board.router:table"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/timeline",
+          "endpoint": "app.board.router:timeline"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/diffs",
+          "endpoint": "app.board.router:diffs"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/benchmark/search-around",
+          "endpoint": "app.board.router:benchmark_search_around"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/references/{ref_table}/{ref_id}",
+          "endpoint": "app.board.router:get_reference"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/presence",
+          "endpoint": "app.board.router:presence_heartbeat"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/presence",
+          "endpoint": "app.board.router:presence_roster"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/{board_id}/export",
+          "endpoint": "app.board.router:export_board"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/boards/{board_id}/export/{export_id}",
+          "endpoint": "app.board.router:get_export"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/boards/import",
+          "endpoint": "app.board.router:import_board"
+        }
+      ],
+      "route_count": 34,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store canvas (native) + Stratus export; RDS/graph hydration pending adapter",
+      "rationale": "Investigation Board CANVAS (board/node/edge/annotation/activity) persists natively in Data Store (board/repo.py) and runs offline. Emergency-Response references already hydrate from Data Store. Search Around now fetches through the protected AWS analytics adapter (app/analytics_adapter.py) when configured (deployed), falling back to a direct RDS read only in dev. Crime-corpus reference hydration still reads RDS (curated Data Store projection is the target). Tracked, not hidden (C.3).",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.board.promote",
+        "app.board.references",
+        "app.board.searcharound",
+        "app.board.service"
+      ]
+    },
+    "cases": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases",
+          "endpoint": "app.cases.router:list_cases"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases/filters",
+          "endpoint": "app.cases.router:case_filters"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases/caseload",
+          "endpoint": "app.cases.router:caseload"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases/{case_id}/similar",
+          "endpoint": "app.cases.router:similar"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/cases/{case_id}/summary",
+          "endpoint": "app.cases.router:summary"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/cases/{case_id}/leads",
+          "endpoint": "app.cases.router:leads"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases/{case_id}/detail",
+          "endpoint": "app.cases.router:case_detail"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases/{case_id}/network",
+          "endpoint": "app.cases.router:case_network"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/cases/{case_id}/evidence",
+          "endpoint": "app.cases.router:case_evidence"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/cases/{case_id}/evidence",
+          "endpoint": "app.cases.router:add_case_evidence"
+        }
+      ],
+      "route_count": 10,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "Case detail/read models. Case corpus embeddings/similarity are AWS analytics; the operational case record is a Data Store target.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.cases.corpus",
+        "app.cases.explorer",
+        "app.cases.service"
+      ]
+    },
+    "casework": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/lookups",
+          "endpoint": "app.casework.router:lookups"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/cases/{cid}/timeline",
+          "endpoint": "app.casework.router:timeline"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/cases/{cid}/statements",
+          "endpoint": "app.casework.router:list_statements"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/statements",
+          "endpoint": "app.casework.router:create_statement"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/statements/{sid}",
+          "endpoint": "app.casework.router:get_statement"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/casework/statements/{sid}",
+          "endpoint": "app.casework.router:correct_statement"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/statements/{sid}/review",
+          "endpoint": "app.casework.router:review_statement"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/cases/{cid}/seizures",
+          "endpoint": "app.casework.router:list_seizures"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/seizures",
+          "endpoint": "app.casework.router:create_seizure"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/property-items",
+          "endpoint": "app.casework.router:add_property_item"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/casework/property-items/{pid}/status",
+          "endpoint": "app.casework.router:change_property_status"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/cases/{cid}/lab-results",
+          "endpoint": "app.casework.router:list_labs"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/lab-results",
+          "endpoint": "app.casework.router:create_lab"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/casework/lab-results/{lid}",
+          "endpoint": "app.casework.router:update_lab"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/casework/cases/{cid}/court",
+          "endpoint": "app.casework.router:court_lifecycle"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/court-events",
+          "endpoint": "app.casework.router:add_court_event"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/bail",
+          "endpoint": "app.casework.router:add_bail"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/disposition",
+          "endpoint": "app.casework.router:add_disposition"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/outcome",
+          "endpoint": "app.casework.router:add_outcome"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/casework/cases/{cid}/lifecycle-events",
+          "endpoint": "app.casework.router:add_lifecycle_event"
+        }
+      ],
+      "route_count": 20,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store reads (lookups done); writes RDS today",
+      "rationale": "Statements/property/court/lifecycle. Lookups are code/Data Store-served (work without DATABASE_URL); the record WRITE paths still use RDS (tracked closure).",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.casework.service"
+      ]
+    },
+    "chat": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/chat/capabilities",
+          "endpoint": "app.chat.router:capabilities"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/chat/sessions",
+          "endpoint": "app.chat.router:sessions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/chat/sessions/{session_id}",
+          "endpoint": "app.chat.router:session"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/chat/ask",
+          "endpoint": "app.chat.router:ask"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/chat/explain",
+          "endpoint": "app.chat.router:explain"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/chat/translate",
+          "endpoint": "app.chat.router:translate"
+        }
+      ],
+      "route_count": 6,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "Assistant chat session/message metadata (data-minimised).",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.chat.service"
+      ]
+    },
+    "disaster": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/hazard-types",
+          "endpoint": "app.disaster.router:hazard_types"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/overview",
+          "endpoint": "app.disaster.router:overview"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/events",
+          "endpoint": "app.disaster.router:events"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/events/{event_id}",
+          "endpoint": "app.disaster.router:event"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/zones",
+          "endpoint": "app.disaster.router:zones"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/predictions",
+          "endpoint": "app.disaster.router:predictions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/readings",
+          "endpoint": "app.disaster.router:readings"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/feeds/freshness",
+          "endpoint": "app.disaster.router:feeds_freshness"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/resources",
+          "endpoint": "app.disaster.router:resources"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/shelters",
+          "endpoint": "app.disaster.router:shelters"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/allocations",
+          "endpoint": "app.disaster.router:allocations"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/routes",
+          "endpoint": "app.disaster.router:routes"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/alerts",
+          "endpoint": "app.disaster.router:alerts"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/plans",
+          "endpoint": "app.disaster.router:plans"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/plans/{plan_id}",
+          "endpoint": "app.disaster.router:plan"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/disaster/forecast/validate",
+          "endpoint": "app.disaster.router:forecast_validate"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/demo/seed",
+          "endpoint": "app.disaster.router:demo_seed"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/feeds/{feed_code}/ingest",
+          "endpoint": "app.disaster.router:feed_ingest"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/events",
+          "endpoint": "app.disaster.router:create_event"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/events/{event_id}/transition",
+          "endpoint": "app.disaster.router:transition_event"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/forecast/run",
+          "endpoint": "app.disaster.router:forecast_run"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/alerts/propose",
+          "endpoint": "app.disaster.router:alert_propose"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/alerts/{alert_id}/approve",
+          "endpoint": "app.disaster.router:alert_approve"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/resources",
+          "endpoint": "app.disaster.router:create_resource"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/shelters",
+          "endpoint": "app.disaster.router:create_shelter"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/allocations/propose",
+          "endpoint": "app.disaster.router:allocation_propose"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/allocations/{alloc_id}/transition",
+          "endpoint": "app.disaster.router:allocation_transition"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/routes/propose",
+          "endpoint": "app.disaster.router:route_propose"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/routes/{route_id}/select",
+          "endpoint": "app.disaster.router:route_select"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/disaster/plans",
+          "endpoint": "app.disaster.router:create_plan"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/disaster/tasks/{task_id}",
+          "endpoint": "app.disaster.router:patch_task"
+        }
+      ],
+      "route_count": 31,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (native)",
+      "rationale": "Emergency Response hazards/readings/forecasts/resources/routes persist natively in Data Store (disaster/repo.py over the shared DataStoreRepository). The AWS PostGIS mirror is reconstructable and adapter-only.",
+      "migration": "datastore_native",
+      "demo_visible": true,
+      "direct_db_modules": []
+    },
+    "evidence": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/evidence/status",
+          "endpoint": "app.evidence.router:evidence_status"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/evidence/lookups",
+          "endpoint": "app.evidence.router:evidence_lookups"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/evidence/items",
+          "endpoint": "app.evidence.router:list_items"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items",
+          "endpoint": "app.evidence.router:create_item"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/evidence/items/{item_id}",
+          "endpoint": "app.evidence.router:get_item"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/evidence/items/{item_id}",
+          "endpoint": "app.evidence.router:update_item"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/evidence/items/{item_id}/activity",
+          "endpoint": "app.evidence.router:item_activity"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items/{item_id}/upload-url",
+          "endpoint": "app.evidence.router:upload_url"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items/{item_id}/complete",
+          "endpoint": "app.evidence.router:complete_upload"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items/{item_id}/download-url",
+          "endpoint": "app.evidence.router:download_url"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items/{item_id}/links",
+          "endpoint": "app.evidence.router:link_item"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/evidence/items/{item_id}/links",
+          "endpoint": "app.evidence.router:unlink_item"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items/{item_id}/archive",
+          "endpoint": "app.evidence.router:archive_item"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/items/{item_id}/restore",
+          "endpoint": "app.evidence.router:restore_item"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/migrate-legacy",
+          "endpoint": "app.evidence.router:migrate_legacy"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/evidence/reset",
+          "endpoint": "app.evidence.router:reset"
+        }
+      ],
+      "route_count": 16,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store metadata + Stratus objects (target); RDS today",
+      "rationale": "Evidence metadata (manual only; no extraction). File bytes -> private Stratus; metadata -> Data Store. Currently RDS metadata.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.evidence.guards",
+        "app.evidence.service"
+      ]
+    },
+    "explain": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/explain/contract",
+          "endpoint": "app.explain.router:contract"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/explain/models",
+          "endpoint": "app.explain.router:models"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/explain/models/{model_version_id}",
+          "endpoint": "app.explain.router:model_detail"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/explain/{table}/{record_id}",
+          "endpoint": "app.explain.router:explain"
+        }
+      ],
+      "route_count": 4,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Analytics explainability over derived model artifacts.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.explain.service"
+      ]
+    },
+    "fastapi.applications": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/openapi.json",
+          "endpoint": "fastapi.applications:openapi"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/docs",
+          "endpoint": "fastapi.applications:swagger_ui_html"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/docs/oauth2-redirect",
+          "endpoint": "fastapi.applications:swagger_ui_redirect"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/redoc",
+          "endpoint": "fastapi.applications:redoc_html"
+        }
+      ],
+      "route_count": 4,
+      "boundary": "INFRASTRUCTURE",
+      "backend": "OpenAPI/docs (framework)",
+      "rationale": "Framework-generated /openapi.json, /docs, /redoc. No app data.",
+      "migration": "n/a",
+      "demo_visible": false,
+      "direct_db_modules": []
+    },
+    "forecast": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/horizons",
+          "endpoint": "app.forecast.router:forecast_horizons"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/forecast/run",
+          "endpoint": "app.forecast.router:run"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/layers",
+          "endpoint": "app.forecast.router:layers"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/district/{district_id}",
+          "endpoint": "app.forecast.router:district"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/map",
+          "endpoint": "app.forecast.router:forecast_map"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/forecast/near-repeat",
+          "endpoint": "app.forecast.router:near_repeat"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/validation",
+          "endpoint": "app.forecast.router:forecast_validation"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/backtest",
+          "endpoint": "app.forecast.router:forecast_backtest"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/forecast/freshness",
+          "endpoint": "app.forecast.router:forecast_freshness"
+        }
+      ],
+      "route_count": 9,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Spatiotemporal forecasting/backtests. Derived historical + model compute; adapter-only.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.forecast.earlywarning",
+        "app.forecast.fusion",
+        "app.forecast.governance_bridge",
+        "app.forecast.nearrepeat",
+        "app.forecast.service",
+        "app.forecast.stgnn",
+        "app.forecast.tabfm_forecast",
+        "app.forecast.timesfm"
+      ]
+    },
+    "geo": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/hotspots",
+          "endpoint": "app.geo.router:hotspots"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/trends",
+          "endpoint": "app.geo.router:trends"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/points",
+          "endpoint": "app.geo.router:points"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/stations",
+          "endpoint": "app.geo.router:stations"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/case-links",
+          "endpoint": "app.geo.router:case_links"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/alerts",
+          "endpoint": "app.geo.router:alerts"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/coverage",
+          "endpoint": "app.geo.router:coverage"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/boundaries/{level}",
+          "endpoint": "app.geo.router:boundaries"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/sho-regions",
+          "endpoint": "app.geo.router:sho_regions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/db-boundaries/{level}",
+          "endpoint": "app.geo.router:db_boundaries"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/jurisdiction/freshness",
+          "endpoint": "app.geo.router:jurisdiction_freshness"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/geo/jurisdiction/issues",
+          "endpoint": "app.geo.router:jurisdiction_issues"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/geo/jurisdiction/scan",
+          "endpoint": "app.geo.router:jurisdiction_scan"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/geo/jurisdiction/reassign",
+          "endpoint": "app.geo.router:jurisdiction_reassign"
+        }
+      ],
+      "route_count": 14,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS/PostGIS via protected adapter",
+      "rationale": "PostGIS geospatial hotspots/trends/jurisdiction. Boundaries are curated projections; spatial queries are adapter-only.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.geo.alerts",
+        "app.geo.hotspots",
+        "app.geo.jurisdiction",
+        "app.geo.persist",
+        "app.geo.router",
+        "app.geo.service"
+      ]
+    },
+    "governance": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/features",
+          "endpoint": "app.governance.router:features"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/schemas",
+          "endpoint": "app.governance.router:schemas"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/models",
+          "endpoint": "app.governance.router:models"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/snapshots",
+          "endpoint": "app.governance.router:snapshots"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/labels",
+          "endpoint": "app.governance.router:labels"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/predictions",
+          "endpoint": "app.governance.router:predictions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/governance/predictions/{request_id}",
+          "endpoint": "app.governance.router:prediction_detail"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/governance/snapshots/build",
+          "endpoint": "app.governance.router:build_snapshot"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/governance/snapshots/invalidate",
+          "endpoint": "app.governance.router:invalidate_snapshot"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/governance/predictions",
+          "endpoint": "app.governance.router:create_prediction"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/governance/predictions/{request_id}/run",
+          "endpoint": "app.governance.router:run_prediction"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/governance/predictions/{request_id}/review",
+          "endpoint": "app.governance.router:review_prediction"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/governance/models/{model_version_id}/rollback",
+          "endpoint": "app.governance.router:rollback_model"
+        }
+      ],
+      "route_count": 13,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "Governance artifact/audit read models.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.governance.builder",
+        "app.governance.service"
+      ]
+    },
+    "graph": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/entities",
+          "endpoint": "app.graph.router:list_entities"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/entities/{entity_id}",
+          "endpoint": "app.graph.router:entity_detail"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/communities/list",
+          "endpoint": "app.graph.router:communities_list"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/communities/{community_id}/subgraph",
+          "endpoint": "app.graph.router:community_subgraph"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/neighbourhood",
+          "endpoint": "app.graph.router:neighbourhood"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/path/suggestions",
+          "endpoint": "app.graph.router:path_suggestions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/path",
+          "endpoint": "app.graph.router:path"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/graph/communities",
+          "endpoint": "app.graph.router:communities"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/centrality",
+          "endpoint": "app.graph.router:centrality"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/graph/hidden-associations",
+          "endpoint": "app.graph.router:hidden_associations"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/proof-path",
+          "endpoint": "app.graph.router:proof_path"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/graph/archive-status",
+          "endpoint": "app.graph.router:archive_status"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/graph/archive-legacy",
+          "endpoint": "app.graph.router:archive_legacy"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/graph/rebuild",
+          "endpoint": "app.graph.router:rebuild"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/graph/edges/{edge_id}/review",
+          "endpoint": "app.graph.router:review_edge"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/graph/hidden-associations/{association_id}/review",
+          "endpoint": "app.graph.router:review_hidden"
+        }
+      ],
+      "route_count": 16,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Graph algorithms/community/hidden-link analytics over the full graph corpus. Reviewed projections may be surfaced via Data Store; heavy queries stay adapter-only.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.graph.algorithms",
+        "app.graph.archive",
+        "app.graph.enrich",
+        "app.graph.explorer",
+        "app.graph.hidden",
+        "app.graph.service"
+      ]
+    },
+    "identity": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/identity/stats",
+          "endpoint": "app.identity.router:identity_stats"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/identity/persons",
+          "endpoint": "app.identity.router:search_persons"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/identity/persons/{cpid}",
+          "endpoint": "app.identity.router:get_person"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons",
+          "endpoint": "app.identity.router:create_person"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/identity/persons/{cpid}",
+          "endpoint": "app.identity.router:update_person"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons/{cpid}/aliases",
+          "endpoint": "app.identity.router:add_alias"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/identity/persons/{cpid}/aliases/{row_id}",
+          "endpoint": "app.identity.router:delete_alias"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons/{cpid}/identifiers",
+          "endpoint": "app.identity.router:add_identifier"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/identity/persons/{cpid}/identifiers/{row_id}",
+          "endpoint": "app.identity.router:delete_identifier"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons/{cpid}/contacts",
+          "endpoint": "app.identity.router:add_contact"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/identity/persons/{cpid}/contacts/{row_id}",
+          "endpoint": "app.identity.router:delete_contact"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons/{cpid}/addresses",
+          "endpoint": "app.identity.router:add_address"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/identity/persons/{cpid}/addresses/{row_id}",
+          "endpoint": "app.identity.router:delete_address"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/identity/organisations",
+          "endpoint": "app.identity.router:search_orgs"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/organisations",
+          "endpoint": "app.identity.router:create_org"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/cases/{case_id}/parties",
+          "endpoint": "app.identity.router:add_party"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/identity/parties/{role_id}",
+          "endpoint": "app.identity.router:update_party"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/identity/parties/{role_id}",
+          "endpoint": "app.identity.router:remove_party"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/identity/resolution/candidates",
+          "endpoint": "app.identity.router:list_candidates"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/resolution/generate",
+          "endpoint": "app.identity.router:generate_candidates"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/resolution/candidates/{cand_id}/review",
+          "endpoint": "app.identity.router:review_candidate"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons/{cpid}/merge",
+          "endpoint": "app.identity.router:merge_persons"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/identity/persons/{cpid}/unmerge",
+          "endpoint": "app.identity.router:unmerge_persons"
+        }
+      ],
+      "route_count": 23,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "Canonical person/entity operational records.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.identity.service"
+      ]
+    },
+    "imports": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/templates",
+          "endpoint": "app.imports.router:list_templates"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/batches",
+          "endpoint": "app.imports.router:list_batches"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/batches",
+          "endpoint": "app.imports.router:create_batch"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/batches/{batch_id}",
+          "endpoint": "app.imports.router:get_batch"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/batches/{batch_id}/rows",
+          "endpoint": "app.imports.router:staging_rows"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/batches/{batch_id}/commit",
+          "endpoint": "app.imports.router:commit_batch"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/batches/{batch_id}/rollback",
+          "endpoint": "app.imports.router:rollback_batch"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/batches/{batch_id}/supersede",
+          "endpoint": "app.imports.router:supersede_batch"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/entity-links",
+          "endpoint": "app.imports.router:entity_link_queue"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/entity-links/{link_id}/review",
+          "endpoint": "app.imports.router:review_entity_link"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/cdr/timeline",
+          "endpoint": "app.imports.router:cdr_timeline"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/devices",
+          "endpoint": "app.imports.router:devices"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/accounts",
+          "endpoint": "app.imports.router:list_accounts"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/transactions",
+          "endpoint": "app.imports.router:list_transactions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/imports/money/alerts",
+          "endpoint": "app.imports.router:money_alerts"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/money/scan",
+          "endpoint": "app.imports.router:money_scan"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/imports/money/alerts/{alert_id}/disposition",
+          "endpoint": "app.imports.router:money_alert_disposition"
+        }
+      ],
+      "route_count": 17,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store reads (done) + Stratus; commit RDS today",
+      "rationale": "Import templates + financial account/transaction views now read from Catalyst Data Store (seeded serving subset; work without DATABASE_URL). The import COMMIT/canonicalization write pipeline still uses RDS + Stratus objects (tracked closure).",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.imports.analytics",
+        "app.imports.service"
+      ]
+    },
+    "intake": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/status",
+          "endpoint": "app.intake.router:intake_status"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/lookups",
+          "endpoint": "app.intake.router:intake_lookups"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/workflow",
+          "endpoint": "app.intake.router:intake_workflow"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/quality/issues",
+          "endpoint": "app.intake.router:quality_issues"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/geo/resolve",
+          "endpoint": "app.intake.router:geo_resolve"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/drafts",
+          "endpoint": "app.intake.router:list_drafts"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/drafts",
+          "endpoint": "app.intake.router:create_draft"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/drafts/{draft_key}",
+          "endpoint": "app.intake.router:get_draft"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/intake/drafts/{draft_key}",
+          "endpoint": "app.intake.router:update_draft"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/drafts/{draft_key}/validate",
+          "endpoint": "app.intake.router:validate_draft"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/drafts/{draft_key}/duplicate-check",
+          "endpoint": "app.intake.router:duplicate_check"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/drafts/{draft_key}/activity",
+          "endpoint": "app.intake.router:draft_activity"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/drafts/{draft_key}/parties",
+          "endpoint": "app.intake.router:add_party"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/intake/drafts/{draft_key}/parties/{party_id}",
+          "endpoint": "app.intake.router:update_party"
+        },
+        {
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/intake/drafts/{draft_key}/parties/{party_id}",
+          "endpoint": "app.intake.router:remove_party"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/drafts/{draft_key}/submit",
+          "endpoint": "app.intake.router:submit_draft"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/drafts/{draft_key}/review",
+          "endpoint": "app.intake.router:review_draft"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/intake/cases/{case_id}/parties",
+          "endpoint": "app.intake.router:case_parties"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/intake/cases/{case_id}/events",
+          "endpoint": "app.intake.router:create_case_event"
+        }
+      ],
+      "route_count": 19,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store reads (done) + Stratus; writes RDS today",
+      "rationale": "FIR/case intake. Reference lookups + workflow metadata now read from Catalyst Data Store (seeded serving subset) and work with DATABASE_URL absent. The canonical FIR WRITE path (create/submit/approve) still uses the RDS serving schema and is the tracked remaining closure.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.intake.guards",
+        "app.intake.lookups",
+        "app.intake.service"
+      ]
+    },
+    "internal": {
+      "routes": [
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/internal/ping",
+          "endpoint": "app.internal.router:internal_ping"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/internal/ping",
+          "endpoint": "app.internal.router:internal_ping"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/internal/predictions/dispatch",
+          "endpoint": "app.internal.router:predictions_dispatch"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/internal/forecast/run",
+          "endpoint": "app.internal.router:forecast_run"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/internal/notify",
+          "endpoint": "app.internal.router:notify"
+        }
+      ],
+      "route_count": 5,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (service-scope)",
+      "rationale": "Service-to-service endpoints (event/cron targets). Require a signed service context; persist authoritative Data Store state for prediction dispatch / notify / forecast run.",
+      "migration": "datastore_native",
+      "demo_visible": false,
+      "direct_db_modules": []
+    },
+    "investigate": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/investigate/{case_id}/brief",
+          "endpoint": "app.investigate.router:brief"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/investigate/{case_id}/ask",
+          "endpoint": "app.investigate.router:ask"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/investigate/{case_id}/send-to-board",
+          "endpoint": "app.investigate.router:send_to_board"
+        }
+      ],
+      "route_count": 3,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "Prompt 20 case-scoped investigation assistant: thin orchestration over case summary/similar/identity/leads/timeline that sends cited objects to the Board. Reads the operational case corpus (RDS today; Data Store target).",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.investigate.service"
+      ]
+    },
+    "livefeed": {
+      "routes": [
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/livefeed/fir-committed",
+          "endpoint": "app.livefeed.router:fir_committed"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/livefeed/project",
+          "endpoint": "app.livefeed.router:project"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/livefeed/freshness",
+          "endpoint": "app.livefeed.router:freshness"
+        }
+      ],
+      "route_count": 3,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store projection (target); RDS today",
+      "rationale": "Live Command Center committed-FIR projection/freshness. Idempotent projection; no person rescore, no auto-dispatch.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.livefeed.flow"
+      ]
+    },
+    "main": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/health",
+          "endpoint": "app.main:health"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/health/live",
+          "endpoint": "app.main:health_live"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/health/ready",
+          "endpoint": "app.main:health_ready"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/demo/risk-score",
+          "endpoint": "app.main:demo_risk_score"
+        }
+      ],
+      "route_count": 4,
+      "boundary": "INFRASTRUCTURE",
+      "backend": "process/health only",
+      "rationale": "Root, /health, /health/live, /health/ready, and the /demo/risk-score plumbing proof. Health probes are hit directly by Catalyst infra; /demo/* is not in the submitted UI.",
+      "migration": "n/a",
+      "demo_visible": false,
+      "direct_db_modules": [
+        "app.main"
+      ]
+    },
+    "money": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/money/trace",
+          "endpoint": "app.money.router:trace"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/money/unified",
+          "endpoint": "app.money.router:unified"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/money/flagged",
+          "endpoint": "app.money.router:flagged"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/money/detect",
+          "endpoint": "app.money.router:detect"
+        }
+      ],
+      "route_count": 4,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Financial-trail detection/graph analytics.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.money.detection",
+        "app.money.service"
+      ]
+    },
+    "notifications": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/notifications/preferences",
+          "endpoint": "app.notifications.router:get_preferences"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/notifications/preferences",
+          "endpoint": "app.notifications.router:update_preferences"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/notifications",
+          "endpoint": "app.notifications.router:list_notifications"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/notifications/{message_id}/read",
+          "endpoint": "app.notifications.router:mark_read"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/notifications/tasks",
+          "endpoint": "app.notifications.router:list_tasks"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/notifications/tasks",
+          "endpoint": "app.notifications.router:create_task"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/notifications/tasks/{work_task_id}",
+          "endpoint": "app.notifications.router:get_task"
+        },
+        {
+          "methods": [
+            "PATCH"
+          ],
+          "path": "/notifications/tasks/{work_task_id}",
+          "endpoint": "app.notifications.router:update_task"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/notifications/escalations/run",
+          "endpoint": "app.notifications.router:run_escalations"
+        }
+      ],
+      "route_count": 9,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "In-app notifications/work items.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.notifications.service"
+      ]
+    },
+    "org": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/org/hierarchy",
+          "endpoint": "app.org.router:get_hierarchy"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/org/scope-matrix",
+          "endpoint": "app.org.router:get_scope_matrix"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/org/roles",
+          "endpoint": "app.org.router:get_roles"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/org/users",
+          "endpoint": "app.org.router:get_users"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/org/my-scope",
+          "endpoint": "app.org.router:my_scope"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/org/roles/ensure",
+          "endpoint": "app.org.router:ensure_roles"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/org/users",
+          "endpoint": "app.org.router:create_user"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/org/users/{user_id}/role",
+          "endpoint": "app.org.router:assign_role"
+        },
+        {
+          "methods": [
+            "PUT"
+          ],
+          "path": "/org/users/{user_id}/scope",
+          "endpoint": "app.org.router:set_scope"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/org/users/{user_id}/active",
+          "endpoint": "app.org.router:set_active"
+        }
+      ],
+      "route_count": 10,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (target); RDS today",
+      "rationale": "Organizational hierarchy + provisioning. Scope derivation is a pure server-side function; the establishment lookup is a Data Store target.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.org.service"
+      ]
+    },
+    "performance": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/performance/overview",
+          "endpoint": "app.performance.router:overview"
+        }
+      ],
+      "route_count": 1,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Prompt 20 supervisor station/officer performance metrics (derived aggregate; scoped server-side).",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.performance.service"
+      ]
+    },
+    "predict": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/placement",
+          "endpoint": "app.predict.router:get_placement"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/capability-gaps",
+          "endpoint": "app.predict.router:get_capability_gaps"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/enablement",
+          "endpoint": "app.predict.router:get_enablement"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/routing",
+          "endpoint": "app.predict.router:get_routing"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/dispatch-policy",
+          "endpoint": "app.predict.router:get_dispatch_policy"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/health",
+          "endpoint": "app.predict.router:get_health"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/predict/jobs",
+          "endpoint": "app.predict.router:submit_job"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/predict/jobs/{request_id}",
+          "endpoint": "app.predict.router:collect_job"
+        }
+      ],
+      "route_count": 8,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS + custom ML via protected adapter",
+      "rationale": "Prediction runtime metadata (open aggregate) + job submit/collect routed to the protected adapter / custom-ML plane.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": []
+    },
+    "rag": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/rag/status",
+          "endpoint": "app.rag.router:status"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/rag/ask",
+          "endpoint": "app.rag.router:ask"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/rag/evaluate",
+          "endpoint": "app.rag.router:evaluate"
+        }
+      ],
+      "route_count": 3,
+      "boundary": "DISABLED_OUT_OF_SCOPE",
+      "backend": "Catalyst Data Store KB when configured; else honest empty state",
+      "rationale": "Optional retrieval-augmented knowledge base. Disabled/empty state unless a knowledge base is configured; hidden from the mandatory demo journey.",
+      "migration": "n/a",
+      "demo_visible": false,
+      "direct_db_modules": [
+        "app.rag.service"
+      ]
+    },
+    "reports": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/reports/templates",
+          "endpoint": "app.reports.router:templates"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/reports",
+          "endpoint": "app.reports.router:list_reports"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/reports",
+          "endpoint": "app.reports.router:generate_report"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/reports/{report_snapshot_id}",
+          "endpoint": "app.reports.router:get_report"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/reports/{report_snapshot_id}/verify",
+          "endpoint": "app.reports.router:verify_report"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/reports/{report_snapshot_id}/download",
+          "endpoint": "app.reports.router:download_report"
+        }
+      ],
+      "route_count": 6,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store + Stratus (target); RDS today",
+      "rationale": "Report snapshots. Rendered report objects -> private Stratus.",
+      "migration": "rds_backed_migration_pending",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.reports.service"
+      ]
+    },
+    "risk": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/risk/calibration",
+          "endpoint": "app.risk.router:calibration"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/risk/entity/{entity_id}",
+          "endpoint": "app.risk.router:risk_by_entity"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/risk/{accused_id}",
+          "endpoint": "app.risk.router:risk_by_accused"
+        }
+      ],
+      "route_count": 3,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Area/period risk scoring (decision support; never individual operationalised risk).",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.risk.scoring",
+        "app.risk.service"
+      ]
+    },
+    "scenarios": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/scenarios",
+          "endpoint": "app.scenarios.router:overview"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/scenarios/search",
+          "endpoint": "app.scenarios.router:search"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/scenarios/validate",
+          "endpoint": "app.scenarios.router:validate"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/scenarios/nl-examples",
+          "endpoint": "app.scenarios.router:nl_examples"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/scenarios/{scenario_id}",
+          "endpoint": "app.scenarios.router:get_scenario"
+        }
+      ],
+      "route_count": 5,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store (native) / bundled fixtures",
+      "rationale": "Prompt 20 synthetic scenario registry is additive fixture data loaded at runtime; no RDS access.",
+      "migration": "datastore_native",
+      "demo_visible": true,
+      "direct_db_modules": []
+    },
+    "search": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/search",
+          "endpoint": "app.search.router:metadata_search"
+        }
+      ],
+      "route_count": 1,
+      "boundary": "CATALYST_OPERATIONAL",
+      "backend": "Catalyst Data Store full-text search",
+      "rationale": "Deployed operational metadata search over Data Store search columns (case/FIR/person/evidence).",
+      "migration": "datastore_native",
+      "demo_visible": true,
+      "direct_db_modules": []
+    },
+    "stream": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/stream/predictions",
+          "endpoint": "app.stream.router:stream_predictions"
+        }
+      ],
+      "route_count": 1,
+      "boundary": "DISABLED_OUT_OF_SCOPE",
+      "backend": "n/a (SSE channel; off by default)",
+      "rationale": "Scoped SSE channel; OFF unless DRISHTI_STREAM_CHANNEL_ENABLED. Its own short-lived channel-token auth, not a data path.",
+      "migration": "n/a",
+      "demo_visible": false,
+      "direct_db_modules": []
+    },
+    "workload": {
+      "routes": [
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/workload/task",
+          "endpoint": "app.workload.router:task"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/workload/models",
+          "endpoint": "app.workload.router:models"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/workload/predictions",
+          "endpoint": "app.workload.router:predictions"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/workload/evaluation",
+          "endpoint": "app.workload.router:evaluation"
+        },
+        {
+          "methods": [
+            "GET"
+          ],
+          "path": "/workload/benchmarks",
+          "endpoint": "app.workload.router:benchmarks"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/workload/run",
+          "endpoint": "app.workload.router:run"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/workload/benchmark",
+          "endpoint": "app.workload.router:benchmark"
+        },
+        {
+          "methods": [
+            "POST"
+          ],
+          "path": "/workload/models/{model_version_id}/lifecycle",
+          "endpoint": "app.workload.router:lifecycle"
+        }
+      ],
+      "route_count": 8,
+      "boundary": "AWS_ANALYTICS",
+      "backend": "AWS RDS via protected adapter",
+      "rationale": "Workload-band benchmark/evaluation over historical caseload.",
+      "migration": "n/a",
+      "demo_visible": true,
+      "direct_db_modules": [
+        "app.workload.governance_bridge",
+        "app.workload.service"
+      ]
+    }
+  }
+}

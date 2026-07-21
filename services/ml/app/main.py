@@ -11,11 +11,11 @@ from __future__ import annotations
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import audit, db, matviews, models
+from . import audit, db, matviews, models, readiness
 from .config import get_settings
 from .contracts import AiResult, HealthReport
 from .graph.router import router as graph_router
@@ -200,25 +200,24 @@ def health_live() -> dict:
 
 
 @app.get("/health/ready")
-def health_ready() -> dict:
-    """Readiness probe (Catalyst AppSail).
+def health_ready(response: Response) -> dict:
+    """Readiness probe (Catalyst AppSail) — Prompt 21 §G.2.
 
-    Reports whether the service can accept traffic. The deployed operational
-    CRUD path uses the Catalyst SDK (Data Store / Stratus), so readiness does
-    NOT hard-require the AWS RDS ``DATABASE_URL`` — RDS is an advisory analytics
-    dependency only and its absence never flips the service to not-ready.
+    Reports whether the service can serve on its DEPLOYED OPERATIONAL DATA PLANE
+    (Catalyst Data Store / Stratus +, when enforced, the gateway auth secret).
+    It FAILS (HTTP 503, ready=false) when a mandatory dependency is unavailable
+    so a broken operational data plane can never read as ready.
+
+    The AWS RDS ``DATABASE_URL`` is an ADVISORY analytics dependency only: it is
+    probed for visibility but its absence never flips the service to not-ready.
     """
-    checks: dict[str, str] = {
-        "config": "ok",
-        "environment": settings.synthetic_env_expected,
-        "hackathon_mode": "on" if settings.hackathon_mode else "off",
-    }
-    # Advisory-only: probe the analytics DB but never fail readiness on it.
-    try:
-        checks["analytics_db"] = "ok" if db.ping() else "unavailable"
-    except Exception:  # noqa: BLE001 — advisory probe must not raise
-        checks["analytics_db"] = "unavailable"
-    return {"status": "ready", "ready": True, "checks": checks}
+    result = readiness.current(settings)
+    if not result.ready:
+        response.status_code = 503
+    payload = result.payload()
+    payload["app"] = settings.app_name
+    payload["version"] = settings.app_version
+    return payload
 
 
 class RiskScoreRequest(BaseModel):

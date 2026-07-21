@@ -20,6 +20,7 @@ import time
 from typing import Any, Optional
 
 from .. import db
+from ..analytics_adapter import get_analytics_adapter
 from ..cache import SEG_LOOKUP
 from ..graph import queries
 from ..graph.service import GRAPH_MODEL
@@ -75,11 +76,23 @@ def expand(entity_id: int, hops: int, max_neighbors: int, *,
             return data
 
     t0 = time.time()
-    with db.ro_conn() as conn:
-        exists = _entity_exists(conn, entity_id)
-        nodes, edges = ([], [])
-        if exists:
-            nodes, edges = queries.neighbourhood(conn, entity_id, hops, max_neighbors)
+    # Prompt 21 §C.3: in the deployed AppSail the graph-heavy subgraph is fetched
+    # through the PROTECTED AWS analytics adapter (typed, signed, capped), never a
+    # direct AppSail->RDS connection. The local read-only graph path remains ONLY
+    # as the dev fallback when the adapter is not configured (board is tracked as
+    # migration_pending in the route-data-boundary inventory until that is removed).
+    adapter = get_analytics_adapter()
+    if adapter is not None:
+        exists, nodes, edges = adapter.graph_neighbourhood(
+            entity_id, hops, max_neighbors, types=list(type_filter) if type_filter else None)
+        fetch_source = "aws-analytics-adapter"
+    else:
+        with db.ro_conn() as conn:
+            exists = _entity_exists(conn, entity_id)
+            nodes, edges = ([], [])
+            if exists:
+                nodes, edges = queries.neighbourhood(conn, entity_id, hops, max_neighbors)
+        fetch_source = "rds-direct(dev-fallback)"
     latency_ms = int((time.time() - t0) * 1000)
 
     neighbors = []
@@ -136,6 +149,7 @@ def expand(entity_id: int, hops: int, max_neighbors: int, *,
         "reasoning": (f"Capped recursive-CTE BFS over the canonical id-keyed graph, "
                       f"fan-out top {max_neighbors} by edge weight; no name matching."),
         "model": GRAPH_MODEL,
+        "fetch_source": fetch_source,
     }
     if not (time_from or time_to):
         try:

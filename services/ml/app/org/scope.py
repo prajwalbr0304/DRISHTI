@@ -219,6 +219,40 @@ def enforce_geo_request(scope: ScopeContext, *, unit_id: Optional[int] = None,
     return unit_id, district_id
 
 
+def scope_from_gateway_context(ctx) -> ScopeContext:
+    """Build a trusted :class:`ScopeContext` from a verified signed gateway
+    context (Prompt 21 §E.3). The role + district/unit were resolved SERVER-SIDE
+    by the gateway function and signed, so this needs no DB and cannot be spoofed
+    by the browser. Used by the deployed AppSail path."""
+    return derive_scope(
+        ctx.role,
+        user_id=None,
+        username=(ctx.user_id or None),
+        district_id=ctx.district_id,
+        unit_id=ctx.unit_id,
+        source="signed-gateway-context",
+    )
+
+
+def resolve_request_scope(request, *, fallback_role: Optional[str] = None) -> ScopeContext:
+    """Resolve the caller's trusted scope for a request.
+
+    Deployed: use the verified signed gateway context on ``request.state`` (role
+    + organizational scope, server-resolved and signed). Local/dev: fall back to
+    the presentation X-Role header with the role-default scope (no DB needed).
+    Never reads a browser-supplied district/unit for an authorization decision.
+    """
+    ctx = getattr(getattr(request, "state", None), "gateway_context", None)
+    if ctx is not None and getattr(ctx, "is_user", False):
+        return scope_from_gateway_context(ctx)
+    role = (fallback_role
+            or (request.headers.get("x-role") if hasattr(request, "headers") else None)
+            or "investigator").strip() or "investigator"
+    if role not in hierarchy.FUNCTIONAL_ROLES:
+        role = "investigator"
+    return derive_scope(role, source="role-default")
+
+
 def matrix_for_roles(district_id: Optional[int] = None) -> dict:
     """The full role x action allow/deny matrix (role-default scope), for the
     /org/scope-matrix endpoint and the matrix tests."""

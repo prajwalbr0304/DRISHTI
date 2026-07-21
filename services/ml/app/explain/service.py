@@ -342,6 +342,13 @@ def contract_audit() -> ContractAuditResponse:
         "/graph/communities/list", "/graph/communities/{community_id}/subgraph",
         "/chat/sessions", "/chat/sessions/{session_id}",
         "/chat/translate",   # a mechanical EN<->KN utility for PDF export, not an AI answer
+        # Capability / contract descriptors (Prompt 19-20). These return the
+        # SPA's truthful self-description — which semantic planner/voice provider
+        # is active, and which forecast horizons are advertised + how validated —
+        # NOT a model answer. They are exempt exactly like /chat/translate; the
+        # actual Ask/forecast ANSWER routes (/chat/ask, /forecast/map,
+        # /forecast/freshness) still MUST embed an AiResult.
+        "/chat/capabilities", "/forecast/horizons",
         # Command Center caseload pipeline + geo date-coverage + graph path-finder
         # seed list (added with the caseload / geospatial / graph enhancement).
         # These are raw OPERATIONAL reads — present-state lifecycle-stage counts,

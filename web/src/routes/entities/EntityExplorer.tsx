@@ -41,19 +41,9 @@ export function EntityExplorer() {
   }, [q]);
   useEffect(() => setPage(1), [search, entityType, hasRisk, gangAffiliated]);
 
-  if (role === "policymaker") {
-    return (
-      <div>
-        <PageHeader title="People & Entities" />
-        <EmptyState
-          icon={Lock}
-          title="Not available for this role"
-          description="Individual entity profiles are not accessible to the policymaker role, which works with aggregate views only."
-        />
-      </div>
-    );
-  }
-
+  // Hooks must run unconditionally and in a stable order (React Rules of
+  // Hooks), so this query is declared BEFORE the policymaker early-return
+  // below; it is simply disabled for policymaker (who is blocked anyway).
   const listQ = useQuery({
     queryKey: ["entities", "list", search, entityType, hasRisk, gangAffiliated, page],
     queryFn: ({ signal }) =>
@@ -68,8 +58,22 @@ export function EntityExplorer() {
         },
         signal,
       ),
+    enabled: role !== "policymaker",
     placeholderData: keepPreviousData,
   });
+
+  if (role === "policymaker") {
+    return (
+      <div>
+        <PageHeader title="People & Entities" />
+        <EmptyState
+          icon={Lock}
+          title="Not available for this role"
+          description="Individual entity profiles are not accessible to the policymaker role, which works with aggregate views only."
+        />
+      </div>
+    );
+  }
 
   const items = listQ.data?.items ?? [];
   const total = listQ.data?.total ?? 0;

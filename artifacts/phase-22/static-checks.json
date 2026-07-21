@@ -1,0 +1,51 @@
+{
+  "gate": "static_checks",
+  "passed": true,
+  "checks": [
+    {
+      "name": "json_yaml_valid",
+      "passed": true,
+      "checked": 172,
+      "errors": []
+    },
+    {
+      "name": "function_syntax",
+      "passed": true,
+      "checked": 10,
+      "errors": []
+    },
+    {
+      "name": "dockerfile_check",
+      "passed": true,
+      "checked": 2,
+      "errors": []
+    },
+    {
+      "name": "env_key_schema",
+      "passed": true,
+      "example_keys": 6,
+      "undocumented_keys": []
+    },
+    {
+      "name": "cors_policy",
+      "passed": true,
+      "problems": []
+    },
+    {
+      "name": "browser_db_client",
+      "passed": true,
+      "hits": []
+    },
+    {
+      "name": "synthetic_marker",
+      "passed": true,
+      "problems": []
+    },
+    {
+      "name": "python_compile",
+      "passed": true,
+      "checked": 254,
+      "error": null
+    }
+  ]
+}

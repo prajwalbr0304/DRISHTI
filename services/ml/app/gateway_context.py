@@ -42,6 +42,19 @@ _MAX_SKEW_MS = 60_000
 _NONCE_TTL_S = 180
 _VALID_SCOPES = ("gateway", "service")
 
+# Canonical six functional roles — MUST mirror
+# services/ml/app/org/hierarchy.py FUNCTIONAL_ROLES and the Node gateway_api
+# role mapper. AppSail re-validates the signed role against this set (defence in
+# depth): a signed context carrying any other non-empty role is rejected as
+# forged/misconfigured. (test_gateway_authz asserts this stays in sync.)
+FUNCTIONAL_ROLES = frozenset({
+    "investigator", "analyst", "supervisor", "policymaker",
+    "disaster_coordinator", "super_admin",
+})
+# A service-scope context (event/cron/job) is not a user seat; it carries the
+# default role only and is authorised by its service scope, not a functional role.
+_SERVICE_DEFAULT_ROLE = "investigator"
+
 # Audience the signed context is minted for. Every Node signer (gateway_api +
 # event/cron functions) and the smoke test embed this exact ``aud`` claim, and
 # AppSail rejects a context minted for any other audience. Overridable via
@@ -55,7 +68,12 @@ class ContextError(ValueError):
 
 @dataclass(frozen=True)
 class GatewayContext:
-    """The verified, server-trusted caller context."""
+    """The verified, server-trusted caller context.
+
+    ``role`` + the organizational scope fields (``scope_level``/``district_id``/
+    ``unit_id``) are resolved SERVER-SIDE by the gateway function and signed, so
+    AppSail trusts them and never a browser-supplied role/district/unit header
+    (Prompt 21 §E.3)."""
     scope: str                       # 'gateway' (user) | 'service' (internal)
     request_id: str
     ts: int
@@ -66,6 +84,10 @@ class GatewayContext:
     email: Optional[str] = None
     source: Optional[str] = None      # event/cron function name for service scope
     aud: Optional[str] = None         # audience the context was minted for
+    # Server-resolved organizational scope (from trusted Data Store/attributes).
+    scope_level: Optional[str] = None
+    district_id: Optional[int] = None
+    unit_id: Optional[int] = None
 
     @property
     def is_service(self) -> bool:
@@ -98,6 +120,31 @@ class _NonceCache:
 
 
 _nonce_cache = _NonceCache()
+
+
+def _shared_nonce_enabled() -> bool:
+    """True when the deployed AppSail uses Catalyst Cache for cross-instance
+    nonce replay protection (DRISHTI_USE_CATALYST_CACHE=true)."""
+    return os.getenv("DRISHTI_USE_CATALYST_CACHE", "").strip().lower() == "true"
+
+
+def _nonce_is_replay(nonce: str) -> bool:
+    """Return True if this nonce has already been consumed (a replay).
+
+    Prompt 21 §G.1 (shared state): when Catalyst Cache is enabled the nonce is
+    recorded in the shared ``nonce`` segment via an atomic set-if-absent, so a
+    replay is caught across ALL AppSail instances (not just the one that first
+    saw it). The in-process cache is the local/last line of defence and the
+    fallback when the shared cache is unavailable.
+    """
+    if _shared_nonce_enabled():
+        try:
+            from .cache import SEG_NONCE, get_cache
+            newly_added = get_cache().add_if_absent(SEG_NONCE, nonce, ttl_s=_NONCE_TTL_S)
+            return not newly_added
+        except Exception:  # noqa: BLE001 — never fail closed on a cache outage
+            pass
+    return _nonce_cache.seen(nonce)
 
 
 def signing_secret() -> str:
@@ -172,10 +219,40 @@ def verify_signed_context(
         if aud != expected_audience:
             raise ContextError("audience mismatch")
 
+    # Validate the server-resolved functional role against the canonical six
+    # (defence in depth). A user-scope context MUST carry one of the six roles;
+    # any other non-empty value is a forged/misconfigured context. A service-
+    # scope context is authorised by its scope, not a functional role.
+    raw_role = str(data.get("role", "") or "").strip()
+    if scope == "gateway":
+        role = raw_role or "investigator"
+        if role not in FUNCTIONAL_ROLES:
+            raise ContextError("unknown role")
+    else:
+        role = raw_role if raw_role in FUNCTIONAL_ROLES else _SERVICE_DEFAULT_ROLE
+
+    # Parse the signed organizational scope. A present-but-malformed scope id is
+    # a forged/misconfigured context (ambiguous scope) and is rejected.
+    def _scope_int(key: str) -> Optional[int]:
+        v = data.get(key)
+        if v is None or v == "":
+            return None
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            raise ContextError("ambiguous scope")
+        if iv <= 0:
+            raise ContextError("ambiguous scope")
+        return iv
+
+    district_id = _scope_int("district_id")
+    unit_id = _scope_int("unit_id")
+    scope_level = (str(data.get("scope_level")).strip() or None) if data.get("scope_level") else None
+
     # Replay is checked LAST so a request that fails signature/scope/audience/
     # expiry never consumes (burns) a nonce it would otherwise be allowed to use.
     nonce = str(data.get("nonce", ""))
-    if check_replay and nonce and _nonce_cache.seen(nonce):
+    if check_replay and nonce and _nonce_is_replay(nonce):
         raise ContextError("replayed nonce")
 
     return GatewayContext(
@@ -184,11 +261,14 @@ def verify_signed_context(
         ts=int(ts),
         exp=int(exp),
         nonce=nonce,
-        role=str(data.get("role", "investigator")),
+        role=role,
         user_id=(str(data["user_id"]) if data.get("user_id") is not None else None),
         email=data.get("email") or None,
         source=data.get("source") or None,
         aud=aud,
+        scope_level=scope_level,
+        district_id=district_id,
+        unit_id=unit_id,
     )
 
 

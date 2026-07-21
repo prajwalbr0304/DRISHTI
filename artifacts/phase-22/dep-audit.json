@@ -1,0 +1,22 @@
+{
+  "gate": "dependency_audit",
+  "passed": true,
+  "npm": {
+    "ok": true,
+    "severities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "blocking_count": 0
+  },
+  "pip": {
+    "ok": true,
+    "un_accepted": [],
+    "accepted_count": 9,
+    "expired_exception_ids": []
+  }
+}

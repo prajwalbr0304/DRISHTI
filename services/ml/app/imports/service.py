@@ -96,7 +96,52 @@ def _template_version(conn, tvid: int) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # Templates (read)
 # ---------------------------------------------------------------------------
+def _list_templates_datastore() -> dict:
+    """Import-template catalogue from Catalyst Data Store (seeded serving subset)
+    — used when no RDS DATABASE_URL is configured (deployed AppSail, §B)."""
+    from ..datastore import seed as ds_seed
+    repo = ds_seed.reference_repo()
+    vers = repo.query("ImportTemplateVersion", limit=5000)
+    by_tpl: dict[int, list] = {}
+    for v in vers:
+        cm = v.get("ColumnMapping") or {}
+        if isinstance(cm, str):
+            try:
+                import json as _json
+                cm = _json.loads(cm)
+            except Exception:  # noqa: BLE001
+                cm = {}
+        by_tpl.setdefault(int(v.get("ImportTemplateID")), []).append({
+            "import_template_version_id": int(v.get("ImportTemplateVersionID")),
+            "version": v.get("Version"), "status": v.get("Status"),
+            "target_table": cm.get("target_table"), "fields": cm.get("fields", []),
+            "required_columns": v.get("RequiredColumns") or [],
+            "dedupe_keys": v.get("DedupeKeys") or [], "notes": v.get("Notes")})
+    templates = []
+    for t in sorted(repo.query("ImportTemplate", limit=5000),
+                    key=lambda r: (r.get("Domain") or "", r.get("Code") or "")):
+        templates.append({
+            "import_template_id": int(t.get("ImportTemplateID")), "code": t.get("Code"),
+            "name": t.get("Name"), "domain": t.get("Domain"),
+            "target_table": t.get("TargetTable"), "description": t.get("Description"),
+            "versions": by_tpl.get(int(t.get("ImportTemplateID")), [])})
+    return {"count": len(templates), "templates": templates}
+
+
 def list_templates() -> dict:
+    # Deployed AppSail (no DATABASE_URL) serves the template catalogue from
+    # Catalyst Data Store; RDS is used only when configured + reachable (dev /
+    # DB pass), falling back to Data Store if it is unreachable/over-quota.
+    from ..config import get_settings
+    if get_settings().database_url:
+        try:
+            return _list_templates_rds()
+        except Exception:  # noqa: BLE001 — RDS unreachable -> Data Store catalogue
+            pass
+    return _list_templates_datastore()
+
+
+def _list_templates_rds() -> dict:
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -818,8 +863,43 @@ def review_entity_link(link_id: int, decision: str, actor: Optional[str], note: 
 # ---------------------------------------------------------------------------
 # Account / transaction views
 # ---------------------------------------------------------------------------
+def _list_accounts_datastore(flagged: Optional[bool], review_status: Optional[str],
+                             page: int, page_size: int) -> dict:
+    """Financial accounts view from Catalyst Data Store (seeded serving subset) —
+    used when no RDS DATABASE_URL is configured (deployed AppSail, §B)."""
+    from ..datastore import seed as ds_seed
+    rows = ds_seed.financial_repo().query("FinancialAccount", limit=1_000_000)
+    if flagged is not None:
+        rows = [r for r in rows if bool(r.get("IsFlagged")) == flagged]
+    if review_status:
+        rows = [r for r in rows if r.get("OwnerReviewStatus") == review_status]
+    rows.sort(key=lambda r: int(r.get("AccountID") or 0), reverse=True)
+    total = len(rows)
+    off = (page - 1) * page_size
+    items = [{
+        "account_id": int(r.get("AccountID")), "account_no": r.get("AccountNo"),
+        "account_type": r.get("AccountType"), "holder_name": r.get("HolderName"),
+        "bank": r.get("Bank"), "ifsc": r.get("IFSC"), "currency": r.get("Currency"),
+        "is_flagged": bool(r.get("IsFlagged")),
+        "owner_canonical_person_id": r.get("OwnerCanonicalPersonID"),
+        "owner_review_status": r.get("OwnerReviewStatus"),
+        "import_batch_id": r.get("ImportBatchID")} for r in rows[off:off + page_size]]
+    return {"total": total, "page": page, "page_size": page_size, "items": items}
+
+
 def list_accounts(flagged: Optional[bool], review_status: Optional[str],
                   page: int, page_size: int) -> dict:
+    from ..config import get_settings
+    if not get_settings().database_url:
+        return _list_accounts_datastore(flagged, review_status, page, page_size)
+    try:
+        return _list_accounts_rds(flagged, review_status, page, page_size)
+    except Exception:  # noqa: BLE001 — RDS unreachable -> Data Store financial view
+        return _list_accounts_datastore(flagged, review_status, page, page_size)
+
+
+def _list_accounts_rds(flagged: Optional[bool], review_status: Optional[str],
+                       page: int, page_size: int) -> dict:
     clauses, params = [], []
     if flagged is not None:
         clauses.append('"IsFlagged"=%s'); params.append(flagged)
@@ -844,8 +924,48 @@ def list_accounts(flagged: Optional[bool], review_status: Optional[str],
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 
+def _list_transactions_datastore(account_id: Optional[int], flagged: Optional[bool],
+                                 case_id: Optional[int], page: int, page_size: int) -> dict:
+    """Financial transactions view from Catalyst Data Store (seeded serving
+    subset) — used when no RDS DATABASE_URL is configured (§B)."""
+    from ..datastore import seed as ds_seed
+    rows = ds_seed.financial_repo().query("FinancialTransaction", limit=1_000_000)
+    if account_id:
+        rows = [r for r in rows if account_id in (r.get("SourceAccountID"),
+                                                  r.get("DestinationAccountID"))]
+    if flagged is not None:
+        rows = [r for r in rows if bool(r.get("IsFlagged")) == flagged]
+    if case_id:
+        rows = [r for r in rows if r.get("EvidenceCaseID") == case_id]
+    rows.sort(key=lambda r: str(r.get("TxnTimestamp") or ""), reverse=True)
+    total = len(rows)
+    off = (page - 1) * page_size
+    items = [{
+        "transaction_id": int(r.get("TransactionID")),
+        "source_account_id": r.get("SourceAccountID"),
+        "destination_account_id": r.get("DestinationAccountID"),
+        "amount": float(r.get("Amount") or 0), "currency": r.get("Currency"),
+        "txn_timestamp": r.get("TxnTimestamp"), "channel": r.get("Channel"),
+        "normalized_channel": r.get("NormalizedChannel"), "is_flagged": bool(r.get("IsFlagged")),
+        "flag_reason": r.get("FlagReason"), "review_status": r.get("ReviewStatus"),
+        "evidence_case_id": r.get("EvidenceCaseID"), "import_batch_id": r.get("ImportBatchID"),
+        "synthetic_reference": r.get("SyntheticReference")} for r in rows[off:off + page_size]]
+    return {"total": total, "page": page, "page_size": page_size, "items": items}
+
+
 def list_transactions(account_id: Optional[int], flagged: Optional[bool], case_id: Optional[int],
                       page: int, page_size: int) -> dict:
+    from ..config import get_settings
+    if not get_settings().database_url:
+        return _list_transactions_datastore(account_id, flagged, case_id, page, page_size)
+    try:
+        return _list_transactions_rds(account_id, flagged, case_id, page, page_size)
+    except Exception:  # noqa: BLE001 — RDS unreachable -> Data Store financial view
+        return _list_transactions_datastore(account_id, flagged, case_id, page, page_size)
+
+
+def _list_transactions_rds(account_id: Optional[int], flagged: Optional[bool], case_id: Optional[int],
+                           page: int, page_size: int) -> dict:
     clauses, params = [], []
     if account_id:
         clauses.append('("SourceAccountID"=%s OR "DestinationAccountID"=%s)')

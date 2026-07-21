@@ -48,12 +48,20 @@ _EXEMPT_PATHS = frozenset({"/health", "/health/live", "/health/ready"})
 # auth) — never a blanket bypass of authentication.
 _EXEMPT_PREFIXES = ("/stream/",)
 
-# Client-supplied identity headers are stripped before the trusted role is
-# injected, so a caller can never smuggle a role past the boundary. Names are
-# lowercased bytes to match the ASGI header representation.
+# Client-supplied identity + scope headers are stripped before the trusted role
+# and scope are injected, so a caller can never smuggle a role/district/unit past
+# the boundary. Names are lowercased bytes to match the ASGI header representation.
 _STRIP_HEADERS = frozenset({
     b"x-role", b"x-demo-actor", b"x-user-id", b"x-user-email", b"x-forwarded-user",
+    b"x-drishti-district", b"x-drishti-unit", b"x-drishti-scope-level",
+    b"x-disaster-district", b"x-disaster-unit",
 })
+
+# Header names for the server-trusted organizational scope injected from the
+# verified signed context (read by app/org/scope.scope_from_headers).
+H_DISTRICT = b"x-drishti-district"
+H_UNIT = b"x-drishti-unit"
+H_SCOPE_LEVEL = b"x-drishti-scope-level"
 
 
 def enforcement_enabled() -> bool:
@@ -62,8 +70,9 @@ def enforcement_enabled() -> bool:
 
 
 def _inject_trusted_identity(request: Request, ctx: GatewayContext) -> None:
-    """Strip client identity headers and inject the server-trusted role + actor
-    so the existing X-Role-based role gates operate on the verified identity."""
+    """Strip client identity + scope headers and inject the server-trusted role,
+    actor and organizational scope so the existing X-Role-based role gates and
+    the scope resolver operate on the verified identity, never a client value."""
     trusted_role = (ctx.role or "investigator").strip() or "investigator"
     actor = (ctx.user_id or ctx.email or ctx.source
              or ("service" if ctx.is_service else "gateway"))
@@ -71,6 +80,14 @@ def _inject_trusted_identity(request: Request, ctx: GatewayContext) -> None:
                if k.lower() not in _STRIP_HEADERS]
     headers.append((b"x-role", trusted_role.encode("latin-1", "ignore")))
     headers.append((b"x-demo-actor", str(actor).encode("latin-1", "ignore")))
+    # Inject the server-trusted organizational scope from the signed context so
+    # deployed scope resolution needs no DB and cannot be spoofed by the browser.
+    if ctx.district_id is not None:
+        headers.append((H_DISTRICT, str(ctx.district_id).encode("latin-1", "ignore")))
+    if ctx.unit_id is not None:
+        headers.append((H_UNIT, str(ctx.unit_id).encode("latin-1", "ignore")))
+    if ctx.scope_level:
+        headers.append((H_SCOPE_LEVEL, str(ctx.scope_level).encode("latin-1", "ignore")))
     request.scope["headers"] = headers
 
 

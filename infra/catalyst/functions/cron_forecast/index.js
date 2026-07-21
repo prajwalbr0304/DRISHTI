@@ -45,6 +45,9 @@ async function callAppSail(path, payload, source, requestId) {
   finally { clearTimeout(timer); }
 }
 
+const MAX_ATTEMPTS = 3;                 // bounded retry within the cron invocation
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 module.exports = async (cronDetails, context) => {
   const enabled = String(process.env.DRISHTI_FORECAST_CRON_ENABLED || '').toLowerCase() === 'true';
   const window = new Date().toISOString().slice(0, 10);
@@ -52,9 +55,29 @@ module.exports = async (cronDetails, context) => {
     console.log(`[cron_forecast] disabled scaffold; no-op for ${window}`);
     return { skipped: true, window };
   }
-  const r = await callAppSail('/internal/forecast/run', {
-    idempotency_key: `forecast:${window}`, window, source: 'cron:forecast',
-  }, 'cron_forecast', `forecast:${window}`);
-  console.log(`[cron_forecast] ${window} -> ${JSON.stringify(r)}`);
-  return { window, ...r };
+  // The AppSail /internal/forecast/run target is IDEMPOTENT per window, so a
+  // retry (here) or a replay (from cron_reconcile) never double-acts. We retry a
+  // transient failure with bounded backoff, then record a TERMINAL failed result
+  // so the reconcile cron can replay it in a controlled way.
+  const key = `forecast:${window}`;
+  let last = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const r = await callAppSail('/internal/forecast/run',
+      { idempotency_key: key, window, source: 'cron:forecast', attempt },
+      'cron_forecast', `${key}:${attempt}`);
+    last = r;
+    if (r.ok) {
+      console.log(`[cron_forecast] ${window} ok on attempt ${attempt}`);
+      return { window, attempt, ...r };
+    }
+    const transient = r.reason === 'timeout' || r.status === 0 || (r.status || 0) >= 500;
+    console.log(`[cron_forecast] ${window} attempt ${attempt} failed ` +
+                `(${JSON.stringify(r)})${transient ? '' : ' [non-transient]'}`);
+    if (!transient) break;                       // 4xx/config error won't self-heal
+    if (attempt < MAX_ATTEMPTS) await sleep(Math.min(2 ** attempt, 8) * 1000);
+  }
+  // TERMINAL failed state: surfaced for the reconcile cron / operator replay.
+  console.error(`[cron_forecast] TERMINAL failed for ${window} after ${MAX_ATTEMPTS} ` +
+                `attempts; controlled replay via cron_reconcile (run_forecast is idempotent).`);
+  return { window, failed: true, terminal: true, last };
 };

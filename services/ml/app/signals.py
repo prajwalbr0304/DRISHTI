@@ -50,8 +50,16 @@ EVENT_ALLOCATION_APPROVED = "allocation.approved"
 # source_ts}; it drives the Live Command Center projection/freshness flow. It
 # NEVER triggers a person risk score or an automatic resource dispatch.
 EVENT_CASE_COMMITTED = "case.committed"
+# THE one mandatory prediction Signal/Event (Prompt 21 §F.2, signals-rules.json
+# 'prediction-requested'). Published by AppSail ONLY after the authoritative
+# PredictionRequest Data Store row is persisted (persist-before-emit, §F.3).
+# The prediction_event Function routes it to the protected AWS adapter. It stays
+# disabled (DRISHTI_PREDICTION_DISPATCH_ENABLED unset) until Prompt 23 deploys it.
+# Payload carries only {prediction_request_id, task, state, district_id}.
+EVENT_PREDICTION_REQUESTED = "prediction.requested"
 
 _VALID_EVENTS = (
+    EVENT_PREDICTION_REQUESTED,
     EVENT_REPORT_READY, EVENT_PREDICTION_REVIEWED, EVENT_NOTIFICATION_CREATED,
     EVENT_TASK_ESCALATED, EVENT_SOURCE_RECONCILE, EVENT_BOARD_ACTIVITY,
     EVENT_FEED_STALE, EVENT_FORECAST_COMPLETED, EVENT_ALERT_REVIEW_REQUIRED,

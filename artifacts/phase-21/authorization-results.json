@@ -1,0 +1,179 @@
+{
+  "results": [
+    {
+      "id": "investigator-case-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "analyst-case-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "supervisor-case-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-case-read-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-case-read-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "super_admin-case-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-case-read-d1-t1",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-case-read-d1-t2",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "supervisor-case-read-d3-t9",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-aggregate-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-aggregate-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-aggregate-read-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-case-export-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "analyst-case-export-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-case-export-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-case-export-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-aggregate-export-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-aggregate-export-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "super_admin-case-export-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-board-use-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "analyst-board-use-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "supervisor-board-use-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-board-use-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-board-use-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "super_admin-board-use-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-disaster-approve-d5-t5",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "disaster_coordinator-disaster-approve-d5-t9",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-disaster-approve-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "supervisor-disaster-approve-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-disaster-approve-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "super_admin-disaster-approve-role-default-t9",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "super_admin-admin-manage-role-default",
+      "actual": "ALLOW",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "supervisor-admin-manage-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "investigator-admin-manage-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    },
+    {
+      "id": "policymaker-admin-manage-role-default",
+      "actual": "DENY",
+      "evidence": "artifacts/phase-21/test-runs/authz-decisions.json"
+    }
+  ]
+}

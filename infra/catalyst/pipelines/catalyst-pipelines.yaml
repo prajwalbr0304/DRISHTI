@@ -1,56 +1,74 @@
-# DRISHTI CI/CD — Catalyst Pipelines (Phase 14 Part B + Part I scoping / matrix
-# row 26, workflow §1). Catalyst Pipelines owns CI/CD only; data/event workflows
-# live in Functions/AppSail/Signals/Jobs.
+# DRISHTI CI/CD — Catalyst Pipelines (Prompt 22 E). Catalyst Pipelines owns CI/CD
+# only; data/event workflows live in Functions / AppSail / Signals / Jobs.
 #
-# Part I — the sufficient hackathon pipeline (this file):
-#   install dependencies -> lint/test -> build frontend + API -> scan for secrets
-#   -> deploy to Catalyst development -> health/auth/prediction smoke tests
-#   -> retain the previous deploy for rollback.
+# Lean, BLOCKING sequence (Prompt 22 E.2):
+#   install -> lint/type/test -> build (web + AppSail image) -> security scans
+#   -> mandatory pre-deploy preflight -> deploy development
+#   -> Auth/Gateway/AppSail/Slate/Data Store/prediction smoke -> retain rollback.
 #
-# Deferred (documented, intentionally NOT in this pipeline):
-#   - full SBOM + licence automation;
-#   - production artifact-promotion gates (approve -> promote to prod);
-#   - GPU image rebuilding inside the pipeline — the GPU worker is deployed
-#     SEPARATELY with AWS CLI/SageMaker scripts (see infra/aws/gpu-worker/) and
-#     referenced by immutable image/model versions;
-#   - automated Data Store export + forward-recovery simulation;
-#   - deployment concurrency locks (parallel deploys are not expected here);
-#   - deliberately-failed-deployment recovery testing.
+# Correctness rules honoured here (Prompt 22 E.1/E.3/E.4/E.5/E.6):
+#   * the frontend build runs from `web`; every `catalyst` binding/deploy command
+#     runs from `infra/catalyst` (where catalyst.json + .catalystrc live); the
+#     AppSail deploy uses the intended linux/amd64 image built from
+#     services/ml/Dockerfile.appsail;
+#   * NO `|| true` on any mandatory audit / deploy / smoke / rollback step — a
+#     failed gate stops the pipeline;
+#   * the security stage runs the SAME executable gates as the local release gate
+#     (scripts/security/*, check-bundle-secrets --release, route-boundary,
+#     no-DB-URL) — never an echo;
+#   * smoke goes THROUGH Authentication + the API Gateway (/api/*), not only the
+#     direct AppSail URL;
+#   * the pre-deploy preflight (project/env == DHRISTI 48361000000030003, synthetic
+#     marker, no-duplicate) is MANDATORY before deploy;
+#   * the GPU worker is NOT built/deployed here — it is built + pushed and its
+#     endpoint registered SEPARATELY (infra/aws/gpu-worker/, Prompt 24) by
+#     immutable digest; this pipeline only static-checks its Dockerfile/contract.
 #
-# Deploy status: SCAFFOLDED. Runner/image config-ids + registry auth are bound in
-# the Console (Pipelines -> link this repo); the credit-spending deploy stages run
-# on a Catalyst runner (which has Docker, so it also unblocks the AppSail image
-# build the local machine cannot do). << ... >> tokens are pipeline expressions.
+# Deploy status: the credit-spending deploy/smoke/rollback stages run on a linked
+# Catalyst runner (Console -> Pipelines) with a bound, authenticated, non-
+# interactive context; live proof is Prompt 23. The install/lint/test/build/
+# security/preflight stages are fully runnable and are mirrored 1:1 by
+# `python scripts/release_gate.py` locally.
+#
+# << ... >> tokens are Catalyst pipeline expressions (runner variables/status).
 
 version: 1
 
+variables:
+  # Public Catalyst API Gateway origin + direct AppSail URL are injected by the
+  # runner (Console -> Pipelines variables) after apig:enable + first deploy.
+  # VITE_API_BASE_URL MUST be the https API Gateway origin ending in /api; the
+  # release build + bundle guard FAIL if it is unset/invalid (Prompt 22 B.5/D).
+  VITE_API_BASE_URL: << variables.VITE_API_BASE_URL >>
+  DEV_APPSAIL_URL: << variables.DEV_APPSAIL_URL >>
+  DEV_GATEWAY_URL: << variables.DEV_GATEWAY_URL >>
+  VITE_DEMO_BADGE: Synthetic Hackathon Demo
+
 jobs:
-  # --- 1-2. install dependencies + lint/test ------------------------------
+  # --- 1. install + lint/type/test ---------------------------------------
   lint:
     steps:
-      - npm --prefix web ci                       # install web deps
-      - npm --prefix web run lint
-      - npm --prefix web run typecheck
+      - npm --prefix web ci
+      - npm --prefix web run lint          # eslint (locked flat config); 0 errors required
+      - npm --prefix web run typecheck     # tsc --noEmit
   test:
     steps:
       - npm --prefix web ci
-      - npm --prefix web run test
-      - pip install -r services/ml/requirements.appsail.txt pytest   # install API deps
-      # Light API/contract tests only; the real GPU/foundation run is external.
-      - pytest services/ml/tests -q -k "not gpu and not cuda"
+      - npm --prefix web run test          # vitest run (unit/component)
+      - pip install -r services/ml/requirements.appsail.txt pytest pip-audit pyyaml
+      # DB-free backend suite — matches the deployed AppSail (no DATABASE_URL).
+      - DRISHTI_DISABLE_DB_TESTS=1 pytest services/ml/tests -q -k "not gpu and not cuda"
       # Fail closed on PG->Data Store mapping drift + regenerate import configs.
       - python infra/catalyst/ds-import/generate_import_configs.py
 
-  # --- 3. build frontend and API -----------------------------------------
+  # --- 2. build frontend + AppSail API image -----------------------------
   build_frontend:
-    variables:
-      VITE_DEMO_BADGE: Synthetic Hackathon Demo
     steps:
       - npm --prefix web ci
-      - npm --prefix web run build
-      # Recreate the Slate SPA config wiped by the clean build.
-      - mkdir -p web/dist/.catalyst
-      - cp infra/catalyst/client/slate-config.toml web/dist/.catalyst/slate-config.toml
+      # RELEASE build: VITE_API_BASE_URL must be the valid API Gateway origin;
+      # check-bundle-secrets --release FAILS the build on an unset/invalid URL or
+      # any secret in dist/ (Prompt 22 B.5). No warning-only fallback in release.
+      - npm --prefix web run build:release
     artifacts:
       upload:
         - name: drishti-web-dist
@@ -60,9 +78,7 @@ jobs:
             - 'web/dist/**/*'
   build_api_image:
     steps:
-      # Catalyst runners provide Docker, so this unblocks the linux/amd64 OCI build.
-      # (This is the AppSail API image only — NOT the GPU worker, which is built +
-      # pushed separately via infra/aws/gpu-worker/ by immutable digest.)
+      # AppSail API image ONLY (linux/amd64 OCI). NOT the GPU worker.
       - >-
         docker buildx build --platform linux/amd64
         -f services/ml/Dockerfile.appsail
@@ -75,63 +91,105 @@ jobs:
           location: stratus://drishti-cicd/artifacts/appsail
           files:
             - 'drishti-api-appsail.tar'
-
-  # --- 4. scan for secrets ------------------------------------------------
-  secret_scan:
+  gpu_worker_static:
+    # Prompt 22 A.5 / E.6: static/unit/contract checks ONLY. The GPU image is
+    # built + pushed and its endpoint registered SEPARATELY (infra/aws/gpu-worker,
+    # Prompt 24) by immutable digest — never rebuilt or deployed in this pipeline.
     steps:
-      # The kept scan: fail the build on a committed secret (tool on the runner).
-      - echo "secret scan (gitleaks/trufflehog) — configured on the runner image"
-      # Light, non-blocking dependency audit (full SBOM/licence automation deferred).
-      - npm --prefix web audit --omit=dev || true
-      - pip install pip-audit && pip-audit -r services/ml/requirements.appsail.txt || true
+      - python -m py_compile services/gpu-worker/backends.py services/gpu-worker/handler.py services/gpu-worker/schema.py services/gpu-worker/_tabfm_loader.py
+      - docker build --check -f services/gpu-worker/Dockerfile services/gpu-worker
 
-  # --- 5. deploy to Catalyst development ----------------------------------
+  # --- 3. security scans (real + BLOCKING; no || true) --------------------
+  security_scan:
+    steps:
+      - npm --prefix web ci
+      - pip install pip-audit pyyaml
+      # Executable secret scan (git-tracked files; redacted) — not an echo.
+      - python scripts/security/secret_scan.py --repo .
+      # Dependency vulnerability audit (npm prod + pip AppSail) vs the accepted
+      # exception allowlist; blocks non-accepted high/critical + expired waivers.
+      - python scripts/security/dep_audit.py --repo .
+      # Static/config/policy checks: JSON/YAML, Function syntax, Dockerfile,
+      # env-key schema, wildcard-CORS, browser DB client, synthetic marker, py-compile.
+      - python scripts/security/static_checks.py --repo .
+      # No AWS/DB URL or server secret in the browser bundle surface.
+      - python infra/aws/check_no_db_url_in_web.py
+      # Every submitted route has an unambiguous data boundary (0 unclassified).
+      - cd services/ml && python tools/route_data_boundary.py --check
+      # Release bundle inspection: no secret + valid API Gateway URL in dist/.
+      - npm --prefix web run check:bundle:release
+
+  # --- 4. MANDATORY pre-deploy preflight (no || true) --------------------
+  preflight_deploy:
+    steps:
+      # Project/env == DHRISTI 48361000000030003 (India DC), synthetic marker,
+      # DB-free AppSail posture, and live no-duplicate. --require-live makes the
+      # live no-duplicate check mandatory on the bound, authenticated runner.
+      - python infra/catalyst/pipelines/preflight_deploy.py --require-live
+
+  # --- 5. deploy to Catalyst development (from infra/catalyst) ------------
   deploy_dev:
     steps:
-      - catalyst deploy --only functions,client
+      # All catalyst commands run where catalyst.json + .catalystrc live.
+      - cd infra/catalyst && catalyst deploy --only functions,client
       - >-
-        catalyst deploy appsail --name drishti-api
-        --source docker-archive://drishti-api-appsail.tar --port 9000
-      - catalyst deploy slate -m "ci: dev"
+        cd infra/catalyst && catalyst deploy appsail --name drishti-api
+        --source docker-archive://../../drishti-api-appsail.tar --port 9000
+      - cd infra/catalyst && catalyst deploy client -m "ci: dev slate"
     artifacts:
       download:
         - name: drishti-api-appsail
           type: tar
           location: stratus://drishti-cicd/artifacts/appsail
 
-  # --- 6. health/auth/prediction smoke tests ------------------------------
+  # --- 6. Auth/Gateway/AppSail/Slate/Data Store/prediction smoke ---------
   smoke_dev:
     steps:
-      - python infra/catalyst/pipelines/smoke_test.py --base-url << variables.DEV_APPSAIL_URL >>
+      # Smokes the direct AppSail plane AND the public Auth + API Gateway path
+      # (/api/*): health routing, operational Data Store readiness, the
+      # signed-context boundary, and the prediction plane. No || true.
+      - >-
+        python infra/catalyst/pipelines/smoke_test.py
+        --base-url << variables.DEV_APPSAIL_URL >>
+        --gateway-url << variables.DEV_GATEWAY_URL >>
+      # Reduced live demo acceptance through the Gateway/Slate (strict).
+      - >-
+        python infra/catalyst/verification/acceptance_check.py
+        --base-url << variables.DEV_APPSAIL_URL >>
+        --web-url << variables.DEV_GATEWAY_URL >>
+        --read-endpoint /api/cases?limit=1
 
-  # --- 7. retain previous deploy for rollback -----------------------------
+  # --- 7. retain previous deploy for rollback ----------------------------
   rollback_dev:
     # Runs only if the dev deploy failed: the previous deployment is retained, so
-    # roll back to the last good one. (Deliberately-failed-deploy recovery testing
-    # + forward-recovery simulation are deferred.)
+    # roll AppSail/Slate back to the last-good version. Mandatory (no || true) so
+    # a failed rollback surfaces instead of being swallowed.
     when:
       - not:
           - << status.deploy.deploy_dev >>
     steps:
-      - echo "deploy failed — rolling back AppSail/Slate to the retained last-good deploy"
-      - catalyst deploy appsail --name drishti-api --rollback || true
+      - cd infra/catalyst && catalyst deploy appsail --name drishti-api --rollback
 
 stages:
-  - name: validate            # install deps + lint/test
+  - name: validate            # install deps + lint/type/test (web + backend)
     jobs:
       - - lint
         - test
-  - name: build               # frontend + API image
+  - name: build               # frontend release build + AppSail image + GPU static check
     jobs:
       - - build_frontend
         - build_api_image
-  - name: scan                # scan for secrets
+        - gpu_worker_static
+  - name: security            # real, blocking security/static/boundary scans
     jobs:
-      - secret_scan
+      - security_scan
+  - name: preflight           # MANDATORY project/env/synthetic/no-duplicate before deploy
+    jobs:
+      - preflight_deploy
   - name: deploy_dev          # deploy to Catalyst development (+ retain-for-rollback)
     jobs:
       - deploy_dev
       - rollback_dev
-  - name: smoke               # health/auth/prediction smoke tests
+  - name: smoke               # Auth + API Gateway + AppSail + Data Store + prediction smoke
     jobs:
       - smoke_dev

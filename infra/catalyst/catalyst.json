@@ -20,5 +20,8 @@
   },
   "client": {
     "source": "client"
+  },
+  "apig": {
+    "enabled": true
   }
 }

@@ -28,3 +28,9 @@ dist-ssr
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# playwright (E2E) — Prompt 22 §C
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/blob-report/

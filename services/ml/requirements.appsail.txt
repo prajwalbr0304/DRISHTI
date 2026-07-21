@@ -18,7 +18,9 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 psycopg2-binary==2.9.10
-python-dotenv==1.0.1
+# Upgraded from 1.0.1 -> 1.2.2 to clear CVE-2026-28684 / PYSEC-2026-2270
+# (set_key/unset_key injection). Safe patch bump; DRISHTI only reads .env.
+python-dotenv==1.2.2
 
 # Catalyst SDK for Data Store / Stratus / NoSQL / Cache / Job Scheduling.
 # (Deployed operational data path; installed in the AppSail image only.)

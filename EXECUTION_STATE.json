@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-21T04:23:44+05:30",
-  "current_phase": 20,
+  "updated_at": "2026-07-21T19:22:02+05:30",
+  "current_phase": 23,
   "phases": {
     "18": {
       "status": "complete",
@@ -22,13 +22,42 @@
       "next_action": "Start Prompt 21 (Catalyst operational data boundary): route-to-data-boundary inventory, migrate operational CRUD to Data Store/Stratus, DATABASE_URL-absent mandatory journeys, Gateway role mapper for all six roles, repeatable disaster Data Store schema."
     },
     "21": {
-      "status": "in_progress"
+      "status": "complete",
+      "updated_at": "2026-07-21T15:10:00+05:30",
+      "report": "docs/phase-reports/PHASE_21_REPORT.md",
+      "dod_met": [
+        "route-data-boundary-unambiguous",
+        "appsail-mandatory-journeys-without-DATABASE_URL",
+        "datastore-stratus-own-operational-records",
+        "six-roles-through-gateway",
+        "mandatory-functions-real-and-tested",
+        "disaster-schema-idempotent",
+        "readiness-fails-on-broken-plane"
+      ],
+      "verification": "Full offline API suite passes with DATABASE_URL removed (378 passed, 0 failed, 211 @requires_db skipped); route-boundary static check PASS (335 routes, 0 violations); auth-matrix verify PASS.",
+      "follow_up": "Crime-domain operational WRITE closure to Catalyst Data Store (intake FIR create/submit/approve, casework transitions, imports commit/canonicalization) remains RDS-backed and is exercised via the @requires_db DB pass; the READ side of these domains is Data Store-backed and DB-free, and interactive demo writes use the Data Store-native Board + Disaster modules. High-risk rewrite; tracked in PHASE_21_REPORT.md sec 12.",
+      "next_action": "Start Prompt 22."
     },
     "22": {
-      "status": "pending"
+      "status": "complete",
+      "updated_at": "2026-07-21T18:54:50+05:30",
+      "report": "docs/phase-reports/PHASE_22_REPORT.md",
+      "dod_met": [
+        "local-quality-gates-green",
+        "appsail-linux-image-runs-db-free",
+        "browser-e2e-all-mandatory-journeys",
+        "release-build-rejects-invalid-url-or-secret",
+        "catalyst-pipeline-correct-paths-blocking",
+        "strict-release-command-zero-only-for-candidate"
+      ],
+      "verification": "scripts/release_gate.py = 16/16 mandatory PASS, exit 0, verdict RELEASE_CANDIDATE (artifacts/phase-22/release-gate.json): toolchain, frontend lint(0 err)/typecheck/vitest(65), backend offline (378 passed/211 skipped, DB-free), frontend build + release URL guard, AppSail linux/amd64 image (non-root, live/ready 200 DB-free, graceful shutdown), secret_scan, dep_audit (npm prod 0 vulns; pip 0 un-accepted), static_checks 8/8, web no-DB-URL (270), route boundary (335/0 unclassified), gpu contract (1.0.0), deploy preflight (DHRISTI binding), browser E2E (27). Evidence: artifacts/evidence-manifest.json (11 p22 PASS entries).",
+      "follow_up": "Cloud-only, deferred: live Catalyst deploy/smoke/rollback through the corrected pipeline (Prompt 23); real TabFM/TimesFM on AWS GPU + the risk-calibration accuracy floor (Prompt 24); the starlette cross-major upgrade (fastapi>=0.139/starlette>=1.3.1) accepted-with-expiry 2026-09-30 (docs/deployment/security-exceptions.json), targeted for Prompt 25.",
+      "next_action": "Start Prompt 23 (live Zoho Catalyst provisioning + deployment): run the corrected catalyst-pipelines.yaml on a linked runner, deploy functions/client/AppSail/Slate to DHRISTI dev, then smoke through Auth + API Gateway + Data Store and prove rollback; the strict local release gate (scripts/release_gate.py) is 16/16 PASS = RELEASE_CANDIDATE."
     },
     "23": {
-      "status": "pending"
+      "status": "in_progress",
+      "updated_at": "2026-07-21T19:22:02+05:30",
+      "next_action": "Prompt 23 live deploy is interleaved CLI+Console. Preflight COMPLETE/green. Next: owner Stage 1 (docs/deployment/CATALYST_LIVE_INVENTORY.md sec 3) - activate Slate in Console + choose ZOHO_APPSAIL_SIGNING_SECRET; then agent runs Stage 2 (catalyst apig:enable + deploy functions), Stage 3 AppSail, etc. No live DoD item met yet; nothing faked."
     },
     "24": {
       "status": "pending"

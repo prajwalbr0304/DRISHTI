@@ -54,4 +54,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # X_ZOHO_CATALYST_LISTEN_PORT and verifies the process is listening on it within
 # 10s of instance start; APP_PORT (9000) is only a local-run fallback. EXPOSE
 # above is Docker documentation only and does NOT set the AppSail port.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-${APP_PORT:-9000}}"]
+#
+# `exec` REPLACES the shell so uvicorn becomes PID 1 and receives SIGTERM
+# directly on `docker stop` / AppSail instance stop — enabling graceful
+# shutdown (connection draining, lifespan shutdown) instead of a grace-period
+# SIGKILL. Without exec the `sh -c` wrapper (PID 1) would swallow the signal.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-${APP_PORT:-9000}}"]

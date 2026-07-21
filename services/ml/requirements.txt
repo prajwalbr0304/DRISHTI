@@ -3,7 +3,7 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 psycopg2-binary==2.9.10
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 # --- Phase 5 digital-evidence storage (Amazon S3) ---
 # S3 object storage for evidence files (private bucket, pre-signed up/download).
 # Credentials come from the environment / SSO profile / task role — never code.

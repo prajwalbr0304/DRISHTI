@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "description": "Pinned toolchain versions used by DRISHTI CI (Prompt 22 A.2). The strict local release gate (scripts/release_gate.py) validates the local toolchain against the 'min' of each tool; the Catalyst pipeline (infra/catalyst/pipelines/catalyst-pipelines.yaml) installs/uses these versions. Captured on the reference workstation on 2026-07-21.",
+  "captured_at": "2026-07-21",
+  "captured_on": "windows/win32 (Docker Desktop Linux engine)",
+  "tools": {
+    "node": { "pinned": "20.17.0", "min": "20.17.0", "max_major": 20, "notes": "Node 20 LTS; web build/test/lint runtime." },
+    "npm": { "pinned": "11.5.2", "min": "10.0.0" },
+    "python": { "pinned": "3.12.10", "min": "3.12.0", "max_major_minor": "3.12", "notes": "AppSail image base python:3.12-slim; backend test runtime." },
+    "java": { "pinned": "21.0.8", "min": "17.0.0", "notes": "Zoho Catalyst CLI runtime dependency." },
+    "catalyst_cli": { "pinned": "1.27.0", "min": "1.27.0", "notes": "Zoho Catalyst CLI (India DC)." },
+    "aws_cli": { "pinned": "2.17.22", "min": "2.15.0", "notes": "server-to-server AWS adapter/analytics; read-only in Prompt 22." },
+    "docker": { "pinned": "29.6.1", "min": "24.0.0", "daemon_os": "linux", "notes": "buildx linux/amd64 AppSail + GPU-worker images." }
+  },
+  "images": {
+    "appsail_base": "python:3.12-slim",
+    "gpu_worker_base": "nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04"
+  },
+  "frontend_lint_stack": {
+    "eslint": "9.39.5",
+    "@eslint/js": "9.39.5",
+    "typescript-eslint": "8.65.0",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "eslint-plugin-react-refresh": "0.4.26",
+    "globals": "15.15.0"
+  }
+}

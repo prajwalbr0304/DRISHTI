@@ -23,19 +23,13 @@ export function IntakeInbox() {
   const [msg, setMsg] = useState<string | null>(null);
   const isReviewer = REVIEW_ROLES.has(role);
 
-  if (role === "policymaker") {
-    return (
-      <div>
-        <PageHeader title="Intake inbox" />
-        <EmptyState icon={Lock} title="Not available for this role"
-          description="Case intake is not accessible to the policymaker role, which works with aggregate views only." />
-      </div>
-    );
-  }
-
+  // Hooks must run unconditionally and in a stable order (React Rules of Hooks),
+  // so the list query + review mutation are declared BEFORE the policymaker
+  // early-return below; the list is disabled for policymaker (blocked anyway).
   const listQ = useQuery({
     queryKey: ["intake", "drafts", tab],
     queryFn: ({ signal }) => api.intake.listDrafts({ status: tab === "all" ? undefined : tab, page_size: 50 }, signal),
+    enabled: role !== "policymaker",
     placeholderData: keepPreviousData,
   });
 
@@ -56,6 +50,17 @@ export function IntakeInbox() {
         : errorMessage(e));
     },
   });
+
+  // Policymaker full-page block (after hooks, before render).
+  if (role === "policymaker") {
+    return (
+      <div>
+        <PageHeader title="Intake inbox" />
+        <EmptyState icon={Lock} title="Not available for this role"
+          description="Case intake is not accessible to the policymaker role, which works with aggregate views only." />
+      </div>
+    );
+  }
 
   const items = listQ.data?.items ?? [];
 

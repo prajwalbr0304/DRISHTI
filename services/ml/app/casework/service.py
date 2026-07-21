@@ -846,10 +846,18 @@ def _lv(v: str) -> dict:
 
 
 def lookups() -> S.CaseworkLookups:
-    with db.ro_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute('SELECT "CourtID","CourtName" FROM "Court" WHERE "Active" ORDER BY "CourtName" LIMIT 500')
-            courts = [{"id": int(r[0]), "name": r[1]} for r in cur.fetchall()]
+    # The casework vocabularies are static (enforced in code). The court list is
+    # operational reference data served from the deployed store; when AWS RDS is
+    # absent (deployed AppSail runs without DATABASE_URL) it degrades to an empty
+    # list rather than failing the whole lookups endpoint (Prompt 21 §B.5).
+    courts: list[dict] = []
+    try:
+        with db.ro_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('SELECT "CourtID","CourtName" FROM "Court" WHERE "Active" ORDER BY "CourtName" LIMIT 500')
+                courts = [{"id": int(r[0]), "name": r[1]} for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001 — reference read is best-effort without RDS
+        courts = []
     return S.CaseworkLookups(
         statement_types=[_lv(x) for x in STATEMENT_TYPES],
         property_item_types=[_lv(x) for x in PROPERTY_ITEM_TYPES],

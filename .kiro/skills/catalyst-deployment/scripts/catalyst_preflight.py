@@ -6,9 +6,25 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _resolve(exe: str) -> str:
+    """Resolve a CLI name to an executable path, including Windows shims
+    (`catalyst.cmd` / `catalyst.ps1`) that a bare subprocess argv cannot find."""
+    found = shutil.which(exe)
+    if found:
+        return found
+    if sys.platform.startswith("win"):
+        for ext in (".cmd", ".exe", ".bat", ".ps1"):
+            found = shutil.which(exe + ext)
+            if found:
+                return found
+    return exe
 
 
 TEXT_SUFFIXES = {".json", ".yaml", ".yml", ".js", ".mjs", ".ts", ".md", ".toml"}
@@ -30,7 +46,8 @@ def redact(value: str) -> str:
 
 def command_result(command: list[str], cwd: Path, timeout: int = 25) -> dict:
     try:
-        result = subprocess.run(command, cwd=cwd, text=True, capture_output=True, timeout=timeout)
+        result = subprocess.run(command, cwd=cwd, text=True, capture_output=True,
+                                timeout=timeout, stdin=subprocess.DEVNULL)
         text = ((result.stdout or "") + ("\n" + result.stderr if result.stderr else "")).strip()
         return {"command": command, "exit_code": result.returncode, "output": redact(text[:4000])}
     except subprocess.TimeoutExpired:
@@ -63,9 +80,21 @@ def main() -> int:
     parser.add_argument("--phase", type=int, default=23)
     args = parser.parse_args()
     repo = args.repo.resolve()
+    catalyst = _resolve("catalyst")
+    # Run the CLI from the bound project dir (where .catalystrc lives); the CLI
+    # is unbound at repo root and its winston file logger crashes on teardown
+    # under captured stdio there.
+    cli_cwd = repo / "infra" / "catalyst"
+    if not cli_cwd.exists():
+        cli_cwd = repo
+    # `catalyst project:list` is the idempotent, non-interactive auth+access
+    # probe: it succeeds only when logged in and runs cleanly under captured
+    # stdio from the bound dir. (The interactive `login`/`whoami` subcommands
+    # crash this CLI version's winston file logger when stdout is a pipe;
+    # `--dc` is retained only for the recorded expectation.)
     checks = [
-        command_result(["catalyst", "--version"], repo),
-        command_result(["catalyst", "login", "--dc", args.dc], repo),
+        command_result([catalyst, "--version"], cli_cwd),
+        command_result([catalyst, "project:list"], cli_cwd),
     ]
     found = placeholders(repo / "infra/catalyst")
     record = {
