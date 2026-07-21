@@ -7,6 +7,7 @@ with the same ExternalID updates in place rather than duplicating.
 from __future__ import annotations
 
 import os
+import threading
 from abc import ABC, abstractmethod
 from typing import Any, Iterable, Optional
 
@@ -89,16 +90,81 @@ class InMemoryDataStore(DataStoreRepository):
         return counts
 
 
+_ADMIN_APP = None
+_ADMIN_APP_LOCK = threading.Lock()
+
+
+def _india_default_domain() -> str:
+    return os.getenv("ZOHO_CATALYST_API_DOMAIN", "https://api.catalyst.zoho.in")
+
+
+def build_admin_app(app=None):
+    """Return a Catalyst SDK app initialized with ADMIN scope.
+
+    A custom-container AppSail has no per-request Catalyst session (it only
+    receives the gateway's signed HMAC context), so server-side Data Store / ZCQL
+    / Cache access must use ADMIN scope via a self-client RefreshTokenCredential
+    (Catalyst "integrate SDK in third-party apps"). Credentials are read from the
+    server-side environment only (never committed):
+
+      ZOHO_CATALYST_CLIENT_ID / ZOHO_CATALYST_CLIENT_SECRET /
+      ZOHO_CATALYST_REFRESH_TOKEN  — self-client OAuth (admin scope);
+      CATALYST_PROJECT_ID (auto-injected) or ZOHO_CATALYST_PROJECT_ID;
+      ZOHO_CATALYST_ZAID           — the portal id (project_key);
+      ZOHO_CATALYST_API_DOMAIN     — DC api domain (default India api.catalyst.zoho.in);
+      ZOHO_CATALYST_ENVIRONMENT    — Development|Production (default Development).
+
+    Cached process-wide. Falls back to the plain in-Catalyst initialize() (native
+    functions) when no self-client credentials are configured.
+    """
+    global _ADMIN_APP
+    if app is not None:
+        return app
+    if _ADMIN_APP is not None:
+        return _ADMIN_APP
+    with _ADMIN_APP_LOCK:
+        if _ADMIN_APP is not None:
+            return _ADMIN_APP
+        import zcatalyst_sdk  # deferred: only present in the AppSail image
+        client_id = os.getenv("ZOHO_CATALYST_CLIENT_ID")
+        client_secret = os.getenv("ZOHO_CATALYST_CLIENT_SECRET")
+        refresh_token = os.getenv("ZOHO_CATALYST_REFRESH_TOKEN")
+        project_id = os.getenv("CATALYST_PROJECT_ID") or os.getenv("ZOHO_CATALYST_PROJECT_ID")
+        project_key = os.getenv("ZOHO_CATALYST_ZAID") or os.getenv("CATALYST_PROJECT_KEY")
+        if client_id and client_secret and refresh_token and project_id and project_key:
+            from zcatalyst_sdk import credentials
+            from zcatalyst_sdk.types import ICatalystOptions
+            cred = credentials.RefreshTokenCredential({
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            })
+            options = ICatalystOptions(
+                project_id=project_id,
+                project_key=project_key,
+                project_domain=_india_default_domain(),
+                environment=os.getenv("ZOHO_CATALYST_ENVIRONMENT", "Development"),
+            )
+            _ADMIN_APP = zcatalyst_sdk.initialize_app(
+                credential=cred, options=options, name="drishti-appsail")
+        else:
+            # Native-function context (admin scope implicit) or misconfiguration;
+            # readiness surfaces the failure if this cannot serve.
+            _ADMIN_APP = zcatalyst_sdk.initialize()
+    return _ADMIN_APP
+
+
 class CatalystDataStoreRepository(DataStoreRepository):
     """Deployed implementation backed by the Catalyst Python SDK (zcatalyst-sdk).
 
-    Constructed lazily inside AppSail where the SDK + credentials exist. The SDK
-    import is deferred so this module stays importable (and testable) locally.
+    Constructed lazily inside AppSail. Initialized with ADMIN scope via a
+    self-client RefreshTokenCredential (see :func:`build_admin_app`) because a
+    custom-container AppSail has no per-request Catalyst session. The SDK import
+    is deferred so this module stays importable (and testable) locally.
     """
 
     def __init__(self, app=None):
-        import zcatalyst_sdk  # deferred: only present in the AppSail image
-        self._app = app or zcatalyst_sdk.initialize()
+        self._app = build_admin_app(app)
         self._ds = self._app.datastore()
 
     def _table(self, table: str):
