@@ -226,6 +226,22 @@
       "recorded_at": "2026-07-21T13:46:14.220229+00:00"
     },
     {
+      "id": "p23-console-setup-guide",
+      "phase": 23,
+      "capability": "Auto-generated exact Catalyst Console setup guide (buckets + 27 tables with columns/types) to minimize manual work",
+      "category": "documentation",
+      "environment": "local",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "python infra/catalyst/ds-schema/generate_console_guide.py",
+      "exit_code": 0,
+      "artifact": "docs/deployment/CATALYST_CONSOLE_SETUP.md",
+      "artifact_sha256": "8cf30b53ef990367b2070c669302ef2726955195cb9f1222193d51f7b165eca7",
+      "resource_id": null,
+      "notes": "Data Store tables + Stratus buckets are Console-only (SDK/API/CLI/IaC-to-existing-project all ruled out via Catalyst docs). Guide gives exact column specs for MVP (State+6 board) + reference + disaster.",
+      "recorded_at": "2026-07-21T14:47:57.306972+00:00"
+    },
+    {
       "id": "p23-deploy-preflight",
       "phase": 23,
       "capability": "Catalyst deploy preflight: project=DHRISTI/48361000000030003 org 60075362708 IN DC, synthetic marker, DB-free AppSail posture, live no-duplicate",
@@ -306,5 +322,5 @@
       "recorded_at": "2026-07-21T14:14:35.615753+00:00"
     }
   ],
-  "updated_at": "2026-07-21T14:14:35.615753+00:00"
+  "updated_at": "2026-07-21T14:47:57.306972+00:00"
 }
