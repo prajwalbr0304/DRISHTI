@@ -26,7 +26,9 @@ Create 3 **private, versioned** buckets, then give the names to Kiro:
 
 ## Step 2 — MVP Data Store tables (proves the full live path)
 
-Create these first. `State` is the readiness probe; the 6 Board tables are Data Store-native and the app writes them live (no import needed) — this alone proves Auth → Gateway → AppSail → Data Store → Stratus.
+Create these first. `State` is the readiness probe; the 6 Board tables are Data Store-native and the app writes them live (no import needed) — this alone proves Auth → Gateway → AppSail → Data Store → Stratus. `PredictionRequest` is the trigger table for the ONE mandatory Signal (a `row_inserted` with `state='approved'` fires `prediction_event`).
+
+> **Live-journey scope (honest):** Board + Disaster are Data Store-native and run live on the AppSail. The FIR/case/evidence-metadata/chat transactional flows are **postgres-backed** (analytics plane) and the operational AppSail is intentionally denied a `DATABASE_URL`, so those run in the local full-stack, not on the deployed AppSail. The deployed demo proves the Data Store-native operational journeys + evidence-file upload (Stratus) + the auth/gateway/security chain.
 
 ### `State`
 
@@ -152,6 +154,17 @@ Create these first. `State` is the readiness probe; the 6 Board tables are Data 
 | `DiffJSON` | Text | no |
 | `RequestID` | Varchar | no |
 | `CreatedAt` | DateTime | yes |
+| `ExternalID` | Varchar (**Unique**) | yes |
+
+### `PredictionRequest`  (PK: `PredictionRequestID`)
+
+| Column | Catalyst type | Mandatory |
+|---|---|---|
+| `PredictionRequestID` | Varchar | yes |
+| `state` | Varchar | yes |
+| `task` | Varchar | no |
+| `requested_backend` | Varchar | no |
+| `idempotency_key` | Varchar | yes |
 | `ExternalID` | Varchar (**Unique**) | yes |
 
 ---

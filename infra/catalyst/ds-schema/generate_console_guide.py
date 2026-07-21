@@ -39,6 +39,22 @@ REFERENCE_TABLES = [
 # Columns that cannot be represented in Data Store (PostGIS geometry) -> excluded.
 EXCLUDE_COLS = {"geom"}
 
+# Trigger table for the ONE mandatory Signal (prediction-requested). A row_inserted
+# with state='approved' fires the drishti_datastore publisher -> prediction_event.
+# Not in the board/disaster schemas; defined inline. Columns match what
+# infra/catalyst/functions/prediction_event/index.js reads from the event data.
+PREDICTION_REQUEST_TABLE = {
+    "name": "PredictionRequest",
+    "primary_key": "PredictionRequestID",
+    "columns": [
+        {"name": "PredictionRequestID", "type": "text", "nullable": False},
+        {"name": "state", "type": "text", "nullable": False},        # 'approved' triggers the rule
+        {"name": "task", "type": "text", "nullable": True},
+        {"name": "requested_backend", "type": "text", "nullable": True},
+        {"name": "idempotency_key", "type": "text", "nullable": False},
+    ],
+}
+
 
 def infer_type(col: str) -> str:
     c = col.lower()
@@ -139,12 +155,25 @@ def main() -> int:
         "",
         "Create these first. `State` is the readiness probe; the 6 Board tables are "
         "Data Store-native and the app writes them live (no import needed) — this alone "
-        "proves Auth → Gateway → AppSail → Data Store → Stratus.",
+        "proves Auth → Gateway → AppSail → Data Store → Stratus. `PredictionRequest` is "
+        "the trigger table for the ONE mandatory Signal (a `row_inserted` with "
+        "`state='approved'` fires `prediction_event`).",
+        "",
+        "> **Live-journey scope (honest):** Board + Disaster are Data Store-native and run "
+        "live on the AppSail. The FIR/case/evidence-metadata/chat transactional flows are "
+        "**postgres-backed** (analytics plane) and the operational AppSail is intentionally "
+        "denied a `DATABASE_URL`, so those run in the local full-stack, not on the deployed "
+        "AppSail. The deployed demo proves the Data Store-native operational journeys + "
+        "evidence-file upload (Stratus) + the auth/gateway/security chain.",
         "",
     ]
     out += render_reference_table("State")
     for t in board:
         out += render_schema_table(t)
+    # PredictionRequest — the trigger table for the ONE mandatory Signal
+    # (prediction-requested: drishti_datastore row_inserted -> prediction_event).
+    # Not part of the board/disaster schemas; defined inline here.
+    out += render_schema_table(PREDICTION_REQUEST_TABLE)
 
     out += [
         "---", "",
@@ -186,10 +215,10 @@ def main() -> int:
     ]
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(out), encoding="utf-8")
-    n_tables = 1 + len(board) + (len(REFERENCE_TABLES) - 1) + len(disaster)
+    n_tables = 1 + len(board) + 1 + (len(REFERENCE_TABLES) - 1) + len(disaster)
     print(f"wrote {OUT.relative_to(REPO)}  ({n_tables} tables documented: "
-          f"1 State + {len(board)} board + {len(REFERENCE_TABLES)-1} reference + "
-          f"{len(disaster)} disaster)")
+          f"1 State + {len(board)} board + 1 PredictionRequest + {len(REFERENCE_TABLES)-1} "
+          f"reference + {len(disaster)} disaster)")
     return 0
 
 
