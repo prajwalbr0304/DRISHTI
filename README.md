@@ -41,7 +41,7 @@ connection; it is server-side only and is never shipped to the browser.
 
 | Layer | Path | Stack |
 | --- | --- | --- |
-| Database schema & migrations | `*.sql`, `services/ml/sql/` | PostgreSQL 15+ (AWS RDS), PostGIS, pgvector, pg_trgm |
+| Database schema & migrations | `services/ml/sql/` | PostgreSQL 15+ (AWS RDS), PostGIS, pgvector, pg_trgm |
 | Synthetic data generator | `generate.py`, `datagen/` | Python, psycopg2 (COPY) |
 | ML / analytics API | `services/ml/` | FastAPI, Uvicorn, scikit-learn, NetworkX, (optional) PyTorch / TabFM / TimesFM |
 | Web front end | `web/` | Vite, React 18, TypeScript, Tailwind, deck.gl, MapLibre |
@@ -65,15 +65,16 @@ connection; it is server-side only and is never shipped to the browser.
 
 ```
 DRISHTI/
-├─ police_fir_schema.sql          # 1) base operational FIR schema
-├─ police_fir_intelligence.sql    # 2) AI / analytics layer (enables pgvector, pg_trgm)
-├─ police_fir_extensions.sql      # 3) financial / chat / RBAC extensions
 ├─ generate.py                    # synthetic data generator (CLI entry point)
 ├─ datagen/                       # data-generation engine
 ├─ requirements.txt               # deps for the data generator
 ├─ services/ml/                   # FastAPI ML/analytics service
 │  ├─ app/                        # application code (main.py -> app.main:app)
-│  ├─ sql/                        # 4) service migrations (roles, matviews, graph)
+│  ├─ sql/                        # database schema + migrations (run in order)
+│  │  ├─ police_fir_schema.sql        # 1) base operational FIR schema
+│  │  ├─ police_fir_intelligence.sql  # 2) AI / analytics layer (pgvector, pg_trgm)
+│  │  ├─ police_fir_extensions.sql    # 3) financial / chat / RBAC extensions
+│  │  └─ 0NN_*.sql                     # 4) numbered service migrations (001-023)
 │  ├─ requirements.txt            # backend deps (heavier: torch, foundation models)
 │  ├─ Dockerfile / docker-compose.yml
 │  └─ models/                     # ML model weights (NOT in git; see notes)
@@ -145,9 +146,9 @@ VITE_MAPILLARY_TOKEN=
 Run the SQL files **in this exact order** against your database. With `psql`:
 
 ```bash
-psql "$DATABASE_URL" -f police_fir_schema.sql
-psql "$DATABASE_URL" -f police_fir_intelligence.sql
-psql "$DATABASE_URL" -f police_fir_extensions.sql
+psql "$DATABASE_URL" -f services/ml/sql/police_fir_schema.sql
+psql "$DATABASE_URL" -f services/ml/sql/police_fir_intelligence.sql
+psql "$DATABASE_URL" -f services/ml/sql/police_fir_extensions.sql
 
 # Service migrations (roles, graph objects, matviews, evidence)
 psql "$DATABASE_URL" -f services/ml/sql/001_readonly_role.sql
