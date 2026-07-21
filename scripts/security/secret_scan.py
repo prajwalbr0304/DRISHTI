@@ -58,6 +58,7 @@ ALLOW_PATH = re.compile(
 PLACEHOLDER = re.compile(
     r"(?i)(REPLACE|EXAMPLE|CHANGE[_-]?ME|YOUR[_-]|PLACEHOLDER|DUMMY|SAMPLE|xxxx|<[^>]+>|"
     r"\{[^}]+\}|SUPERSECRET|:password@|:pass@|:pwd@|user:secret|"
+    r"test-signing-secret|do-not-ship|fake-secret|dummy-secret|"
     r"os\.getenv|os\.environ|process\.env|import\.meta\.env|getenv\(|\$\{)"
 )
 

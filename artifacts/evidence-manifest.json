@@ -288,7 +288,23 @@
       "resource_id": null,
       "notes": "Section A complete/green; B-F pending collaborative Console+credit execution; nothing faked.",
       "recorded_at": "2026-07-21T13:52:16.135581+00:00"
+    },
+    {
+      "id": "p23-serving-export-prep",
+      "phase": 23,
+      "capability": "Curated serving subset generated from analytics DB (106 tables, 92443 rows) ready for ds:import",
+      "category": "deployment",
+      "environment": "local",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "python export_serving_subset.py --all --target-cases 2000",
+      "exit_code": 0,
+      "artifact": "artifacts/phase-23/serving-export.json",
+      "artifact_sha256": "b93ce85ed2cc2530d88cf23c646ce610f7f12cdbadabcef3ddb45d723f74129f",
+      "resource_id": null,
+      "notes": "Read-only export from AWS RDS analytics. ds:import blocked until a Stratus bucket exists (Console-only).",
+      "recorded_at": "2026-07-21T14:14:35.615753+00:00"
     }
   ],
-  "updated_at": "2026-07-21T14:08:36.767199+00:00"
+  "updated_at": "2026-07-21T14:14:35.615753+00:00"
 }
