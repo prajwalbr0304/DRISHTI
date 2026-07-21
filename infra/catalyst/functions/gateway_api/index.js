@@ -175,6 +175,36 @@ module.exports = async (req, res) => {
     return sendJson(res, 503, { error: 'gateway_not_configured', request_id: requestId });
   }
 
+  // Resolve the upstream path once (strip the public prefix).
+  const prefix = process.env.DRISHTI_GATEWAY_PATH_PREFIX || '/api';
+  const parsed = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+  let upstreamPath = parsed.pathname;
+  if (upstreamPath.startsWith(prefix)) upstreamPath = upstreamPath.slice(prefix.length) || '/';
+
+  // 0. Health passthrough: liveness/readiness MUST be reachable without a
+  //    Catalyst session (the API Gateway 'drishti-health' route is No-Auth and
+  //    AppSail exempts /health/* from the signed-context requirement). Proxy the
+  //    GET directly — no identity, no signed context, non-sensitive.
+  if (upstreamPath === '/health' || upstreamPath.startsWith('/health/')) {
+    const healthUrl = baseUrl.replace(/\/+$/, '') + upstreamPath + (parsed.search || '');
+    const hac = new AbortController();
+    const htimer = setTimeout(() => hac.abort(), 10000);
+    try {
+      const up = await fetch(healthUrl, { method: 'GET', signal: hac.signal });
+      const txt = await up.text();
+      res.writeHead(up.status, {
+        'Content-Type': up.headers.get('content-type') || 'application/json',
+        'X-Request-ID': requestId,
+      });
+      res.end(txt);
+    } catch (e) {
+      sendJson(res, 502, { error: 'upstream_unavailable', request_id: requestId });
+    } finally {
+      clearTimeout(htimer);
+    }
+    return;
+  }
+
   // 1. Resolve identity from Catalyst Authentication (USER scope only).
   let user = null;
   try {
@@ -217,10 +247,7 @@ module.exports = async (req, res) => {
   const { payload, signature } = signContext(ctx, secret);
 
   // 4. Build the upstream request: strip client identity headers, forward the rest.
-  const prefix = process.env.DRISHTI_GATEWAY_PATH_PREFIX || '/api';
-  const parsed = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
-  let upstreamPath = parsed.pathname;
-  if (upstreamPath.startsWith(prefix)) upstreamPath = upstreamPath.slice(prefix.length) || '/';
+  //    (upstreamPath was resolved above.)
   const upstreamUrl = baseUrl.replace(/\/+$/, '') + upstreamPath + (parsed.search || '');
 
   const fwdHeaders = { 'Content-Type': req.headers['content-type'] || 'application/json' };
