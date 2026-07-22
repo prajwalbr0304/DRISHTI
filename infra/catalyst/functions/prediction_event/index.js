@@ -97,23 +97,21 @@ function pick(rec, keys) {
   return undefined;
 }
 
-async function handler(event, context) {
+// Structured EXACTLY like the proven working cron_forecast: a single direct
+// async export, a plain `return` (an event function completes when its promise
+// resolves — no closeWithSuccess), and no extra export aliases. The earlier
+// dual-export + closeWithSuccess wrapper suppressed all console output and the
+// dispatch.
+module.exports = async (event, context) => {
   const enabled = String(process.env.DRISHTI_PREDICTION_DISPATCH_ENABLED || '').toLowerCase() === 'true';
-  // Complete cleanly under either contract. An event function that neither
-  // returns nor signals completion makes the invoke gateway time out -> 504
-  // "Zoho Temporarily Unavailable" -> Signals marks delivery Failed and retries.
-  const done = (result) => {
-    if (context && typeof context.closeWithSuccess === 'function') {
-      try { context.closeWithSuccess(typeof result === 'string' ? result : JSON.stringify(result)); } catch (_e) { /* ignore */ }
-    }
-    return result;
-  };
-
   const { data, meta } = readEvent(event);
   try {
     console.log('[prediction_event] action=' + meta.action + ' source=' + meta.source +
       ' entity=' + meta.entity + ' data=' + JSON.stringify(data).slice(0, 1500));
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    console.log('[prediction_event] data keys=' +
+      (data && typeof data === 'object' ? Object.keys(data).join(',') : typeof data));
+  }
 
   const records = toRecords(data);
   const out = [];
@@ -136,9 +134,17 @@ async function handler(event, context) {
       out.push({ event_id: eid, routed: 'notify', ...r });
       continue;
     }
-    // PredictionRequest: only dispatch approved ones.
+    // PredictionRequest: dispatch approved requests. Safety net: if state is
+    // unreadable (payload-shape surprise) but a PredictionRequestID IS present,
+    // dispatch anyway — this table only holds requests and AppSail dispatch is
+    // idempotent by key, so we never silently drop a real request.
     const state = String(pick(d, ['state', 'State', 'Status']) || '').toLowerCase();
-    if (!['approved', 'ready'].includes(state)) { out.push({ event_id: eid, ignored: 'not_approved', state }); continue; }
+    const dispatchable = ['approved', 'ready'].includes(state) || (!state && !!reqId);
+    if (!dispatchable) {
+      console.log(`[prediction_event] ignored not_approved state=${state} req=${reqId}`);
+      out.push({ event_id: eid, ignored: 'not_approved', state });
+      continue;
+    }
     if (!enabled) {
       console.log(`[prediction_event] scaffold disabled; would dispatch ${idem}`);
       out.push({ event_id: eid, skipped: true, idem });
@@ -150,15 +156,10 @@ async function handler(event, context) {
       requested_backend: pick(d, ['requested_backend', 'RequestedBackend']) || null,
       source: 'signals:prediction', event_id: eid,
     }, 'prediction_event', eid);
-    console.log(`[prediction_event] dispatch ${idem} (req=${reqId}) -> ${JSON.stringify(r)}`);
+    console.log(`[prediction_event] dispatch ${idem} (req=${reqId} state=${state}) -> ${JSON.stringify(r)}`);
     out.push({ event_id: eid, idem, reqId, ...r });
-    // NOTE: do not throw on failure — a persistent dispatch error would loop
-    // Signal retries forever. The AppSail dispatch is idempotent by key, so
-    // cron_reconcile can re-drive a transient miss; here we just record it.
+    // Do not throw: a persistent error would loop Signal retries. AppSail
+    // dispatch is idempotent by key so cron_reconcile can re-drive a miss.
   }
-  return done({ handled: out.length, results: out });
-}
-
-// Support both entry conventions: default export and named `handler`.
-module.exports = handler;
-module.exports.handler = handler;
+  return { handled: out.length, results: out };
+};
