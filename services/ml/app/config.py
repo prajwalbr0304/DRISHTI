@@ -197,6 +197,18 @@ class Settings(BaseSettings):
         """True once a private evidence bucket name is set (uploads enabled)."""
         return bool(self.s3_evidence_bucket.strip())
 
+    def stratus_evidence_configured(self) -> bool:
+        """True when Catalyst Stratus is the evidence object store (the deployed
+        AppSail has no AWS creds, so evidence files live in Stratus, not S3)."""
+        import os
+        return (os.getenv("DRISHTI_USE_CATALYST_STRATUS", "").strip().lower() == "true"
+                and bool(os.getenv("DRISHTI_STRATUS_EVIDENCE_BUCKET", "").strip()))
+
+    def storage_configured(self) -> bool:
+        """True when evidence FILES can be stored — either a private S3 bucket
+        (local/AWS) or the Catalyst Stratus evidence bucket (deployed AppSail)."""
+        return self.s3_configured() or self.stratus_evidence_configured()
+
     def evidence_allowed_ext_set(self) -> set[str]:
         return {e.strip().lower().lstrip(".")
                 for e in self.evidence_allowed_extensions.split(",") if e.strip()}

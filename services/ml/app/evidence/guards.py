@@ -120,13 +120,13 @@ def require_write_allowed(request: Request) -> None:
 
 
 def require_s3_configured() -> None:
-    """File upload/download need a provisioned private bucket."""
-    if not get_settings().s3_configured():
+    """File upload/download need a provisioned object store (S3 or Catalyst Stratus)."""
+    if not get_settings().storage_configured():
         raise HTTPException(
             status_code=503,
-            detail=("Evidence file storage is not configured (S3_EVIDENCE_BUCKET "
-                    "is unset). Metadata can still be recorded; provision the "
-                    "private bucket to enable uploads/downloads."))
+            detail=("Evidence file storage is not configured (no S3 bucket or "
+                    "Catalyst Stratus evidence bucket). Metadata can still be "
+                    "recorded; provision the private bucket to enable uploads/downloads."))
 
 
 def hackathon_status() -> dict:
@@ -138,8 +138,8 @@ def hackathon_status() -> dict:
         "demo_data_only": s.demo_data_only,
         "synthetic_db": synthetic,
         "writes_localhost_only": s.intake_writes_localhost_only,
-        "s3_configured": s.s3_configured(),
-        "upload_enabled": bool(s.s3_configured() and synthetic),
+        "s3_configured": s.storage_configured(),
+        "upload_enabled": bool(s.storage_configured() and synthetic),
         "max_bytes": s.evidence_max_bytes,
         "allowed_extensions": sorted(s.evidence_allowed_ext_set()),
         "allowed_mime_types": sorted(s.evidence_allowed_mime_set()),

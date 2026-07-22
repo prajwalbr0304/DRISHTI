@@ -22,7 +22,10 @@ boto3 with SigV4 pre-signing (required in ap-south-1).
 """
 from __future__ import annotations
 
+import os
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Optional, Protocol
@@ -193,13 +196,82 @@ class Boto3S3Gateway:
             raise S3Error(f"delete failed: {type(exc).__name__}") from exc
 
 
+class StratusEvidenceGateway:
+    """S3Gateway backed by Catalyst Stratus (deployed AppSail path).
+
+    The AppSail has no AWS credentials, so evidence objects live in the private
+    Stratus evidence bucket rather than S3. Presigned PUT/GET + head come from
+    the Stratus client; byte read (for server-side SHA-256 verification) is done
+    by fetching a short-lived presigned GET (Stratus streams no bytes through its
+    API). ``delete`` is a no-op (the synthetic-demo reset relies on versioning /
+    expiry, never a hard delete — matches the chain-of-custody posture)."""
+
+    def __init__(self, client=None):
+        from ..stratus import BUCKET_EVIDENCE, get_stratus
+        self._s = client or get_stratus()
+        self._logical = BUCKET_EVIDENCE
+        self.bucket = os.getenv("DRISHTI_STRATUS_EVIDENCE_BUCKET", "evidence").strip() or "evidence"
+
+    def presign_put(self, key: str, expires_in: int) -> PresignedUpload:
+        # Stratus presigned PUT is not content-type-bound, so any upload type
+        # works; sign a bare octet-stream put like the S3 gateway does.
+        try:
+            url = self._s.presign_put(self._logical, key,
+                                      content_type="application/octet-stream", ttl_s=int(expires_in))
+        except Exception as exc:  # noqa: BLE001
+            raise S3Error(f"could not presign upload: {type(exc).__name__}") from exc
+        return PresignedUpload(url=url, method="PUT", headers={}, storage_key=key,
+                               expires_in=int(expires_in))
+
+    def presign_get(self, key: str, *, filename: Optional[str] = None,
+                    content_type: Optional[str] = None, expires_in: int = 900,
+                    disposition: str = "attachment") -> str:
+        try:
+            return self._s.presign_get(self._logical, key, ttl_s=int(expires_in))
+        except Exception as exc:  # noqa: BLE001
+            raise S3Error(f"could not presign download: {type(exc).__name__}") from exc
+
+    def head(self, key: str) -> ObjectHead:
+        try:
+            ref = self._s.head(self._logical, key)
+        except Exception as exc:  # noqa: BLE001
+            raise S3Error(f"head failed: {type(exc).__name__}") from exc
+        if not ref:
+            return ObjectHead(exists=False)
+        return ObjectHead(exists=True, size=ref.size, content_type=ref.content_type,
+                          etag=ref.version_id)
+
+    def get_bytes(self, key: str, max_bytes: int) -> bytes:
+        # Stratus streams no bytes via its API; read the object through a
+        # short-lived presigned GET (the URL is self-generated + trusted).
+        try:
+            url = self._s.presign_get(self._logical, key, ttl_s=120)
+        except Exception as exc:  # noqa: BLE001
+            raise S3Error(f"could not presign read: {type(exc).__name__}") from exc
+        try:
+            with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310 (trusted signed URL)
+                return resp.read(int(max_bytes))
+        except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
+            if getattr(exc, "code", None) in (403, 404):
+                raise ObjectNotFound(key) from exc
+            raise S3Error(f"get failed: {exc.code}") from exc
+        except Exception as exc:  # noqa: BLE001
+            raise S3Error(f"get failed: {type(exc).__name__}") from exc
+
+    def delete(self, key: str) -> None:  # noqa: D401 - see class docstring
+        return None
+
+
 @lru_cache(maxsize=1)
 def get_gateway() -> S3Gateway:
-    """Cached real gateway. Raises S3NotConfigured when no bucket is set — the
-    guard layer returns 503 before the service reaches this."""
+    """Cached gateway. Prefers Catalyst Stratus when configured (deployed
+    AppSail), else a private S3 bucket. Raises S3NotConfigured when neither is
+    set — the guard layer returns 503 before the service reaches this."""
     s = get_settings()
+    if s.stratus_evidence_configured():
+        return StratusEvidenceGateway()
     if not s.s3_configured():
-        raise S3NotConfigured("No S3_EVIDENCE_BUCKET configured.")
+        raise S3NotConfigured("No evidence object store configured (S3 or Stratus).")
     return Boto3S3Gateway(
         s.s3_evidence_bucket.strip(), region=s.aws_region,
         profile=s.aws_profile, endpoint_url=s.s3_endpoint_url)
