@@ -10,6 +10,7 @@ ExternalID updates in place rather than duplicating.
 """
 from __future__ import annotations
 
+import json
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Iterable, Optional
@@ -121,7 +122,7 @@ class CatalystDataStoreRepository(DataStoreRepository):
     def get(self, table, external_id):
         rows = self._c.zcql(
             f"SELECT * FROM {table} WHERE ExternalID = '{_escape(external_id)}' LIMIT 1")
-        return _unwrap(rows[0], table) if rows else None
+        return _decode_row(_unwrap(rows[0], table)) if rows else None
 
     def query(self, table, *, where=None, limit=100, offset=0):
         clause = ""
@@ -140,7 +141,7 @@ class CatalystDataStoreRepository(DataStoreRepository):
             rows = self._c.zcql(f"SELECT * FROM {table}{clause} LIMIT {off},{page}")
             if not rows:
                 break
-            out.extend(_unwrap(r, table) for r in rows)
+            out.extend(_decode_row(_unwrap(r, table)) for r in rows)
             got = len(rows)
             off += got
             remaining -= got
@@ -178,11 +179,32 @@ _ISO_DT = _re.compile(r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})")
 
 
 def _catalyst_value(v):
+    # dict/list -> JSON string: Catalyst has no native json column, so json-typed
+    # fields (Payload, GeoJSON, StyleJSON, Factors, ...) are stored as text.
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, default=str)
     if isinstance(v, str):
         m = _ISO_DT.match(v)
         if m:
             return f"{m.group(1)} {m.group(2)}"
     return v
+
+
+def _decode_row(row):
+    """Reverse of _catalyst_value on read: parse JSON-looking strings back to
+    dict/list so callers that expect json columns as objects keep working."""
+    if not isinstance(row, dict):
+        return row
+    out = {}
+    for k, v in row.items():
+        if isinstance(v, str) and v[:1] in ("{", "["):
+            try:
+                out[k] = json.loads(v)
+            except (ValueError, TypeError):
+                out[k] = v
+        else:
+            out[k] = v
+    return out
 
 
 def _unwrap(row: dict, table: str) -> dict:
