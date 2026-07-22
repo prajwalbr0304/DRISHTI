@@ -14,6 +14,10 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Iterable, Optional
 
+# Catalyst ZCQL hard cap: a single query may return at most 300 rows
+# ("ZCQL CANNOT HAVE MORE THAN 300 ROWS in LIMIT"). Reads above this paginate.
+_ZCQL_MAX_ROWS = 300
+
 
 class DataStoreRepository(ABC):
     """CRUD + full-text search keyed by a stable ExternalID."""
@@ -124,8 +128,25 @@ class CatalystDataStoreRepository(DataStoreRepository):
         if where:
             conds = " AND ".join(f"{k} = '{_escape(str(v))}'" for k, v in where.items())
             clause = f" WHERE {conds}"
-        rows = self._c.zcql(f"SELECT * FROM {table}{clause} LIMIT {int(offset)},{int(limit)}")
-        return [_unwrap(r, table) for r in rows]
+        # Catalyst ZCQL rejects LIMIT row_count > 300 ("ZCQL CANNOT HAVE MORE THAN
+        # 300 ROWS in LIMIT"). Callers pass large scan limits (e.g. board
+        # _MAX_SCAN=100000), so page internally in <=300-row chunks and stop at
+        # the requested limit or when a short page signals the end.
+        out: list[dict[str, Any]] = []
+        remaining = max(0, int(limit))
+        off = int(offset)
+        while remaining > 0:
+            page = min(remaining, _ZCQL_MAX_ROWS)
+            rows = self._c.zcql(f"SELECT * FROM {table}{clause} LIMIT {off},{page}")
+            if not rows:
+                break
+            out.extend(_unwrap(r, table) for r in rows)
+            got = len(rows)
+            off += got
+            remaining -= got
+            if got < page:
+                break
+        return out
 
     def search(self, table, text, *, columns=None, limit=50):
         res = self._c.search(text, table, columns, max_results=limit)
