@@ -63,6 +63,24 @@ def _pred_ext(request_id: Any) -> str:
     return f"predreq:{request_id}"
 
 
+# The PredictionRequest Data Store table has exactly these writable columns
+# (Console-created; the Signals rule filters on the lowercase ``state``). The
+# repository adds ExternalID + ROWID. We must NOT send capitalized/derived names
+# (State/Task/UpdatedAt/DispatchRef/Window/…) or read-only system columns — the
+# Catalyst row API rejects unknown/read-only columns, which 500s the dispatch.
+def _pred_row(prediction_request_id: Any, state: str, *, task: Optional[str] = None,
+              requested_backend: Optional[str] = None,
+              idempotency_key: Optional[str] = None) -> dict[str, Any]:
+    row: dict[str, Any] = {"PredictionRequestID": prediction_request_id, "state": state}
+    if task is not None:
+        row["task"] = task
+    if requested_backend is not None:
+        row["requested_backend"] = requested_backend
+    if idempotency_key is not None:
+        row["idempotency_key"] = idempotency_key
+    return row
+
+
 # ---------------------------------------------------------------------------
 # Emitter — persist authoritative Data Store state, THEN publish the Signal.
 # ---------------------------------------------------------------------------
@@ -86,18 +104,9 @@ def emit_prediction_requested(
     repo = repo or get_repository()
     signals = signals or get_signals()
     ext = _pred_ext(prediction_request_id)
-    record = {
-        "PredictionRequestID": prediction_request_id,
-        "Task": task,
-        "RequestedBackend": requested_backend,
-        "DistrictID": district_id,
-        "FeatureSnapshotID": feature_snapshot_id,
-        "State": STATE_APPROVED,
-        "CreatedBy": actor,
-        "CreatedAt": _now(),
-        "UpdatedAt": _now(),
-    }
-    stored = repo.upsert(_PRED_TABLE, ext, record)          # 1. PERSIST FIRST
+    stored = repo.upsert(_PRED_TABLE, ext, _pred_row(       # 1. PERSIST FIRST
+        prediction_request_id, STATE_APPROVED, task=task,
+        requested_backend=requested_backend))
     ev = signals.publish(EVENT_PREDICTION_REQUESTED, {       # 2. THEN emit
         "prediction_request_id": str(prediction_request_id),
         "task": task, "state": STATE_APPROVED, "district_id": district_id,
@@ -134,15 +143,12 @@ def dispatch_prediction(
     if not newly:
         return {"status": "duplicate", "idempotency_key": idempotency_key,
                 "prediction_request_id": str(prediction_request_id),
-                "state": (existing or {}).get("State")}
-
-    base = existing or {"PredictionRequestID": prediction_request_id, "Task": task,
-                        "State": STATE_APPROVED, "CreatedAt": _now()}
+                "state": (existing or {}).get("state")}
 
     if not prediction_dispatch_enabled():
-        rec = dict(base, State=STATE_QUEUED, UpdatedAt=_now(),
-                   DispatchNote="dispatch disabled until Prompt 23")
-        repo.upsert(_PRED_TABLE, ext, rec)
+        repo.upsert(_PRED_TABLE, ext, _pred_row(
+            prediction_request_id, STATE_QUEUED, task=task,
+            requested_backend=requested_backend, idempotency_key=idempotency_key))
         return {"status": "skipped_disabled", "idempotency_key": idempotency_key,
                 "prediction_request_id": str(prediction_request_id), "state": STATE_QUEUED}
 
@@ -152,17 +158,19 @@ def dispatch_prediction(
         # Prompt 23 builds the full PredictionRequestEnvelope (feature snapshot +
         # query rows) and calls adapter.dispatch(); here we record the terminal
         # 'dispatched' transition once the enable gate + adapter are present.
-        job_ref = getattr(adapter, "name", "aws-adapter")
-        rec = dict(base, State=STATE_DISPATCHED, UpdatedAt=_now(), DispatchRef=str(job_ref))
-        repo.upsert(_PRED_TABLE, ext, rec)
+        _ = getattr(adapter, "name", "aws-adapter")
+        repo.upsert(_PRED_TABLE, ext, _pred_row(
+            prediction_request_id, STATE_DISPATCHED, task=task,
+            requested_backend=requested_backend, idempotency_key=idempotency_key))
         return {"status": "dispatched", "idempotency_key": idempotency_key,
                 "prediction_request_id": str(prediction_request_id), "state": STATE_DISPATCHED}
     except Exception as exc:  # noqa: BLE001 — record a terminal failed state
-        rec = dict(base, State=STATE_FAILED, UpdatedAt=_now(),
-                   ErrorCode=type(exc).__name__)
-        repo.upsert(_PRED_TABLE, ext, rec)
+        repo.upsert(_PRED_TABLE, ext, _pred_row(
+            prediction_request_id, STATE_FAILED, task=task,
+            requested_backend=requested_backend, idempotency_key=idempotency_key))
         return {"status": "failed", "retryable": True, "idempotency_key": idempotency_key,
-                "prediction_request_id": str(prediction_request_id), "state": STATE_FAILED}
+                "prediction_request_id": str(prediction_request_id), "state": STATE_FAILED,
+                "error": type(exc).__name__}
 
 
 # ---------------------------------------------------------------------------
@@ -193,16 +201,14 @@ def run_forecast(
     existing = repo.get(_PRED_TABLE, ext)
     if not newly:
         return {"status": "duplicate", "window": window,
-                "state": (existing or {}).get("State")}
+                "state": (existing or {}).get("state")}
 
     enabled = forecast_cron_enabled()
     state = STATE_DISPATCHED if enabled else STATE_QUEUED
-    record = {
-        "PredictionRequestID": req_id, "Task": "forecast", "Window": window,
-        "State": state, "CreatedBy": "cron:forecast", "CreatedAt": _now(),
-        "UpdatedAt": _now(),
-    }
-    repo.upsert(_PRED_TABLE, ext, record)     # persist authoritative record first
+    # persist authoritative record first (window is encoded in req_id =
+    # forecast-<window>; the table has no separate Window column).
+    repo.upsert(_PRED_TABLE, ext, _pred_row(req_id, state, task="forecast",
+                                            idempotency_key=key))
     return {"status": ("dispatched" if enabled else "skipped_disabled"),
             "window": window, "state": state, "idempotency_key": key}
 
