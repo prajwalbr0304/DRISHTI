@@ -111,7 +111,7 @@ class CatalystDataStoreRepository(DataStoreRepository):
         self._c = client or get_rest_client()
 
     def upsert(self, table, external_id, row):
-        payload = dict(row, ExternalID=external_id)
+        payload = {k: _catalyst_value(v) for k, v in dict(row, ExternalID=external_id).items()}
         existing = self.get(table, external_id)
         if existing and existing.get("ROWID"):
             payload["ROWID"] = existing["ROWID"]
@@ -166,6 +166,23 @@ class CatalystDataStoreRepository(DataStoreRepository):
             except Exception:  # noqa: BLE001
                 counts["rejected"] += 1
         return counts
+
+
+import re as _re
+# Catalyst Data Store datetime columns require 'YYYY-MM-DD HH:MM:SS' and reject
+# ISO8601 with a 'T' separator / timezone / microseconds ("datetime value
+# expected"). Normalise any ISO-datetime-looking string value on write so domain
+# datetime fields (OnsetAt, ForecastStart, ObservedAt, ...) — not just _now()
+# timestamps — are accepted. Non-datetime strings never match this pattern.
+_ISO_DT = _re.compile(r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})")
+
+
+def _catalyst_value(v):
+    if isinstance(v, str):
+        m = _ISO_DT.match(v)
+        if m:
+            return f"{m.group(1)} {m.group(2)}"
+    return v
 
 
 def _unwrap(row: dict, table: str) -> dict:
