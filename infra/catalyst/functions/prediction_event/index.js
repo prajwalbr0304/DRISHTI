@@ -106,29 +106,19 @@ const safe = (fn, d) => { try { return fn(); } catch (_e) { return d; } };
 module.exports = async (event, context) => {
   const enabled = String(process.env.DRISHTI_PREDICTION_DISPATCH_ENABLED || '').toLowerCase() === 'true';
 
-  // One-time introspection: reveal the real event object shape + methods.
-  console.log('[prediction_event] INTROSPECT ' + safe(() => JSON.stringify({
-    t: typeof event,
-    ctor: event && event.constructor && event.constructor.name,
-    ownKeys: event && typeof event === 'object' ? Object.keys(event) : null,
-    methods: event ? Object.getOwnPropertyNames(Object.getPrototypeOf(event) || {}).filter((n) => n !== 'constructor') : null,
-    argHasContext: !!context,
-  }), '(introspect failed)'));
-
-  // Try every plausible row accessor, then plain shapes.
-  let data;
-  for (const m of ['getData', 'getAllData', 'getDataMap', 'getRow', 'getRecord', 'getEntity']) {
-    const v = safe(() => (event && typeof event[m] === 'function') ? event[m]() : undefined, undefined);
-    if (v !== undefined && v !== null) {
-      data = v;
-      console.log('[prediction_event] data via ' + m + '() = ' + safe(() => JSON.stringify(v).slice(0, 900), '(unserialisable)'));
-      break;
-    }
-  }
-  if (data === undefined || data === null) {
-    data = readEvent(event).data;
-    console.log('[prediction_event] data via fallback = ' + safe(() => JSON.stringify(data).slice(0, 900), typeof data));
-  }
+  // Introspection proved this runtime delivers a PLAIN OBJECT that exposes the
+  // Signal payload as a direct `event.data` property (and getRawData()), while
+  // event.getData() returns undefined here. Read event.data first, then
+  // getRawData(), then the legacy getData().
+  const viaRaw = safe(() => (event && typeof event.getRawData === 'function') ? event.getRawData() : undefined);
+  let data = (event && event.data !== undefined && event.data !== null) ? event.data : undefined;
+  if (data === undefined || data === null) data = viaRaw;
+  if (data === undefined || data === null) data = safe(() => (event && typeof event.getData === 'function') ? event.getData() : undefined);
+  const action = safe(() => (event && typeof event.getAction === 'function') ? event.getAction() : null, null);
+  const source = safe(() => (event && typeof event.getSource === 'function') ? event.getSource() : null, null);
+  console.log('[prediction_event] action=' + action + ' source=' + source +
+    ' event.data=' + safe(() => JSON.stringify(event && event.data).slice(0, 1200), typeof (event && event.data)) +
+    ' getRawData=' + safe(() => JSON.stringify(viaRaw).slice(0, 400), typeof viaRaw));
 
   const records = toRecords(data);
   console.log('[prediction_event] records=' + records.length);
