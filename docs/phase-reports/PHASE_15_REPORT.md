@@ -254,3 +254,21 @@ additive and does not touch those paths.
   (board.activity events, exports, IO/Analyst/Supervisor/policymaker gating).
 - RLS stays disabled; the browser has no direct DB/AWS path; Catalyst
   Authentication + server-side role checks remain the authorization boundary.
+
+
+---
+
+## Prompt 23 live-evidence addendum (2026-07-23) — additive, historical text unchanged
+
+Live on Catalyst (see `docs/phase-reports/PHASE_23_REPORT.md`):
+
+- **Ask DRISHTI (optional RAG/assistant)** proven live: `ask#1`→200 `session_id=183`
+  ("30837 matching FIR(s)", generated SQL, `cited=1`); `ask#2` same session multi-turn ok
+  (`artifacts/phase-23/evidence-chat.log`). QuickML LLM serving is **not** deployed in this
+  DC, so the planner runs as the **labelled deterministic fallback** (honest — no fake LLM).
+- **Notifications:** in-app path is the live default; **Mail / Push = Not Used** (documented,
+  hidden from the demo) — `docs/deployment/CATALYST_CAPABILITY_MATRIX.md`.
+- **Reports / SmartBrowz:** Not Used (documented). **Zia AutoML / Circuits:** Unavailable in
+  IN DC (documented).
+- **Governance/admin** reads run through the live Auth→Gateway→AppSail chain; six-role
+  allow/deny proven (`fir-journey.log`).

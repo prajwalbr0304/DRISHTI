@@ -16,26 +16,34 @@
 | Dev domain (from `.catalystrc`) | `dhristi-60075362708.development` |
 | CLI | Catalyst CLI `1.27.0`, authenticated (project owner) |
 | Budget baseline | ~INR 1,800 (INR 1,500 Basic + INR 300 Free), 17 Jul – 17 Aug 2026 |
-| Inventory captured | 2026-07-21 |
-| **Live status** | **PARTIALLY DEPLOYED** — API Gateway enabled; 9 Functions live; AppSail live (health 200). Env config, Data Store/Stratus provisioning, Slate, identities, Signals/cron pending. |
+| Inventory captured | 2026-07-21; **live-verified 2026-07-22 → 2026-07-23** |
+| **Live status** | **LIVE** — public frontend (Slate) + primary API (AppSail via Gateway) resolve to Catalyst; Auth→Gateway→AppSail→Data Store/Stratus proven; six-role authz, 1 Signal, 1 cron, and application rollback proven. See `docs/phase-reports/PHASE_23_REPORT.md`. |
 
-## Live resources captured (2026-07-21)
+## Live resources captured (2026-07-23, final)
 
 | Resource | Live ID / URL | Status |
 |---|---|---|
+| Public frontend (Slate, Git auto-deploy) | `https://drishti-uryfmaue.onslate.in/` | **LIVE** (SPA 200; role-boxes build; CORS authorized) |
+| AppSail `drishti-api` (primary API) | `https://drishti-api-50044118953.development.catalystappsail.in` | **LIVE**; `/health/live`=200, `/health/ready`=200 (config/operational_datastore/gateway_auth/object_store/analytics_db all ok) |
 | Serverless domain (functions + Gateway) | `dhristi-60075362708.development.catalystserverless.in` | live |
-| API Gateway | ENABLED (`catalyst apig:status`) | live; routes pending Console |
-| Function `gateway_api` | `https://dhristi-60075362708.development.catalystserverless.in/server/gateway_api/` | live (503 until env set — expected) |
-| Function `channel_token` | `https://dhristi-60075362708.development.catalystserverless.in/server/channel_token/` | live |
-| Event functions | `evidence_event`, `datastore_event`, `prediction_event`, `report_event`, `notify_dispatch` | live (inactive until Signals+flags) |
-| Cron functions | `cron_reconcile`, `cron_forecast` | live (inactive until cron+flag) |
-| AppSail `drishti-api` | `https://drishti-api-50044118953.development.catalystappsail.in` | live; `/health/live`=200, `/health/ready`=200 |
-| Analytics DB (source for serving export) | reachable; `CaseMaster`=100000, `Employee`=12000, `District`=32 (140 tables) | available (RDS/local, adapter-only) |
+| API Gateway | ENABLED; `/api/*` → `gateway_api` (auth); exact-origin CORS (Slate origin only) | **LIVE** |
+| Function `gateway_api` | `…/server/gateway_api/` | **LIVE** (signed-context mint; env set) |
+| Function `channel_token` | `…/server/channel_token/` | live |
+| Event functions | `prediction_event` (**active** — Signal target), `evidence_event`, `datastore_event`, `report_event`, `notify_dispatch` | live |
+| Cron functions | `cron_forecast` (**active** — daily job), `cron_reconcile` | live |
+| Signal rule `prediction-requested` | Data Store Row Insert on `PredictionRequest` → `prediction_event` (Instant) | **LIVE** (delivery Status=Success) |
+| Cron `drishti_forecast` | daily `00:10` IST → `cron_forecast`; exec `48361000000061010` | **LIVE** (created `forecast-2026-07-22` queued) |
+| Stratus bucket `drishti-evidence` | `https://drishti-evidence-development.zohostratus.in` | **LIVE** (private, versioned; fixture sha256 verified) |
+| Data Store `PredictionRequest` | table `48361000000043006` | **LIVE** (insert + Signal-driven update proven) |
+| Analytics DB (adapter-only, server-to-server) | AWS RDS `drishti-db…ap-south-1` via AppSail `DATABASE_URL` | reachable (`analytics_db: ok`); browser never touches it |
 
-> AppSail is currently in the **pre-config** state: `gateway_auth: not_required`
-> (`DRISHTI_REQUIRE_GATEWAY_CONTEXT` unset) and the in-memory Data Store fallback.
-> Setting the env vars (§3 Stage 3) switches it to the secure Catalyst Data
-> Store/Stratus mode and enforces the signed-context boundary.
+> **Architecture note (documented deviation):** for the transactional journeys
+> (case/FIR reads, chat, evidence metadata) the AppSail reads the AWS RDS analytics
+> corpus through its protected server-to-server `DATABASE_URL` adapter; Board/Disaster
+> and the prediction workflow are Catalyst **Data Store**-native. The browser never
+> accesses RDS or any database directly — all reads go Browser → Slate → API Gateway →
+> AppSail. This keeps browser↔DB isolation while using RDS as the operational read source
+> for the large synthetic corpus (bounded, synthetic, RLS-off by explicit request).
 
 ---
 
@@ -87,10 +95,14 @@ steps. The runbook below interleaves them in dependency order.
 
 ---
 
-## 2. Target component inventory (fill live IDs during deploy)
+## 2. Target component inventory (original deploy plan)
 
-> Status legend: `PENDING` = not yet deployed this phase · `LIVE` = deployed +
-> verified (record ID/URL) · `N/A` = not used (record why).
+> **This is the original planning table.** The **final live state + IDs/URLs are in the
+> "Live resources captured (2026-07-23, final)" table above** and in
+> `docs/phase-reports/PHASE_23_REPORT.md`. Core components (frontend, Gateway, AppSail,
+> Functions, Data Store `PredictionRequest`, Stratus `drishti-evidence`, 1 Signal, 1 cron)
+> are **LIVE**; the rows below are retained as the dependency-ordered plan of record.
+> Status legend: `PENDING` = not deployed · `LIVE` = deployed + verified · `N/A` = not used.
 
 | # | Component | Artifact | Status | Live ID / URL (no secrets) |
 |---:|---|---|---|---|

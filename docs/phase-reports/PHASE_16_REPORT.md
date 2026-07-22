@@ -352,3 +352,20 @@ Prompt 17 can build directly on this phase. Concretely:
 5. **Map integration.** Map extract nodes + `Send to Board` from Map/Hotspots
    (via the universal PeekRail path) already work; a hazard risk-zone feature
    pins the same way once its RefSpec exists.
+
+
+---
+
+## Prompt 23 live-evidence addendum (2026-07-23) — additive, historical text unchanged
+
+Live on Catalyst (see `docs/phase-reports/PHASE_23_REPORT.md`):
+
+- The Investigation Board tables are **provisioned in Catalyst Data Store** (live):
+  `InvestigationBoard`, `BoardNode`, `BoardEdge`, `BoardAnnotation`, `BoardCollaborator`,
+  `BoardActivity`.
+- The **Data Store operational path is proven live** (insert + Signal-driven update on
+  `PredictionRequest`), which is the same Catalyst Data Store the board uses at runtime.
+- **Honest caveat (report §5):** a dedicated Board *business* API operation was not
+  separately API-captured this session — the board is a Data Store-backed UI feature
+  exercised through the live Slate frontend (`https://drishti-uryfmaue.onslate.in/`).
+  No board behaviour was faked.

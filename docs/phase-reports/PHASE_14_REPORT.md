@@ -687,3 +687,33 @@ Ordered, with the exact blocking dependency for each:
 - Catalyst multi-DC base URIs (IN: api.catalyst.zoho.in / accounts.zoho.in) — https://www.zoho.com/catalyst/help/api/introduction/multi-dc.html
 
 (External documentation content was rephrased/summarized for compliance with source licensing.)
+
+
+---
+
+## Prompt 23 live-evidence addendum (2026-07-23) — additive, historical text unchanged
+
+The Phase 14 Catalyst spine is now **deployed and proven live** on DHRISTI
+`48361000000030003` (IN DC, Development). See `docs/phase-reports/PHASE_23_REPORT.md`
+and `artifacts/phase-23/`.
+
+- **AppSail `drishti-api`** live at `https://drishti-api-50044118953.development.catalystappsail.in`
+  — `/health/live`=200, `/health/ready`=200 (config/operational_datastore/gateway_auth/
+  object_store/analytics_db all ok). Signed gateway-context boundary enforced
+  (`security-probe.log` 11/11: direct bypass→401, forgeries/expiry/replay→401).
+- **9 Functions** deployed live (`gateway_api`, `channel_token`, 5 event, 2 cron).
+- **Signal (matrix rows 21/22)** proven end-to-end: `prediction-requested` Data Store
+  Row-Insert → `prediction_event` → AppSail `/internal/predictions/dispatch` →
+  `PredictionRequest sigtest-f7e3135a02` advanced **`approved → queued`** (~2 s);
+  **retry** (Signals attempts #1..#6) and **idempotency** (same key deduped) proven
+  (`signal-proof.log`, `idempotency-proof.log`). Runtime note: Catalyst Event payload is
+  read via the **`event.data` property** on this node20 runtime (`getData()` returns
+  undefined); rule uses All Events with the authoritative `state==approved` check in the
+  function.
+- **Cron (matrix row 20)** proven: `drishti_forecast` (daily 00:10 IST) → `cron_forecast`
+  → created `forecast-2026-07-22` queued (execution `48361000000061010`).
+- **Data Store** operational CRUD proven live via `PredictionRequest` (`48361000000043006`).
+- **Application rollback** + additive forward recovery proven (`rollback-proof.log`).
+- **AWS custom-model dispatch** remains the Prompt 24 plane; here dispatch records
+  `skipped_disabled → queued` idempotently (AppSail `DRISHTI_PREDICTION_DISPATCH_ENABLED`
+  off by design until Prompt 24).

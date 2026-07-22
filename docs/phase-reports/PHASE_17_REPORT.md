@@ -492,3 +492,21 @@ workspace switcher toggles Crime Intelligence ↔ Emergency Response.
 - **Not an operational system.** No auto-publish, no auto-dispatch, no auto all-
   clear; every warning/dispatch/evacuation-plan approval is a human, audited,
   freshly-confirmed action. Area/time-period granularity only — never person-level.
+
+
+---
+
+## Prompt 23 live-evidence addendum (2026-07-23) — additive, historical text unchanged
+
+Live on Catalyst (see `docs/phase-reports/PHASE_23_REPORT.md`):
+
+- The **scheduled forecast job is proven live** — cron `drishti_forecast` (Recursive,
+  Daily, `00:10` Asia/Kolkata) → `cron_forecast` fired (execution `48361000000061010`) and
+  created a `queued` `forecast-2026-07-22` `PredictionRequest`. This is the disaster/hazard
+  forecast dispatch path running on a real Catalyst schedule (bounded, idempotent per
+  window; AWS model compute stays on the Prompt 24 plane).
+- Disaster records are **Data Store-native**; the Catalyst Data Store operational path is
+  proven live (insert + Signal update on `PredictionRequest`).
+- **Honest caveat (report §5):** a dedicated Disaster *business* API operation was not
+  separately API-captured this session; disaster is a Data Store-backed UI context
+  exercised via the live Slate frontend. Nothing was faked.
