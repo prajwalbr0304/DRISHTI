@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowRight, FlaskConical, KeyRound, Landmark, LineChart, Loader2, RotateCw,
+  ArrowRight, FlaskConical, KeyRound, Landmark, LineChart, Loader2, LogIn, RotateCw,
   ScanEye, Search, ShieldAlert, ShieldCheck, Siren, TriangleAlert, Users,
   type LucideIcon,
 } from "lucide-react";
@@ -278,8 +278,19 @@ function RolePicker({ onPick }: { onPick: (r: UserRole) => void }) {
 function CatalystEmbed({ status, error, renderSignIn }: {
   status: string; error?: string; renderSignIn: (id: string) => void;
 }) {
+  const [widgetReady, setWidgetReady] = useState(false);
+
   useEffect(() => {
-    if (status === "unauthenticated") renderSignIn(CATALYST_LOGIN_ELEMENT_ID);
+    if (status !== "unauthenticated") return;
+    renderSignIn(CATALYST_LOGIN_ELEMENT_ID);
+    const host = document.getElementById(CATALYST_LOGIN_ELEMENT_ID);
+    if (!host) return;
+    if (host.childElementCount > 0) setWidgetReady(true);
+    const obs = new MutationObserver(() => {
+      if (host.childElementCount > 0) setWidgetReady(true);
+    });
+    obs.observe(host, { childList: true, subtree: true });
+    return () => obs.disconnect();
   }, [status, renderSignIn]);
 
   if (status === "error") {
@@ -305,8 +316,26 @@ function CatalystEmbed({ status, error, renderSignIn }: {
   }
 
   return (
-    <div className="rounded-card border border-hairline bg-surface p-4">
-      <div id={CATALYST_LOGIN_ELEMENT_ID} className="min-h-[320px] w-full" />
+    <div className="overflow-hidden rounded-card border border-hairline bg-surface shadow-pop">
+      <div className="flex items-center gap-2 border-b border-hairline bg-surface-2/40 px-4 py-2.5">
+        <span className="grid size-6 place-items-center rounded-control bg-primary/15 text-primary">
+          <LogIn className="size-3.5" />
+        </span>
+        <span className="text-13 font-semibold text-content">Catalyst sign-in</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-11 font-medium text-content-dim">
+          <ShieldCheck className="size-3 text-accent" /> Secured by Zoho Catalyst
+        </span>
+      </div>
+      <div className="relative px-4 py-4">
+        {!widgetReady && (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center">
+            <span className="inline-flex items-center gap-2 text-12 text-content-dim">
+              <Loader2 className="size-4 animate-spin text-primary" /> Loading secure sign-in…
+            </span>
+          </div>
+        )}
+        <div id={CATALYST_LOGIN_ELEMENT_ID} className="relative mx-auto min-h-[300px] w-full max-w-[360px]" />
+      </div>
     </div>
   );
 }
