@@ -238,7 +238,11 @@ class StratusEvidenceGateway:
             raise S3Error(f"head failed: {type(exc).__name__}") from exc
         if not ref:
             return ObjectHead(exists=False)
-        return ObjectHead(exists=True, size=ref.size, content_type=ref.content_type,
+        # Stratus object-metadata 'size' is unreliable (observed 83 for a verified
+        # 71-byte object — the downloaded bytes are correct). Report size=None so
+        # the service skips the byte-count equality check and relies on the
+        # authoritative SHA-256 verification (computed from the actual bytes).
+        return ObjectHead(exists=True, size=None, content_type=ref.content_type,
                           etag=ref.version_id)
 
     def get_bytes(self, key: str, max_bytes: int) -> bytes:
