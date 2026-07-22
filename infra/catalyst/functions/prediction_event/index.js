@@ -97,23 +97,41 @@ function pick(rec, keys) {
   return undefined;
 }
 
-// Structured EXACTLY like the proven working cron_forecast: a single direct
-// async export, a plain `return` (an event function completes when its promise
-// resolves — no closeWithSuccess), and no extra export aliases. The earlier
-// dual-export + closeWithSuccess wrapper suppressed all console output and the
-// dispatch.
+// Structured like the proven working cron_forecast: a single direct async
+// export and a plain `return`. event.getData() returned undefined on this
+// runtime, so we introspect the CatalystEvent API once and try every plausible
+// accessor before falling back to plain shapes.
+const safe = (fn, d) => { try { return fn(); } catch (_e) { return d; } };
+
 module.exports = async (event, context) => {
   const enabled = String(process.env.DRISHTI_PREDICTION_DISPATCH_ENABLED || '').toLowerCase() === 'true';
-  const { data, meta } = readEvent(event);
-  try {
-    console.log('[prediction_event] action=' + meta.action + ' source=' + meta.source +
-      ' entity=' + meta.entity + ' data=' + JSON.stringify(data).slice(0, 1500));
-  } catch (_e) {
-    console.log('[prediction_event] data keys=' +
-      (data && typeof data === 'object' ? Object.keys(data).join(',') : typeof data));
+
+  // One-time introspection: reveal the real event object shape + methods.
+  console.log('[prediction_event] INTROSPECT ' + safe(() => JSON.stringify({
+    t: typeof event,
+    ctor: event && event.constructor && event.constructor.name,
+    ownKeys: event && typeof event === 'object' ? Object.keys(event) : null,
+    methods: event ? Object.getOwnPropertyNames(Object.getPrototypeOf(event) || {}).filter((n) => n !== 'constructor') : null,
+    argHasContext: !!context,
+  }), '(introspect failed)'));
+
+  // Try every plausible row accessor, then plain shapes.
+  let data;
+  for (const m of ['getData', 'getAllData', 'getDataMap', 'getRow', 'getRecord', 'getEntity']) {
+    const v = safe(() => (event && typeof event[m] === 'function') ? event[m]() : undefined, undefined);
+    if (v !== undefined && v !== null) {
+      data = v;
+      console.log('[prediction_event] data via ' + m + '() = ' + safe(() => JSON.stringify(v).slice(0, 900), '(unserialisable)'));
+      break;
+    }
+  }
+  if (data === undefined || data === null) {
+    data = readEvent(event).data;
+    console.log('[prediction_event] data via fallback = ' + safe(() => JSON.stringify(data).slice(0, 900), typeof data));
   }
 
   const records = toRecords(data);
+  console.log('[prediction_event] records=' + records.length);
   const out = [];
   let idx = 0;
   for (const d of records) {
