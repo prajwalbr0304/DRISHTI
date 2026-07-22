@@ -123,3 +123,6 @@ infra/**/*.export.jsonl
 infra/**/*.import-config.local.json
 # Generated migration/reconciliation/fixture-copy reports (underscore-prefixed).
 infra/catalyst/**/_*-report.json
+
+# Prompt 23 throwaway REST/probe scripts (local debugging only; never committed)
+artifacts/**/_*.py
