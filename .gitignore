@@ -126,3 +126,8 @@ infra/catalyst/**/_*-report.json
 
 # Prompt 23 throwaway REST/probe scripts (local debugging only; never committed)
 artifacts/**/_*.py
+# Console session captures (contain live browser session cookies/CSRF) — NEVER commit
+artifacts/**/_console_capture*
+artifacts/**/_capture*
+artifacts/**/_*.curl
+artifacts/**/_*.har
