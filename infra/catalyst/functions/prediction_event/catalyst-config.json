@@ -4,7 +4,10 @@
     "stack": "node20",
     "type": "event",
     "memory": 256,
-    "env_variables": {}
+    "env_variables": {
+      "DRISHTI_PREDICTION_DISPATCH_ENABLED": "true",
+      "ZOHO_APPSAIL_BASE_URL": "https://drishti-api-50044118953.development.catalystappsail.in"
+    }
   },
   "execution": {
     "main": "index.js"

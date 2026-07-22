@@ -46,23 +46,38 @@ async function callAppSail(path, payload, source, requestId) {
   finally { clearTimeout(timer); }
 }
 
-// --- robust Signal payload handling ----------------------------------------
-// Catalyst Signals may deliver the inserted row under different shapes
-// (event.events[].data, event.data, or the record itself), and column names may
-// be flat or one level nested. Extract records + fields defensively so a payload
-// shape difference never silently drops the dispatch.
-function extractRecords(event) {
+// --- Catalyst Event payload handling ---------------------------------------
+// A Catalyst Event function receives a CatalystEvent OBJECT whose payload is
+// exposed through GETTER METHODS (getData / getAction / getSource /
+// getSourceEntityId / getTime ...), NOT plain properties — so JSON.stringify of
+// the event is "{}". We must call event.getData() to read the inserted row.
+// Falls back to plain shapes for local runtimes / unit tests.
+function readEvent(event) {
+  const meta = { action: null, source: null, entity: null };
+  let data = null;
+  try {
+    if (event && typeof event.getData === 'function') {
+      data = event.getData();
+      if (typeof event.getAction === 'function') meta.action = event.getAction();
+      if (typeof event.getSource === 'function') meta.source = event.getSource();
+      if (typeof event.getSourceEntityId === 'function') meta.entity = event.getSourceEntityId();
+    } else if (event && event.data !== undefined) {
+      data = event.data;
+    } else {
+      data = event;
+    }
+  } catch (e) {
+    console.log('[prediction_event] getData error:', e && e.message);
+  }
+  return { data, meta };
+}
+function toRecords(data) {
   const recs = [];
   const add = (d) => { if (d && typeof d === 'object' && !Array.isArray(d)) recs.push(d); };
-  if (event && Array.isArray(event.events)) {
-    for (const e of event.events) add(e && e.data ? e.data : e);
-  } else if (event && Array.isArray(event.data)) {
-    for (const d of event.data) add(d);
-  } else if (event && event.data) {
-    add(event.data);
-  } else {
-    add(event);
-  }
+  if (Array.isArray(data)) data.forEach(add);
+  else if (data && Array.isArray(data.rows)) data.rows.forEach(add);
+  else if (data && Array.isArray(data.events)) data.events.forEach((e) => add(e && e.data ? e.data : e));
+  else add(data);
   return recs;
 }
 function pick(rec, keys) {
@@ -82,20 +97,34 @@ function pick(rec, keys) {
   return undefined;
 }
 
-module.exports = async (event, context) => {
+async function handler(event, context) {
   const enabled = String(process.env.DRISHTI_PREDICTION_DISPATCH_ENABLED || '').toLowerCase() === 'true';
-  // Diagnostic (synthetic ids only): reveals the exact Signal payload shape.
-  try { console.log('[prediction_event] raw event:', JSON.stringify(event).slice(0, 2000)); } catch (_e) { /* ignore */ }
-  const records = extractRecords(event);
+  // Complete cleanly under either contract. An event function that neither
+  // returns nor signals completion makes the invoke gateway time out -> 504
+  // "Zoho Temporarily Unavailable" -> Signals marks delivery Failed and retries.
+  const done = (result) => {
+    if (context && typeof context.closeWithSuccess === 'function') {
+      try { context.closeWithSuccess(typeof result === 'string' ? result : JSON.stringify(result)); } catch (_e) { /* ignore */ }
+    }
+    return result;
+  };
+
+  const { data, meta } = readEvent(event);
+  try {
+    console.log('[prediction_event] action=' + meta.action + ' source=' + meta.source +
+      ' entity=' + meta.entity + ' data=' + JSON.stringify(data).slice(0, 1500));
+  } catch (_e) { /* ignore */ }
+
+  const records = toRecords(data);
   const out = [];
   let idx = 0;
   for (const d of records) {
     idx += 1;
-    const eid = (d.ROWID || d.id || `rec${idx}`).toString();
-    const kind = (pick(d, ['record_type', 'table', 'api_name']) || '').toString().toLowerCase();
-    const isResult = kind.includes('result');
     const reqId = (pick(d, ['PredictionRequestID', 'prediction_request_id', 'request_id']) || '').toString();
+    const eid = (pick(d, ['ROWID', 'id']) || `rec${idx}`).toString();
     const idem = (pick(d, ['idempotency_key']) || `pred:${reqId}`).toString();
+    const isResult = !!pick(d, ['PredictionResultID']) ||
+      (pick(d, ['record_type', 'table', 'api_name']) || '').toString().toLowerCase().includes('result');
 
     if (isResult) {
       // Route a data-minimized review notice (no scores/PII in the envelope).
@@ -127,5 +156,9 @@ module.exports = async (event, context) => {
     // Signal retries forever. The AppSail dispatch is idempotent by key, so
     // cron_reconcile can re-drive a transient miss; here we just record it.
   }
-  return { handled: out.length, results: out };
-};
+  return done({ handled: out.length, results: out });
+}
+
+// Support both entry conventions: default export and named `handler`.
+module.exports = handler;
+module.exports.handler = handler;
