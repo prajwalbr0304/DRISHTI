@@ -67,8 +67,14 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     if (id !== lastUserId.current) {
       lastUserId.current = id;
       const derived = deriveDisplayRole(user);
-      setRoleState(derived);
-      persistRole(derived);
+      // A super_admin (full access) may explore any role's workspace as a demo
+      // view, so honor an explicitly chosen role if one is stored. Every other
+      // identity snaps to its server-derived role — and the server re-derives +
+      // enforces the real role regardless of this presentation choice.
+      const stored = loadStoredRole();
+      const next = derived === "super_admin" && stored ? stored : derived;
+      setRoleState(next);
+      persistRole(next);
     }
   }, [authCtx, user]);
 

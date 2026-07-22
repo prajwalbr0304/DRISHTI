@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowRight, FlaskConical, KeyRound, Landmark, LineChart, Loader2, RotateCw,
@@ -23,6 +23,19 @@ import "@/routes/login/login.css";
    ========================================================================== */
 
 const CATALYST_LOGIN_ELEMENT_ID = "drishti-catalyst-login";
+
+// Presentation-only: which role workspace opens after the (super_admin) sign-in.
+// The server ALWAYS re-derives + enforces the real role — this only picks the
+// initial demo view. RoleProvider reads the same key ("drishti.role") and honors
+// it for a super_admin identity.
+const WORKSPACE_KEY = "drishti.role";
+function rememberWorkspace(role: UserRole) {
+  try {
+    localStorage.setItem(WORKSPACE_KEY, role);
+  } catch {
+    /* ignore storage availability */
+  }
+}
 
 type Accent = "crime" | "emergency" | "admin";
 
@@ -52,6 +65,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
+  const [workspace, setWorkspace] = useState<UserRole | null>(null);
 
   // Once authenticated (incl. an already-signed-in visit), leave /login.
   useEffect(() => {
@@ -101,7 +115,33 @@ export function LoginPage() {
             {mode === "offline" ? (
               <RolePicker onPick={signInOffline} />
             ) : (
-              <CatalystEmbed status={status} error={error} renderSignIn={renderSignIn} />
+              <div className="space-y-6">
+                <CatalystEmbed status={status} error={error} renderSignIn={renderSignIn} />
+                <div>
+                  <div className="flex items-center gap-1.5 text-13 font-semibold text-content">
+                    <Users className="size-3.5 text-primary" /> Explore a role workspace
+                  </div>
+                  <p className="mt-1 text-12 text-content-dim">
+                    Optional — pick the workspace that opens after you sign in. This selects the
+                    role-specific view only; the server re-derives and enforces the real role on
+                    every request.
+                  </p>
+                  {workspace && (
+                    <p className="mt-2 rounded-control border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-12 text-content">
+                      <span className="font-medium">{ROLES[workspace].label}</span> workspace will
+                      open after sign-in.
+                    </p>
+                  )}
+                  <div className="mt-3">
+                    <RolePicker
+                      onPick={(r) => {
+                        rememberWorkspace(r);
+                        setWorkspace(r);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
