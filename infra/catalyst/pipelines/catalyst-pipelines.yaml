@@ -131,11 +131,21 @@ jobs:
   deploy_dev:
     steps:
       # All catalyst commands run where catalyst.json + .catalystrc live.
-      - cd infra/catalyst && catalyst deploy --only functions,client
+      # WARNING (Prompt 23): `catalyst deploy --only functions` RESETS each
+      # function's Console env, which holds server-side SECRETS
+      # (ZOHO_APPSAIL_SIGNING_SECRET, ZOHO_APPSAIL_BASE_URL, DRISHTI_*_ENABLED)
+      # for gateway_api / prediction_event / cron_forecast. Deploy functions
+      # ONLY when their code changed, and RE-APPLY that env immediately after
+      # (Console -> each function -> Configuration -> Environment), or the
+      # signed-context chain 401s and the Signal/cron stop firing. When function
+      # code is unchanged, SKIP the next line entirely to preserve the live env.
+      - cd infra/catalyst && catalyst deploy --only functions
       - >-
         cd infra/catalyst && catalyst deploy appsail --name drishti-api
         --source docker-archive://../../drishti-api-appsail.tar --port 9000
-      - cd infra/catalyst && catalyst deploy client -m "ci: dev slate"
+      # Frontend is deployed by the Slate GitHub integration (Auto Deploy builds
+      # web/ on every push) — NOT here. The legacy Web Client Hosting `client`
+      # deploy is intentionally omitted to avoid a second, stale frontend.
     artifacts:
       download:
         - name: drishti-api-appsail
@@ -168,7 +178,17 @@ jobs:
       - not:
           - << status.deploy.deploy_dev >>
     steps:
-      - cd infra/catalyst && catalyst deploy appsail --name drishti-api --rollback
+      # NOTE: Catalyst CLI 1.27 has NO `deploy appsail --rollback` flag, and a
+      # FAILED AppSail deploy is not promoted (the prior version keeps serving),
+      # so the running app is never left broken. Recovery is therefore FORWARD +
+      # additive: redeploy the last-good IMMUTABLE image once the fault is fixed
+      # (Data Store schema is additive, never reversed). The artifact
+      # rollback -> forward-recovery cycle is proven live in Prompt 23
+      # (artifacts/phase-23/rollback-proof.log: deploy the prior image digest ->
+      # verify old behaviour -> redeploy the current digest -> verify).
+      - >-
+        cd infra/catalyst && catalyst deploy appsail --name drishti-api
+        --source docker-archive://../../drishti-api-appsail.tar --port 9000
 
 stages:
   - name: validate            # install deps + lint/type/test (web + backend)
