@@ -131,3 +131,8 @@ artifacts/**/_console_capture*
 artifacts/**/_capture*
 artifacts/**/_*.curl
 artifacts/**/_*.har
+artifacts/**/_*.json
+artifacts/**/_*.js
+artifacts/**/_*.mjs
+artifacts/**/_*.state.json
+artifacts/**/_creds*
