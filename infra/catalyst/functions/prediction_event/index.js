@@ -46,43 +46,86 @@ async function callAppSail(path, payload, source, requestId) {
   finally { clearTimeout(timer); }
 }
 
+// --- robust Signal payload handling ----------------------------------------
+// Catalyst Signals may deliver the inserted row under different shapes
+// (event.events[].data, event.data, or the record itself), and column names may
+// be flat or one level nested. Extract records + fields defensively so a payload
+// shape difference never silently drops the dispatch.
+function extractRecords(event) {
+  const recs = [];
+  const add = (d) => { if (d && typeof d === 'object' && !Array.isArray(d)) recs.push(d); };
+  if (event && Array.isArray(event.events)) {
+    for (const e of event.events) add(e && e.data ? e.data : e);
+  } else if (event && Array.isArray(event.data)) {
+    for (const d of event.data) add(d);
+  } else if (event && event.data) {
+    add(event.data);
+  } else {
+    add(event);
+  }
+  return recs;
+}
+function pick(rec, keys) {
+  for (const k of keys) {
+    const v = rec[k];
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  for (const nk of Object.keys(rec)) {              // one level of nesting
+    const nested = rec[nk];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      for (const k of keys) {
+        const v = nested[k];
+        if (v !== undefined && v !== null && v !== '') return v;
+      }
+    }
+  }
+  return undefined;
+}
+
 module.exports = async (event, context) => {
   const enabled = String(process.env.DRISHTI_PREDICTION_DISPATCH_ENABLED || '').toLowerCase() === 'true';
-  const events = (event && Array.isArray(event.events)) ? event.events : [];
+  // Diagnostic (synthetic ids only): reveals the exact Signal payload shape.
+  try { console.log('[prediction_event] raw event:', JSON.stringify(event).slice(0, 2000)); } catch (_e) { /* ignore */ }
+  const records = extractRecords(event);
   const out = [];
-  for (const e of events) {
-    const d = e.data || {};
-    const kind = (d.record_type || d.table || d.api_name || '').toString().toLowerCase();
+  let idx = 0;
+  for (const d of records) {
+    idx += 1;
+    const eid = (d.ROWID || d.id || `rec${idx}`).toString();
+    const kind = (pick(d, ['record_type', 'table', 'api_name']) || '').toString().toLowerCase();
     const isResult = kind.includes('result');
-    const reqId = d.prediction_request_id || d.PredictionRequestID || d.request_id || '';
-    const idem = d.idempotency_key || `pred:${reqId}`;
+    const reqId = (pick(d, ['PredictionRequestID', 'prediction_request_id', 'request_id']) || '').toString();
+    const idem = (pick(d, ['idempotency_key']) || `pred:${reqId}`).toString();
 
     if (isResult) {
       // Route a data-minimized review notice (no scores/PII in the envelope).
       const r = await callAppSail('/internal/notify', {
         idempotency_key: `notify:${idem}`, template: 'prediction.result.ready',
-        subject_ref: `PredictionResult:${d.PredictionResultID || d.id || ''}`,
+        subject_ref: `PredictionResult:${pick(d, ['PredictionResultID', 'id']) || ''}`,
         request_ref: `PredictionRequest:${reqId}`, source: 'signals:prediction',
-      }, 'prediction_event', e.id || idem);
-      out.push({ event_id: e.id, routed: 'notify', ...r });
+      }, 'prediction_event', eid);
+      out.push({ event_id: eid, routed: 'notify', ...r });
       continue;
     }
     // PredictionRequest: only dispatch approved ones.
-    const state = String(d.state || d.Status || '').toLowerCase();
-    if (!['approved', 'ready'].includes(state)) { out.push({ event_id: e.id, ignored: 'not_approved', state }); continue; }
+    const state = String(pick(d, ['state', 'State', 'Status']) || '').toLowerCase();
+    if (!['approved', 'ready'].includes(state)) { out.push({ event_id: eid, ignored: 'not_approved', state }); continue; }
     if (!enabled) {
       console.log(`[prediction_event] scaffold disabled; would dispatch ${idem}`);
-      out.push({ event_id: e.id, skipped: true, idem });
+      out.push({ event_id: eid, skipped: true, idem });
       continue;
     }
     const r = await callAppSail('/internal/predictions/dispatch', {
-      idempotency_key: idem, prediction_request_id: String(reqId),
-      task: d.task || null, requested_backend: d.requested_backend || null,
-      source: 'signals:prediction', event_id: e.id,
-    }, 'prediction_event', e.id || idem);
-    console.log(`[prediction_event] dispatch ${idem} -> ${JSON.stringify(r)}`);
-    out.push({ event_id: e.id, idem, ...r });
-    if (r.ok === false && r.status >= 500) throw new Error(`dispatch failed for ${idem}`);
+      idempotency_key: idem, prediction_request_id: reqId,
+      task: pick(d, ['task', 'Task']) || null,
+      requested_backend: pick(d, ['requested_backend', 'RequestedBackend']) || null,
+      source: 'signals:prediction', event_id: eid,
+    }, 'prediction_event', eid);
+    console.log(`[prediction_event] dispatch ${idem} (req=${reqId}) -> ${JSON.stringify(r)}`);
+    out.push({ event_id: eid, idem, reqId, ...r });
+    // NOTE: do not throw on failure — a persistent dispatch error would loop
+    // Signal retries forever. The AppSail dispatch is idempotent by key, so
+    // cron_reconcile can re-drive a transient miss; here we just record it.
   }
   return { handled: out.length, results: out };
 };
