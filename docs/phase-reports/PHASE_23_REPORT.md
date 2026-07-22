@@ -48,8 +48,14 @@ Readiness (`GET /health/ready`) returns
 | 4a | One real Signal executes (delivery/retry/idempotency) | **PASS** | `signal-proof.log` (`approved→queued` in ~2s), `idempotency-proof.log` |
 | 4b | One real scheduled job executes | **PASS** | cron `drishti_forecast` (daily 00:10 IST) → `cron_forecast` → `forecast-2026-07-22` queued |
 | 5 | Enabled capabilities have real evidence; disabled hidden + documented | **PASS** | `CATALYST_CAPABILITY_MATRIX.md`; chat planner = labelled deterministic fallback |
-| 6 | Mandatory live acceptance has no HELD/SCAFFOLDED/MANUAL | **PASS (with caveats §5)** | see caveats: evidence file-upload wiring, Board/Disaster dedicated ops |
-| 7 | Pipeline deployment + application rollback proven | **PASS (rollback) / pipeline corrected + linkable** | `rollback-proof.log`; `catalyst-pipelines.yaml` |
+| 6 | Mandatory live acceptance has no HELD/SCAFFOLDED/MANUAL | **PARTIAL** | core chain PASS; **Board/Disaster live ops 500** (§5.3), evidence file-upload 503 (§5.1), FIR full-approval (§5.2) |
+| 7 | Pipeline deployment + application rollback proven | **PARTIAL** — rollback PASS; pipeline corrected but **not linked/run** | `rollback-proof.log`; `catalyst-pipelines.yaml` (Git-integration link is a Console step, not done) |
+
+> **Completeness note (added after a full A–G re-audit, 2026-07-23):** the mandatory
+> *core* is proven live (frontend, API, Auth→Gateway→AppSail→Data Store/Stratus, six-role
+> authz, Signal, cron, rollback, security 11/11). It is **not a 100% Prompt-23 pass** —
+> genuine remaining gaps are listed in §5 and §9. This phase is **Live — core DoD proven**,
+> not "fully complete".
 
 ---
 
@@ -149,10 +155,19 @@ the **labelled deterministic fallback** (honest, no fake LLM).
    matrix are proven; the submit/approve steps returned 422 (draft field validation +
    a missing `action` query param in the probe), so a clean end-to-end FIR *approval* was
    not captured. The authorization boundary — the security-relevant part — is proven.
-3. **Board / Disaster operations** — the Data Store operational path is proven live via
-   `PredictionRequest` (insert + Signal-driven update). Board tables are provisioned, but
-   a dedicated Board/Disaster *business* API operation was not separately captured this
-   session (these are Data Store-backed UI features, exercised in the browser demo).
+3. **Board / Disaster live operations return 500** (`artifacts/phase-23/board-disaster.log`).
+   The `/boards/*` and `/disaster/*` endpoints exist and **enforce authorization**
+   (policymaker → **403** on both), but the operations themselves — `GET /boards`,
+   `POST /boards`, `GET /disaster/overview`, `/disaster/events`, `/disaster/demo/seed` —
+   return **500** on the deployed AppSail. **Root cause (same class as the PredictionRequest
+   dispatch bug):** the board/disaster services persist over the Catalyst **Data Store**
+   with CamelCase columns (`BoardID`, `OwnerActor`, `CreatedAt`, `DiffJSON`, …), and the
+   Data Store tables created in the Console don't match those column names, so the live
+   ZCQL/upsert fails. Fixing it needs the AppSail log traceback plus aligning the service
+   column names with the created tables (or recreating them) across the 6 board + ~14
+   disaster tables — bounded but non-trivial, and **deferred**. The *generic* Data Store
+   operational path is proven via `PredictionRequest` (insert + Signal update), so this is a
+   per-table schema-alignment gap, not a Data Store-connectivity failure.
 4. **Rule filter** — the Signals rule is **All Events** (its criteria editor matched a
    non-row `state` field); the authoritative `state == approved` check runs in
    `prediction_event`. Equivalent and safe; documented in `signal-proof.log`.
@@ -196,3 +211,46 @@ are never committed). Signal/cron chains 401 until the secret is re-applied.
 - Caveats in §5 are recorded as caveats, not passes.
 - No secrets/tokens/credentials/emails/raw evidence are in this report or its artifacts.
 - Result is **HACKATHON-DEMO READY (live)**, never production-ready.
+
+
+---
+
+## 9. Full A–G completeness audit (honest, 2026-07-23)
+
+**This is NOT a 100% Prompt-23 pass.** The mandatory core is proven live; the items
+below are the genuine remaining gaps.
+
+| Sec | Item | Status |
+|---|---|---|
+| A1–A4 | CLI auth, project/org/DC/env confirmed, preflight, no-duplicate | **DONE** |
+| A3 | credit balance / quota snapshot | **GAP** — no CLI billing verb; not captured (Console screenshot needed) |
+| B1 | Data Store schema/provisioners applied | **PARTIAL** — `PredictionRequest`, `State`, 6 board tables created; ~14 disaster tables not confirmed |
+| B2 | Import curated serving subset (idempotent upserts, counts, reconciliation) | **GAP / DEVIATION** — not imported; transactional reads use AWS RDS via the AppSail adapter instead (documented in inventory) |
+| B3 | Private versioned Stratus buckets (evidence/import/report) + fixture verify | **PARTIAL** — `drishti-evidence` created + fixture verified; `drishti-import` / `drishti-report` not confirmed |
+| B4 | Bounded NoSQL/Cache | **DONE** (Cache nonce replay-guard proven) |
+| B5 | Auth identities/roles/assignments + test all mappings | **PARTIAL** — only `super_admin` is a real login user; the six roles are proven via signed gateway contexts, not six distinct users |
+| C1–C3, C5, C6 | Functions + Gateway + AppSail deploy, no-bypass, default domain | **DONE** |
+| C4 | Frontend built with real Gateway URL, scanned, deployed | **DONE (config)** — `web/.env.production` pins the Gateway origin; Slate builds prod. (Live-bundle grep not re-run this session) |
+| D1 | 1 Signal + 1 cron (delivery/retry/idempotency) | **DONE** |
+| D2 | QuickML semantic/RAG + fixed eval | **NOT ENABLED** — not deployed in DC → labelled deterministic fallback (Prompt 19 eval was local) |
+| D3 | Zia voice Kannada/English live test | **NOT ENABLED** — Unavailable in IN DC → browser Web Speech fallback (no live voice test) |
+| D4 | SmartBrowz/Mail/Push | **Not Used** (documented, hidden) |
+| D5 | Circuits/Zia AutoML availability | **Recorded Unavailable** |
+| E1 | Parameterized browser E2E against the Catalyst URL | **GAP** — E2E not run against the live Slate URL (needs Catalyst-login automation; harness is parameterized) |
+| E2 | Auth→Gateway→AppSail→Data Store read/write + denials | **DONE** |
+| E3 | FIR draft/approval, evidence upload/metadata, chat, **Board**, **Disaster** | **PARTIAL** — chat DONE; FIR draft+authz DONE (full approval §5.2); evidence metadata DONE (file upload 503 §5.1); **Board + Disaster ops 500 §5.3** |
+| E4 | Data Store rows + Stratus metadata; browser has no direct DB/AWS | **DONE** |
+| E5 | CORS, rate limits, signed context, replay/expiry, bypass | **DONE** (rate limits configured, not load-tested) |
+| F1 | Link/run the corrected Catalyst Pipeline | **GAP** — pipeline corrected but not linked/run (Git-integration is a Console step) |
+| F2 | Post-deploy smokes through public endpoints | **PARTIAL** — health + security + journey probes serve as smokes; no pipeline-driven smoke |
+| F3 | Application rollback (non-destructive) | **DONE** |
+| F4 | Preserve import/export hashes; additive forward recovery | **DONE** |
+| G1 | Capture IDs/URLs/digests/counts/exec-IDs/timestamps/credit | **PARTIAL** — all but the credit snapshot captured |
+| G2 | Disable unused/canary + duplicate schedules | **GAP** — stale Slate apps `drishti-web-new`, `drishti-ui` not deleted (user action) |
+| G3 | Phase 14–17 live addenda | **DONE** |
+| G4 | PHASE_23_REPORT + CATALYST_LIVE_INVENTORY | **DONE** |
+
+**Priority to reach a fuller pass:** (1) Board/Disaster Data Store column alignment
+(§5.3) — the largest functional gap; (2) live browser E2E (E1); (3) link + run the
+pipeline (F1); (4) wire evidence file-upload to Stratus (§5.1); (5) capture credit
+snapshot + delete stale apps (G1/G2).
