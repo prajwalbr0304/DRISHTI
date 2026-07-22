@@ -30,7 +30,10 @@ _MAX_SCAN = 200_000
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    # Catalyst Data Store datetime columns require 'yyyy-MM-dd HH:mm:ss'; ISO8601
+    # with 'T'/timezone is rejected ("Invalid input value ... datetime value
+    # expected"). Store the naive-UTC wall clock in that exact format.
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class DisasterRepoError(Exception):
