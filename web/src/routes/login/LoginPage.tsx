@@ -327,20 +327,21 @@ function CatalystEmbed({ status, error, renderSignIn }: {
         </span>
       </div>
       <div className="relative px-4 py-3">
+        {/* The Catalyst SDK injects a content-sized iframe (~150px for the email
+            step, taller for password/OTP). min-h matches the email step so the
+            card hugs the iframe with no dead space and no load-time layout shift;
+            the loader overlays it until the iframe mounts. */}
+        <div
+          id={CATALYST_LOGIN_ELEMENT_ID}
+          className="relative mx-auto min-h-[150px] w-full max-w-[400px]"
+        />
         {!widgetReady && (
-          <div className="pointer-events-none grid min-h-[150px] place-items-center">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <span className="inline-flex items-center gap-2 text-12 text-content-dim">
               <Loader2 className="size-4 animate-spin text-primary" /> Loading secure sign-in…
             </span>
           </div>
         )}
-        {/* The Catalyst SDK injects a content-sized iframe (~150px for the email
-            step, taller for password/OTP). No min-height here, so the card hugs
-            the iframe with no dead space; the loader above holds space pre-load. */}
-        <div
-          id={CATALYST_LOGIN_ELEMENT_ID}
-          className={cn("relative mx-auto w-full max-w-[400px]", widgetReady ? "" : "h-0 overflow-hidden")}
-        />
       </div>
     </div>
   );
