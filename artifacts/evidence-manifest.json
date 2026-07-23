@@ -274,6 +274,22 @@
       "recorded_at": "2026-07-21T14:47:57.306972+00:00"
     },
     {
+      "id": "p23-cors-repoint-frvfpunc",
+      "phase": 23,
+      "capability": "API Gateway CORS re-pointed to the new frontend origin + verified",
+      "category": "deployment",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "curl -X OPTIONS .../api/cases/filters -H 'Origin: https://drishti-frvfpunc.onslate.in'",
+      "exit_code": 0,
+      "artifact": "docs/phase-reports/PHASE_23_REPORT.md",
+      "artifact_sha256": "ba8c6f9d2d518d678e65e3f6cac9ac042dac171dceaf95cb4a157c1af260414e",
+      "resource_id": "https://drishti-frvfpunc.onslate.in",
+      "notes": "Preflight now returns Access-Control-Allow-Origin: https://drishti-frvfpunc.onslate.in + Allow-Credentials: true (was blocked/no-ACAO before the DEMO_FRONTEND_ORIGIN update).",
+      "recorded_at": "2026-07-23T07:23:22.482658+00:00"
+    },
+    {
       "id": "p23-cron-live",
       "phase": 23,
       "capability": "Live scheduled cron: drishti_forecast (daily 00:10 IST) -> cron_forecast -> queued forecast row (DoD #4b)",
@@ -361,13 +377,13 @@
       "environment": "live",
       "status": "PASS",
       "mandatory": true,
-      "command": "curl https://drishti-uryfmaue.onslate.in/ (SPA 200)",
+      "command": "curl https://drishti-frvfpunc.onslate.in/ (SPA 200)",
       "exit_code": 0,
       "artifact": "docs/phase-reports/PHASE_23_REPORT.md",
       "artifact_sha256": "9aa09ba9909cdddbcec836fa51e5d7d53f7fb2f5c5ab19c33267ec414812c8a6",
-      "resource_id": "https://drishti-uryfmaue.onslate.in/",
-      "notes": "Slate Git integration; every push to main rebuilds web/. CORS authorized.",
-      "recorded_at": "2026-07-22T19:54:34.131837+00:00"
+      "resource_id": "https://drishti-frvfpunc.onslate.in/",
+      "notes": "Slate Git integration Auto-Deploy from main (verified: deployed the login commits). URL changed from drishti-uryfmaue (stale). CORS re-pointed to the new URL.",
+      "recorded_at": "2026-07-23T07:23:22.482658+00:00"
     },
     {
       "id": "p23-functions-deployed",
@@ -404,18 +420,18 @@
     {
       "id": "p23-login-ui-fix",
       "phase": 23,
-      "capability": "Login /login Catalyst sign-in framed as a professional card (committed 4ccd9c7)",
+      "capability": "Login UX fixed live: post-login redirect to /command + Catalyst sign-in widget (no scrollbar/dead space)",
       "category": "documentation",
       "environment": "live",
       "status": "PASS",
       "mandatory": true,
-      "command": "npm run build (web)",
+      "command": "node artifacts/phase-23/_pw_login_check.mjs (host=iframe=360px, no scrollers)",
       "exit_code": 0,
       "artifact": "web/src/routes/login/LoginPage.tsx",
-      "artifact_sha256": "0d9b23b3c5abc01cdf573962a9695ef0a415f549228cfeb60612fca11ae3ec42",
-      "resource_id": null,
-      "notes": "Framed the embedded Catalyst IAM widget (header + 'Secured by Zoho Catalyst' + loading state). Pushed to main; Slate deploy is a Console 'Create Deployment' click (auto-deploy not firing).",
-      "recorded_at": "2026-07-22T22:07:00.143086+00:00"
+      "artifact_sha256": "472afdd5cb0d524839d9611ef95ac2ebd77de416eadb6f42272a0ac6ebd2c59e",
+      "resource_id": "https://drishti-frvfpunc.onslate.in/login",
+      "notes": "(1) PublicLanding wrapper (App.tsx) forwards authenticated / visits to /command (no double Enter-platform). (2) Widget: Zoho login body forces its own scrollbar + iframe is 100% of host; fixed 360px card + scrolling=no on the iframe -> full form (Sign in/email/NEXT/Forgot Password), no scrollbar, no dead space. Verified live on frvfpunc (screenshot + dims). Commit bab180b.",
+      "recorded_at": "2026-07-23T07:23:22.482658+00:00"
     },
     {
       "id": "p23-phase-report",
@@ -578,5 +594,5 @@
       "recorded_at": "2026-07-22T19:54:34.131837+00:00"
     }
   ],
-  "updated_at": "2026-07-22T22:07:00.143086+00:00"
+  "updated_at": "2026-07-23T07:23:22.482658+00:00"
 }

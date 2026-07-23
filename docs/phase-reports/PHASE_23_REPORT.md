@@ -25,7 +25,7 @@
 | Resource | Live ID / URL | Status |
 |---|---|---|
 | Project | DHRISTI `48361000000030003`, org `60075362708`, IN DC, Development | live |
-| Public frontend (Slate, Git-integrated auto-deploy) | `https://drishti-uryfmaue.onslate.in/` | **live** (SPA 200; role-boxes build) |
+| Public frontend (Slate, Git-integrated auto-deploy) | `https://drishti-frvfpunc.onslate.in/` | **live** (SPA 200; Auto-Deploy from `main` ON) — see §3.11 |
 | Primary API — AppSail `drishti-api` | `https://drishti-api-50044118953.development.catalystappsail.in` | **live**; `/health/live`=200, `/health/ready`=200 (all checks ok) |
 | Serverless domain (Functions + API Gateway) | `dhristi-60075362708.development.catalystserverless.in` | live |
 | API Gateway | ENABLED; `/api/*` → `gateway_api` (auth), exact-origin CORS | live |
@@ -155,6 +155,31 @@ The 15 disaster Data Store tables (14 from `disaster_schema` + `AlertHistory`) w
 via the Catalyst Console create-table API (reverse-engineered + scripted), and the fixture
 was seeded into live Data Store with the app's own `seed_from_fixture()` (9 hazard types,
 7 events, 42 readings, 10 resources, 7 shelters, 1 alert, …). See §5.3 for the code fixes.
+
+### 3.11 Frontend URL change + login UX fixes (2026-07-23)
+
+- **Live URL is now `https://drishti-frvfpunc.onslate.in`** (the Slate Git app was
+  re-created; Auto-Deploy from `main` is ON and verified — it built + deployed the login
+  commits). The prior `drishti-uryfmaue` app is stale and should be deleted.
+- **CORS re-pointed + verified.** The API Gateway/AppSail allow-origin was still the old
+  URL, so authenticated calls from the new URL were blocked (preflight returned no
+  `Access-Control-Allow-Origin`). After setting the AppSail `DEMO_FRONTEND_ORIGIN` to the
+  new URL, the preflight now returns `Access-Control-Allow-Origin: https://drishti-frvfpunc.onslate.in`
+  + `Allow-Credentials: true`.
+- **Post-login redirect fixed** (`web/src/App.tsx`): a `PublicLanding` wrapper on `/`
+  forwards an authenticated visit (including the Catalyst SDK's post-login reload to `/`)
+  straight to the role home/`/command`, removing the second "Enter platform" click.
+- **Catalyst sign-in widget fixed** (`web/src/routes/login/LoginPage.tsx`): the embedded
+  Zoho login body is tall and always renders its own scrollbar, and the iframe is 100% of
+  its host. The card is now a fixed 360px (fits heading + field + NEXT + Forgot Password
+  across the email/password/OTP steps) and the iframe gets `scrolling="no"` on mount — so
+  the card shows the full form with **no internal scrollbar and no dead space** (verified
+  live: host = iframe = 360px, no scrollers).
+- **Deploy path:** the Slate Git integration's **Auto-Deploy** (push to `main` → Catalyst
+  builds `web/` → deploys) is the working mechanism. A GitHub Actions workflow
+  (`.github/workflows/deploy-catalyst.yml`) build-validates every push and can optionally
+  deploy to a CLI-managed Slate app; the classic Web Client Hosting path is unavailable
+  for this app (`ZIPSANITIZER_FILES_COUNT_EXCEEDED` from the landing animation frames).
 
 ---
 
