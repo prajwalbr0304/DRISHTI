@@ -9,9 +9,9 @@
       "path": "/api/*",
       "target": { "type": "function", "name": "gateway_api" },
       "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      "authentication": "required",
+      "authentication": "optional",
       "throttle": { "general_per_min": 600, "per_ip_per_min": 120 },
-      "note": "Authenticated public API. gateway_api derives identity server-side and invokes AppSail with a signed context."
+      "note": "Option B synthetic-demo mode: auth is OPTIONAL so the offline role-card demo (no Catalyst session) reaches gateway_api, which mints a full-access synthetic signed context when DRISHTI_DEMO_AUTH=true. A real Catalyst session, when present, is still resolved server-side. Set back to 'required' to restore IAM-only access. gateway_api always invokes AppSail with a signed context; AppSail still verifies it."
     },
     {
       "path": "/api/channel-token",

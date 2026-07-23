@@ -11,8 +11,10 @@
  * never talks to AppSail or AWS directly.
  *
  * Security posture:
- *   - Authenticated: relies on API Gateway auth = required + a user-scope
- *     Catalyst identity. If no identity is resolvable, returns 401.
+ *   - Authenticated: relies on API Gateway auth + a user-scope Catalyst identity.
+ *     If no identity is resolvable, returns 401 — UNLESS the synthetic-demo mode
+ *     (DRISHTI_DEMO_AUTH=true) is on, in which case a full-access super_admin
+ *     context is minted so the offline role-card demo shows live synthetic data.
  *   - Role is resolved SERVER-SIDE (never read from the request).
  *   - Signed context = base64url(JSON {user_id,email,role,scope,aud,ts,nonce,
  *     request_id}) + hex HMAC-SHA256 over the canonical string, keyed by
@@ -26,6 +28,10 @@
  *   ZOHO_APPSAIL_SIGNING_SECRET  - shared HMAC secret for the internal context
  *   DRISHTI_GATEWAY_TIMEOUT_MS   - upstream timeout (default 25000; aio cap 30s)
  *   DRISHTI_GATEWAY_PATH_PREFIX  - public path prefix to strip (default /api)
+ *   DRISHTI_DEMO_AUTH            - "true" enables synthetic-demo auth: no Catalyst
+ *                                  session required; a full-access super_admin
+ *                                  context is minted for the offline role-card
+ *                                  demo. Synthetic hackathon demo ONLY.
  */
 const crypto = require('crypto');
 const catalyst = require('zcatalyst-sdk-node');
@@ -213,17 +219,31 @@ module.exports = async (req, res) => {
   } catch (e) {
     user = null;
   }
-  if (!user || !user.user_id) {
-    return sendJson(res, 401, { error: 'authentication_required', request_id: requestId });
-  }
 
   // 2. Resolve the server-trusted functional role + organizational scope. An
   //    asserted-but-unknown role or a malformed scope is REJECTED (403) rather
   //    than silently coerced (Prompt 21 §E.2).
-  const identity = resolveIdentity(user);
-  if (identity.rejected) {
-    return sendJson(res, 403, { error: 'role_scope_unresolved',
-      reason: identity.rejected, request_id: requestId });
+  let identity;
+  if (user && user.user_id) {
+    identity = resolveIdentity(user);
+    if (identity.rejected) {
+      return sendJson(res, 403, { error: 'role_scope_unresolved',
+        reason: identity.rejected, request_id: requestId });
+    }
+  } else if (String(process.env.DRISHTI_DEMO_AUTH || '').toLowerCase() === 'true') {
+    // DEMO AUTH (synthetic hackathon only, DRISHTI_DEMO_AUTH=true). The offline
+    // role-card login replaces the embedded Catalyst IAM widget, so requests
+    // carry NO Catalyst session. Mint a full-access synthetic super_admin context
+    // so the role-card demo shows live data. The HMAC signed-context contract to
+    // AppSail is UNCHANGED — only the identity SOURCE differs (the gateway, which
+    // alone holds the signing secret, is still the sole minter). Data is
+    // synthetic and every write stays behind the AppSail synthetic-DB guard. The
+    // role card selects the presentation workspace CLIENT-SIDE; the server serves
+    // the full demo dataset. Never enable outside the synthetic demo.
+    identity = { role: 'super_admin', scope_level: 'state', district_id: null, unit_id: null };
+    user = { user_id: 'demo-super-admin', email_id: 'demo.super_admin@drishti.local' };
+  } else {
+    return sendJson(res, 401, { error: 'authentication_required', request_id: requestId });
   }
 
   // 3. Mint a short-lived signed internal context. Role + scope are DERIVED
