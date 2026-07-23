@@ -326,15 +326,21 @@ function CatalystEmbed({ status, error, renderSignIn }: {
           <ShieldCheck className="size-3 text-accent" /> Secured by Zoho Catalyst
         </span>
       </div>
-      <div className="relative px-4 py-4">
+      <div className="relative px-4 py-3">
         {!widgetReady && (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="pointer-events-none grid min-h-[150px] place-items-center">
             <span className="inline-flex items-center gap-2 text-12 text-content-dim">
               <Loader2 className="size-4 animate-spin text-primary" /> Loading secure sign-in…
             </span>
           </div>
         )}
-        <div id={CATALYST_LOGIN_ELEMENT_ID} className="relative mx-auto min-h-[300px] w-full max-w-[360px]" />
+        {/* The Catalyst SDK injects a content-sized iframe (~150px for the email
+            step, taller for password/OTP). No min-height here, so the card hugs
+            the iframe with no dead space; the loader above holds space pre-load. */}
+        <div
+          id={CATALYST_LOGIN_ELEMENT_ID}
+          className={cn("relative mx-auto w-full max-w-[400px]", widgetReady ? "" : "h-0 overflow-hidden")}
+        />
       </div>
     </div>
   );

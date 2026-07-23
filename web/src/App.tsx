@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "@/providers/RoleProvider";
 import { RequireAuth } from "@/auth";
+import { useAuth } from "@/auth/AuthProvider";
+import { ROLES } from "@/config/roles";
 import { AppShell } from "@/components/shell/AppShell";
 import { CommandCenter } from "@/routes/CommandCenter";
 import { CaseExplorer } from "@/routes/cases/CaseExplorer";
@@ -39,6 +41,18 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   return isAdmin ? <>{children}</> : <Navigate to="/command" replace />;
 }
 
+/** Public marketing page at "/". Once authenticated (incl. the full-page reload
+    the Catalyst SDK does after sign-in, which lands back on "/"), forward
+    straight to the role home so there is no second "Enter platform" click. */
+function PublicLanding() {
+  const { status, user } = useAuth();
+  if (status === "authenticated") {
+    const home = user?.demoRole ? ROLES[user.demoRole].home : "/command";
+    return <Navigate to={home} replace />;
+  }
+  return <LandingPage />;
+}
+
 /** Boards hold sensitive investigative material — the policymaker role is
     denied even by direct URL (matches the Catalyst-authenticated API gate). */
 function BoardGate({ children }: { children: React.ReactNode }) {
@@ -49,8 +63,8 @@ function BoardGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
-      {/* Public marketing page. */}
-      <Route path="/" element={<LandingPage />} />
+      {/* Public marketing page (forwards authenticated users to their home). */}
+      <Route path="/" element={<PublicLanding />} />
       {/* Public sign-in / demo-identity picker. */}
       <Route path="/login" element={<LoginPage />} />
       {/* Legacy /app/* path from the Catalyst embedded-auth SDK redirect (it

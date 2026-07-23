@@ -1,0 +1,78 @@
+name: Deploy frontend to Zoho Catalyst
+
+# Auto-deploy the DRISHTI web client to the existing Catalyst project (DHRISTI)
+# on every push to main. Uses a Catalyst CLI token (non-interactive auth):
+#   1. locally (already logged in):  catalyst token:generate --current
+#   2. GitHub -> Settings -> Secrets and variables -> Actions -> New repository secret
+#        name:  CATALYST_TOKEN     value: <the token from step 1>
+# Only the web client is deployed here. Functions/AppSail are deployed separately
+# because `catalyst deploy --only functions` RESETS each function's Console env
+# (the signed-context secret that the live Signal + cron depend on).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "infra/catalyst/client/**"
+      - ".github/workflows/deploy-catalyst.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: catalyst-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-web:
+    name: Build + deploy web client
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      # Production build: VITE_API_BASE_URL comes from web/.env.production (the
+      # live API Gateway origin). check-bundle-secrets fails the build on leaks.
+      - name: Build web (production)
+        working-directory: web
+        run: npm run build
+
+      - name: Verify CATALYST_TOKEN secret is present
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+        run: |
+          if [ -z "$CATALYST_TOKEN" ]; then
+            echo "::error::CATALYST_TOKEN secret is missing. Run 'catalyst token:generate --current' locally and add it as an Actions secret named CATALYST_TOKEN."
+            exit 1
+          fi
+
+      # The Catalyst client (catalyst.json -> client.source: "client") is served
+      # from infra/catalyst/client. Stage the fresh build there, keeping the
+      # committed client-package.json (name/homepage/login_redirect) + README.
+      - name: Stage build into the Catalyst client directory
+        run: |
+          set -euo pipefail
+          find infra/catalyst/client -mindepth 1 -maxdepth 1 \
+            ! -name 'client-package.json' ! -name 'README.md' -exec rm -rf {} +
+          cp -R web/dist/. infra/catalyst/client/
+
+      - name: Install Catalyst CLI
+        run: npm install -g zcatalyst-cli@1.27.0
+
+      # The project + DC binding come from infra/catalyst/.catalystrc; --token
+      # authenticates non-interactively as the token owner.
+      - name: Deploy web client to Catalyst
+        working-directory: infra/catalyst
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+        run: catalyst deploy client --token "$CATALYST_TOKEN"
