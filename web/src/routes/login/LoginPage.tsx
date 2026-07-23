@@ -279,9 +279,12 @@ function CatalystEmbed({ status, error, renderSignIn }: {
   status: string; error?: string; renderSignIn: (id: string) => void;
 }) {
   const [widgetReady, setWidgetReady] = useState(false);
+  const [widgetTimedOut, setWidgetTimedOut] = useState(false);
 
   useEffect(() => {
     if (status !== "unauthenticated") return;
+    setWidgetReady(false);
+    setWidgetTimedOut(false);
     renderSignIn(CATALYST_LOGIN_ELEMENT_ID);
     const host = document.getElementById(CATALYST_LOGIN_ELEMENT_ID);
     if (!host) return;
@@ -297,9 +300,14 @@ function CatalystEmbed({ status, error, renderSignIn }: {
       if (host.childElementCount > 0) setWidgetReady(true);
     };
     tidy();
+    // If the SDK never injects the sign-in iframe (it can stall after a
+    // sign-out / SSO hand-off), surface a Reload instead of an endless spinner.
+    const guard = window.setTimeout(() => {
+      if (host.childElementCount === 0) setWidgetTimedOut(true);
+    }, 8000);
     const obs = new MutationObserver(tidy);
     obs.observe(host, { childList: true, subtree: true });
-    return () => obs.disconnect();
+    return () => { obs.disconnect(); window.clearTimeout(guard); };
   }, [status, renderSignIn]);
 
   if (status === "error") {
@@ -345,10 +353,23 @@ function CatalystEmbed({ status, error, renderSignIn }: {
           className="relative mx-auto h-[360px] w-full max-w-[400px]"
         />
         {!widgetReady && (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center">
-            <span className="inline-flex items-center gap-2 text-12 text-content-dim">
-              <Loader2 className="size-4 animate-spin text-primary" /> Loading secure sign-in…
-            </span>
+          <div className="absolute inset-0 grid place-items-center">
+            {widgetTimedOut ? (
+              <div className="flex flex-col items-center gap-2 text-center">
+                <span className="text-12 text-content-dim">Sign-in is taking longer than expected.</span>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex items-center gap-1.5 rounded-control border border-hairline bg-surface-2 px-3 py-1.5 text-12 text-content transition-colors hover:border-primary/50"
+                >
+                  <RotateCw className="size-3.5" /> Reload
+                </button>
+              </div>
+            ) : (
+              <span className="pointer-events-none inline-flex items-center gap-2 text-12 text-content-dim">
+                <Loader2 className="size-4 animate-spin text-primary" /> Loading secure sign-in…
+              </span>
+            )}
           </div>
         )}
       </div>

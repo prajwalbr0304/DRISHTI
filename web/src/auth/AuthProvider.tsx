@@ -47,23 +47,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let settled = false;
     // The optional bearer token (undefined for cookie-based Catalyst sessions).
     apiClient.setTokenGetter(() => client.getToken());
+    // Bound the session check. After a sign-out / SSO hand-off the Catalyst SDK
+    // can leave `init()`/`isUserAuthenticated()` pending, which would strand the
+    // app on "Checking your session…" forever. On timeout we fall back to
+    // unauthenticated so the sign-in screen renders (the user can sign in again).
+    const guard = window.setTimeout(() => {
+      if (cancelled || settled) return;
+      settled = true;
+      setStatus("unauthenticated");
+    }, 9000);
     (async () => {
       try {
         await client.init();
         const u = await client.getUser();
-        if (cancelled) return;
+        if (cancelled || settled) return;
+        settled = true;
+        window.clearTimeout(guard);
         setUser(u);
         setStatus(u ? "authenticated" : "unauthenticated");
       } catch (e) {
-        if (cancelled) return;
+        if (cancelled || settled) return;
+        settled = true;
+        window.clearTimeout(guard);
         setError(e instanceof Error ? e.message : String(e));
         setStatus("error");
       }
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(guard);
     };
   }, [client]);
 
