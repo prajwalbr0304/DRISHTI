@@ -560,3 +560,36 @@ Data Store-native; the app seeds golden rows at runtime. Create if you want the 
 Tell Kiro the **3 bucket names** and the **API Gateway URL**. Kiro then: sets function env, imports reference/operational rows, builds + deploys the frontend to Slate, and runs the full live verification (six roles, Signal + cron, Data Store/Stratus checks, CORS/replay/bypass) with evidence.
 
 Non-table Console items are listed in `docs/deployment/CATALYST_LIVE_INVENTORY.md` §3 (AppSail env from `infra/catalyst/secrets/appsail-env.local.json`, API Gateway routes, Auth users, Signals rule, cron).
+
+---
+
+## Step 6 — Option B: enable the synthetic role-card demo login (2 Console toggles)
+
+The submitted demo replaces the embedded Catalyst IAM login with the offline
+role-card picker (see `CATALYST_CAPABILITY_MATRIX.md` → "Demo login (Option B)").
+Kiro has already shipped the code — frontend `VITE_AUTH_MODE=offline`, the
+`gateway_api` demo-auth branch, and the route descriptor — and redeploys the
+`gateway_api` function. Two Console toggles turn the demo on:
+
+1. **API Gateway → `/api/*` route → Authentication = Optional.**
+   - Console → Serverless → **API Gateway** → open the `/api/*` rule (target
+     `gateway_api`) → set **Authentication** from *Required* to **Optional** → Save.
+   - Why: so a session-less demo request reaches `gateway_api`. With *Required*,
+     the Gateway returns 401 before the function runs. Leave
+     `/api/channel-token` = **Required** and `/api/public/health` = **Optional**.
+
+2. **Functions → `gateway_api` → Environment Variables → add `DRISHTI_DEMO_AUTH = true`.**
+   - Console → Serverless → **Functions** → `gateway_api` → **Configuration /
+     Environment Variables** → add key `DRISHTI_DEMO_AUTH`, value `true` → Save.
+   - Add it **alongside** the existing `ZOHO_APPSAIL_BASE_URL` /
+     `ZOHO_APPSAIL_SIGNING_SECRET` — do not replace them.
+   - Why: this is the explicit opt-in. Without it `gateway_api` still returns 401
+     for a session-less request (safe default), so the flag alone controls demo mode.
+
+No Data Store, Stratus, AppSail, Signals or cron change is needed — every other
+Catalyst service keeps working exactly as before. After both toggles, tell Kiro
+and it re-runs the live verification (each role card → app → live data, no 401).
+
+**Revert to real IAM login:** set the `/api/*` route back to **Required**, remove
+`DRISHTI_DEMO_AUTH`, and Kiro flips `VITE_AUTH_MODE=catalyst` +
+`VITE_API_WITH_CREDENTIALS=true` and redeploys the SPA.

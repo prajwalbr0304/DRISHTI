@@ -24,8 +24,35 @@
 | Functions (9: gateway_api, channel_token, 5 event, 2 cron) | **USED** | deployed at `.../server/<fn>/` |
 | API Gateway (routes + auth + throttle 600/min) | **USED** | `/api/*` routes; `/api/cases` → 401; `/api/health/*` → 200 |
 | AppSail (FastAPI custom container) | **USED** | live `/health/ready` 200; non-root; graceful shutdown |
-| Slate (Web Client Hosting) | **USED** | `drishti-web-new-fhxgsmlo.onslate.in` serving the SPA |
-| Authentication (6 functional roles) | **USED** | roles created; gateway resolves role server-side (security probe cases 3/4) |
+| Slate (Web Client Hosting) | **USED** | `drishti-frvfpunc.onslate.in` serving the SPA |
+| Authentication (embedded IAM login) | **NOT USED (demo)** | **Option B:** the demo login is the offline role-card picker (no IAM widget). See "Demo login (Option B)" below. The IAM→gateway path + 6-role server-side authz are retained in code and were proven live earlier (Prompt 21/23 evidence). |
+
+## Demo login (Option B — synthetic role cards)
+
+The embedded Catalyst Authentication widget proved unreliable to embed in the SPA
+(empty box / internal scrollbar / stuck-loading / stale-session `locate` 400s), so
+the **submitted demo** replaces IAM login with a synthetic **role-card picker**:
+click a role → instant offline sign-in → the app opens with live data.
+
+- **Frontend:** `VITE_AUTH_MODE=offline` → `LoginPage` renders `RolePicker` →
+  `signInOffline(role)` (no Catalyst Web SDK, no iframe). Synthetic identities only.
+- **API path stays live + still signed:** the `/api/*` Gateway route is set to
+  `authentication: optional` and the `gateway_api` function runs in demo mode
+  (`DRISHTI_DEMO_AUTH=true`). With no Catalyst session it mints a **full-access
+  super_admin HMAC-signed context**, so the AppSail (unchanged) still verifies a
+  signed context on every request — the trust boundary is intact; only the
+  identity *source* changed.
+- **Role cards are a presentation view:** the selected role drives the client
+  workspace (sidebar/views/scope labels), exactly like the in-app Demo View; the
+  demo session has full data access. Real per-role server enforcement remains in
+  code and was proven live via the IAM→gateway path (Prompt 21 authz matrix +
+  Prompt 23 §3.12).
+- **Blast radius:** the demo API is publicly callable, bounded by exact-origin
+  CORS, request throttling, **synthetic data only**, and the AppSail synthetic-DB
+  write guard (`synthetic_meta` marker; RLS off by explicit hackathon request).
+- **Reversible:** set `VITE_AUTH_MODE=catalyst` + `VITE_API_WITH_CREDENTIALS=true`,
+  restore the `/api/*` route to `required`, and unset `DRISHTI_DEMO_AUTH` to return
+  to real IAM login. Console steps: `docs/deployment/CATALYST_CONSOLE_SETUP.md` §6.
 
 ## Bounded / conditional
 
