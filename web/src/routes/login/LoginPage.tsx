@@ -285,10 +285,19 @@ function CatalystEmbed({ status, error, renderSignIn }: {
     renderSignIn(CATALYST_LOGIN_ELEMENT_ID);
     const host = document.getElementById(CATALYST_LOGIN_ELEMENT_ID);
     if (!host) return;
-    if (host.childElementCount > 0) setWidgetReady(true);
-    const obs = new MutationObserver(() => {
+    // Zoho's embedded login body is taller than the form and shows its own
+    // scrollbar. The card is sized (below) to fit the full email/password step,
+    // so disable the iframe's scrollbar for a clean card with no dead space.
+    const tidy = () => {
+      const iframe = host.querySelector("iframe");
+      if (iframe) {
+        iframe.setAttribute("scrolling", "no");
+        iframe.style.overflow = "hidden";
+      }
       if (host.childElementCount > 0) setWidgetReady(true);
-    });
+    };
+    tidy();
+    const obs = new MutationObserver(tidy);
     obs.observe(host, { childList: true, subtree: true });
     return () => obs.disconnect();
   }, [status, renderSignIn]);
@@ -327,13 +336,13 @@ function CatalystEmbed({ status, error, renderSignIn }: {
         </span>
       </div>
       <div className="relative px-4 py-3">
-        {/* The Catalyst SDK injects a content-sized iframe (~150px for the email
-            step, taller for password/OTP). min-h matches the email step so the
-            card hugs the iframe with no dead space and no load-time layout shift;
-            the loader overlays it until the iframe mounts. */}
+        {/* The Catalyst SDK injects an iframe sized to 100% of this host. 360px
+            fits the full Zoho step (heading + field + NEXT + Forgot Password,
+            and the password/OTP steps) without the internal scrollbar (disabled
+            in the effect); the loader overlays it until the iframe mounts. */}
         <div
           id={CATALYST_LOGIN_ELEMENT_ID}
-          className="relative mx-auto min-h-[150px] w-full max-w-[400px]"
+          className="relative mx-auto h-[360px] w-full max-w-[400px]"
         />
         {!widgetReady && (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
