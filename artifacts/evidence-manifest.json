@@ -210,6 +210,22 @@
       "recorded_at": "2026-07-21T14:08:36.767199+00:00"
     },
     {
+      "id": "p23-auth-e2e-live",
+      "phase": 23,
+      "capability": "Full browser login E2E + six-role switch verified live (E1)",
+      "category": "browser-e2e",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "node artifacts/phase-23/_pw_full_login.mjs ; node artifacts/phase-23/_pw_roles.mjs",
+      "exit_code": 0,
+      "artifact": "docs/phase-reports/PHASE_23_REPORT.md",
+      "artifact_sha256": "651ac81bfda7ba18add6e4535cf5501d66e5ffc4e5db411885770f73a250cd73",
+      "resource_id": "https://drishti-frvfpunc.onslate.in/login",
+      "notes": "Embedded Catalyst IAM login (email+password) -> redirect straight to /command (no double Enter-platform) -> 9 Gateway /api calls all 200 (CORS ok). All 6 Demo-view roles re-scope heading+scope correctly. See report 3.12.",
+      "recorded_at": "2026-07-23T12:26:08.518163+00:00"
+    },
+    {
       "id": "p23-board-live",
       "phase": 23,
       "capability": "Investigation Board CRUD live (list/create/read/annotate) over Catalyst Data Store",
@@ -562,6 +578,22 @@
       "recorded_at": "2026-07-22T19:54:34.131837+00:00"
     },
     {
+      "id": "p23-signout-antistuck",
+      "phase": 23,
+      "capability": "Sign-out -> sign-in never stuck loading (bounded auth init + widget load)",
+      "category": "build",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "node artifacts/phase-23/_pw_timeout_verify.mjs (SDK stalled)",
+      "exit_code": 0,
+      "artifact": "web/src/auth/AuthProvider.tsx",
+      "artifact_sha256": "d1352432d841081a90a0ce2abed7f9efe41fc33db5ea9b53e7fb2a8d0f00517b",
+      "resource_id": "https://drishti-frvfpunc.onslate.in/login",
+      "notes": "AuthProvider 9s guard on init()+getUser() -> unauthenticated fallback; CatalystEmbed 8s guard on iframe mount -> Reload affordance. Verified by stalling the SDK: 'Checking your session' escapes to /login (9s) then a clean 'Sign-in is taking longer than expected [Reload]' (8s), never an infinite spinner. Commit 1219ee0.",
+      "recorded_at": "2026-07-23T12:26:08.518163+00:00"
+    },
+    {
       "id": "p23-six-role-authz-live",
       "phase": 23,
       "capability": "Six-role allow/deny authorization matrix live (DoD #3)",
@@ -594,5 +626,5 @@
       "recorded_at": "2026-07-22T19:54:34.131837+00:00"
     }
   ],
-  "updated_at": "2026-07-23T07:23:22.482658+00:00"
+  "updated_at": "2026-07-23T12:26:08.518163+00:00"
 }

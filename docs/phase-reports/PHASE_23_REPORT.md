@@ -181,6 +181,23 @@ was seeded into live Data Store with the app's own `seed_from_fixture()` (9 haza
   deploy to a CLI-managed Slate app; the classic Web Client Hosting path is unavailable
   for this app (`ZIPSANITIZER_FILES_COUNT_EXCEEDED` from the landing animation frames).
 
+### 3.12 End-to-end auth verified live + sign-out anti-stuck fix (2026-07-23)
+
+- **Full browser login E2E (E1) passes live** on `drishti-frvfpunc.onslate.in`: driving the
+  embedded Catalyst IAM widget (email + password) → redirect **straight to `/command`**
+  (redirect fix confirmed, no second "Enter platform") → **9 Gateway `/api/*` calls all 200**
+  (CORS confirmed). Evidence `artifacts/phase-23/_full_login.log`.
+- **Six-role Demo-view switch verified live** (`_roles.log`): Investigator, Crime Analyst,
+  Supervisor, Policymaker, Disaster Coordinator, Super Admin each re-scope the shell
+  (heading + scope label) correctly; the server still re-derives the real role.
+- **Sign-out → sign-in "stuck loading" fixed.** After sign-out the Catalyst SDK can re-auth
+  off the parent Zoho SSO session (lands on `/command`) or stall the session check / the
+  sign-in iframe. Two guards now prevent an infinite spinner: `AuthProvider` bounds
+  `init()`+`getUser()` at **9s** → falls back to unauthenticated (renders the sign-in);
+  `CatalystEmbed` bounds the iframe mount at **8s** → shows a **Reload** affordance. Verified
+  by stalling the SDK (`_timeout_verify.log`): "Checking your session…" → `/login` at 9s →
+  "Sign-in is taking longer than expected. [Reload]" at 8s — never an endless spinner.
+
 ---
 
 ## 4. Capability enablement (DoD #5) — see `CATALYST_CAPABILITY_MATRIX.md`
