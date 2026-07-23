@@ -1026,6 +1026,20 @@ Objective: use the retained AWS credits only for justified custom ML/analytics,
 prove real TabFM and TimesFM execution, integrate them through Catalyst and stop
 temporary GPU resources after testing.
 
+> **Auth-model note (Option B, added post-Prompt-23):** the deployed demo replaces
+> the embedded Catalyst IAM login with an offline **role-card picker** + a gateway
+> **demo-auth** mode (`DRISHTI_DEMO_AUTH=true`; `/api/*` route auth = Optional) that
+> mints a full-access synthetic signed context server-side. **Prompt 24 does NOT
+> depend on real IAM login** — its user-facing steps (approve a synthetic FIR, review
+> the reviewed UI result) run under the demo super_admin context selected via the role
+> cards, and the prediction path (approved Data Store row → Signal → event/cron →
+> protected AWS adapter → real TabFM/TimesFM → Data Store → UI) is service-scope /
+> server-to-server and is unchanged. Only Catalyst *Authentication* is dropped; Data
+> Store, Functions, Signals, cron, AppSail, Stratus and API Gateway all remain. The
+> draft/unapproved/evidence "zero AWS invocation" guards and idempotency are enforced
+> server-side and are unaffected. See
+> `docs/deployment/CATALYST_CAPABILITY_MATRIX.md` → "Demo login (Option B)".
+
 ~~~text
 Implement Prompt 24 using the Global Execution Contract. This prompt authorizes
 bounded AWS resource creation in the existing account for the documented DRISHTI

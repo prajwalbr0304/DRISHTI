@@ -198,6 +198,38 @@ was seeded into live Data Store with the app's own `seed_from_fixture()` (9 haza
   by stalling the SDK (`_timeout_verify.log`): "Checking your session…" → `/login` at 9s →
   "Sign-in is taking longer than expected. [Reload]" at 8s — never an endless spinner.
 
+### 3.13 Option B — offline role-card demo login (2026-07-24)
+
+After repeated failures embedding the Catalyst IAM widget (empty box / internal
+scrollbar / stuck-loading / stale-session `locate` 400), the **submitted demo login**
+was switched to an offline **role-card picker**: click a role → instant synthetic
+sign-in → app with live data. Catalyst **Authentication** is now **Not Used** for login;
+every other Catalyst service stays (see `CATALYST_CAPABILITY_MATRIX.md` → "Demo login
+(Option B)").
+
+- **Frontend:** `web/.env.production` → `VITE_AUTH_MODE=offline` + `VITE_API_WITH_CREDENTIALS=false`.
+  `LoginPage` already renders `RolePicker → signInOffline` in offline mode (no Web SDK, no iframe).
+  Sign-out is also clean in offline mode (clears local state → role cards), so the earlier
+  sign-out→sign-in stuck-loading cannot occur.
+- **Gateway demo-auth (AppSail UNCHANGED):** `gateway_api` mints a full-access super_admin
+  HMAC-signed context when `DRISHTI_DEMO_AUTH=true` and no Catalyst session is present, so the
+  AppSail still verifies a signed context on every request — the trust boundary is intact, only
+  the identity *source* changed. A real Catalyst session, if present, is still resolved.
+- **Console (one operator toggle left):** `/api/*` route auth Required → **Optional**. The
+  `gateway_api` env (`ZOHO_APPSAIL_BASE_URL` / `ZOHO_APPSAIL_SIGNING_SECRET` / `DRISHTI_DEMO_AUTH=true`)
+  was set via `infra/catalyst/functions/gateway_api/deploy.py` — a bare `catalyst deploy` had wiped
+  it (→ 503 `gateway_not_configured`); the helper injects the env from the gitignored secrets file
+  and reverts the committed config so no secret is committed.
+- **Blast radius:** the demo API is publicly callable, bounded by exact-origin CORS, throttling,
+  **synthetic data only**, and the AppSail synthetic-DB write guard (`synthetic_meta`; RLS off by
+  explicit hackathon request). Fully reversible.
+- **Role cards are a presentation view** over a full-access demo session (identical to the in-app
+  Demo View); real per-role server enforcement is retained in code and evidenced via the IAM→gateway
+  path (§3.12 + Prompt 21 authz matrix).
+- **Verified so far:** gateway env restored (`/api/health/{live,ready}` → 200); `gateway_api`
+  demo-mode deployed; offline frontend built + pushed to Slate. Live role-card → data verification
+  is pending the operator's `/api/*` route-auth toggle (then Kiro re-runs the browser E2E).
+
 ---
 
 ## 4. Capability enablement (DoD #5) — see `CATALYST_CAPABILITY_MATRIX.md`
