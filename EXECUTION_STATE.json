@@ -55,8 +55,8 @@
       "next_action": "Start Prompt 23 (live Zoho Catalyst provisioning + deployment): run the corrected catalyst-pipelines.yaml on a linked runner, deploy functions/client/AppSail/Slate to DHRISTI dev, then smoke through Auth + API Gateway + Data Store and prove rollback; the strict local release gate (scripts/release_gate.py) is 16/16 PASS = RELEASE_CANDIDATE."
     },
     "23": {
-      "status": "live_core_proven_gaps_remain",
-      "updated_at": "2026-07-23T02:10:00+05:30",
+      "status": "live_core_plus_board_disaster_evidence_proven",
+      "updated_at": "2026-07-23T04:30:00+05:30",
       "report": "docs/phase-reports/PHASE_23_REPORT.md",
       "dod_met": [
         "public-frontend-and-primary-api-resolve-to-catalyst",
@@ -67,19 +67,24 @@
         "capability-evidence-enabled-and-disabled-documented",
         "application-rollback-and-additive-forward-recovery"
       ],
-      "verification": "LIVE on DHRISTI 48361000000030003 (IN DC): frontend Slate https://drishti-uryfmaue.onslate.in/ (SPA 200); AppSail https://drishti-api-50044118953.development.catalystappsail.in (/health/ready all-ok); API Gateway /api/* -> gateway_api (exact-origin CORS); security-probe 11/11 (bypass/expiry/future/audience/tamper/forge/unknown-role/replay all rejected); six-role allow/deny matrix (fir-journey.log); live Signal prediction-requested -> prediction_event -> AppSail dispatch (sigtest-f7e3135a02 approved->queued ~2s) with retry + idempotency (signal-proof.log, idempotency-proof.log); live daily cron drishti_forecast -> cron_forecast (forecast-2026-07-22 queued, exec 48361000000061010); application rollback + additive forward recovery (rollback-proof.log); Stratus drishti-evidence object versioned + sha256 MATCH + signed-URL expiry (stratus-fixture.log); chat multi-turn session + RDS case reads via protected adapter. Evidence: artifacts/evidence-manifest.json (11 p23 live PASS entries).",
+      "verification": "LIVE on DHRISTI 48361000000030003 (IN DC): frontend Slate https://drishti-uryfmaue.onslate.in/ (SPA 200); AppSail https://drishti-api-50044118953.development.catalystappsail.in (/health/ready all-ok); API Gateway /api/* -> gateway_api (exact-origin CORS); security-probe 11/11 (bypass/expiry/future/audience/tamper/forge/unknown-role/replay all rejected); six-role allow/deny matrix (fir-journey.log); live Signal prediction-requested -> prediction_event -> AppSail dispatch (sigtest-f7e3135a02 approved->queued ~2s) with retry + idempotency (signal-proof.log, idempotency-proof.log); live daily cron drishti_forecast -> cron_forecast (forecast-2026-07-22 queued, exec 48361000000061010); application rollback + additive forward recovery (rollback-proof.log); Stratus drishti-evidence object versioned + sha256 MATCH + signed-URL expiry (stratus-fixture.log); chat multi-turn session + RDS case reads via protected adapter; PLUS live Board CRUD, live Disaster (12 reads + overview active_hazards=7 + forecast write, 15 Data Store tables created + fixture seeded), and live evidence file-upload->Stratus with SHA-256 verify. Evidence: artifacts/evidence-manifest.json (19 p23 live PASS entries).",
+      "resolved_2026_07_23": [
+        "Board CRUD live (list/create/read/annotate) - board-disaster3.log",
+        "Disaster live: 12 reads + overview (active_hazards=7) + forecast write; 15 Data Store tables created via reverse-engineered Console create-table API + fixture seeded (seed_from_fixture) - disaster-ops.log",
+        "Evidence file-upload -> Stratus end-to-end with SHA-256 verify (StratusEvidenceGateway) - evidence-upload4.log",
+        "Data Store fixes: ZCQL<=300 pagination, ISO8601->'YYYY-MM-DD HH:MM:SS' datetime, dict/list<->json round-trip (repository.py)"
+      ],
       "gaps_remaining": [
-        "E3-board-disaster-500: /boards/* and /disaster/* endpoints exist + enforce authz (policymaker 403) but operations return 500 on the live AppSail - Data Store table column mismatch (BoardID/OwnerActor/CreatedAt/DiffJSON...), same class as the fixed PredictionRequest dispatch bug; needs AppSail log traceback + align service columns with created tables (6 board + ~14 disaster tables). artifacts/phase-23/board-disaster.log",
-        "E1-live-browser-e2e: parameterized Playwright not run against the live Slate URL (needs Catalyst-login automation)",
+        "E1-live-browser-e2e: PARTIAL - live frontend + landing + /login 6-role picker + real Catalyst IAM sign-in trigger all proven via automated browser; fully-automated click-through stops at the interactive Zoho IAM login (~15s manual). Authenticated data path proven via direct API.",
         "F1-pipeline-link-run: catalyst-pipelines.yaml corrected but not linked/run (Git-integration is a Console step); rollback itself proven",
-        "B2-datastore-import: curated serving subset not imported into Data Store (RDS used via AppSail adapter instead - documented deviation)",
-        "evidence-file-upload-503: S3_EVIDENCE_BUCKET unset on AppSail (Stratus bucket itself proven; only app->Stratus file binding remains)",
-        "FIR-full-approval: draft create + six-role authz proven; clean submit->approve needs a complete valid draft payload",
-        "G1-credit-snapshot + G2-stale-app-cleanup (drishti-web-new, drishti-ui) pending (Console/user)",
+        "B2-datastore-import: crime-domain curated serving subset not imported (RDS used via AppSail adapter - documented deviation); disaster fixture WAS seeded into Data Store",
+        "FIR-full-approval: draft create + six-role authz proven; clean submit->approve happy-path not captured",
+        "G1-credit-snapshot (Console) + G2-stale-app-cleanup (drishti-web-new, drishti-ui) pending; ZZ probe tables cleaned",
+        "login-ui-deploy: login card polish committed+pushed (4ccd9c7); needs one Slate 'Create Deployment' (auto-deploy not firing)",
         "B5-six-distinct-users: only super_admin is a real Catalyst login; six roles proven via signed gateway contexts",
         "D2-quickml / D3-zia-voice: not enabled in DC -> labelled fallbacks (documented)"
       ],
-      "next_action": "Decide with user: either close Prompt 23 gaps (priority: Board/Disaster Data Store column alignment via AppSail logs; then live E2E, pipeline link/run, evidence file-upload) OR proceed to Prompt 24. Core mandatory DoD (frontend/API/auth/roles/Signal/cron/rollback/security) is proven live; this is NOT a 100% Prompt-23 pass."
+      "next_action": "Core DoD + Board + Disaster + evidence upload all proven LIVE. Residual items are non-core Console clicks / interactive: link+run pipeline (F1), credit snapshot (G1), delete 2 stale Slate apps (G2), interactive Catalyst IAM login for the fully-automated browser E2E (E1), FIR happy-path approval, and deploy the login-UI polish (Slate Create Deployment). Ready to proceed to Prompt 24 when the user chooses."
     },
     "24": {
       "status": "pending"

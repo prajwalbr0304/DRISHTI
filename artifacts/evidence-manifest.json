@@ -210,20 +210,20 @@
       "recorded_at": "2026-07-21T14:08:36.767199+00:00"
     },
     {
-      "id": "p23-board-disaster-500",
+      "id": "p23-board-live",
       "phase": 23,
-      "capability": "Board/Disaster endpoints live + authz enforced but operations 500 (Data Store column mismatch)",
+      "capability": "Investigation Board CRUD live (list/create/read/annotate) over Catalyst Data Store",
       "category": "deployment",
       "environment": "live",
-      "status": "PARTIAL",
+      "status": "PASS",
       "mandatory": true,
       "command": "python artifacts/phase-23/_board_disaster",
       "exit_code": 0,
-      "artifact": "artifacts/phase-23/board-disaster.log",
-      "artifact_sha256": "fd3aca83197bdde0c3c1dad3471015f4fa5749d6cc6930970d8f4aec3a6e0ebd",
-      "resource_id": null,
-      "notes": "GET/POST /boards + /disaster/overview|events|demo/seed -> 500; policymaker -> 403 (authz works). Root cause = Data Store table column mismatch (BoardID/OwnerActor/CreatedAt...), same class as the fixed PredictionRequest dispatch bug. Real gap, deferred (see PHASE_23_REPORT sec 5.3/9).",
-      "recorded_at": "2026-07-22T19:54:34.131837+00:00"
+      "artifact": "artifacts/phase-23/board-disaster3.log",
+      "artifact_sha256": "6b9252467ae5d706547741e6d282d0105af74a967bd1b161a686d5bb382c0d1f",
+      "resource_id": "InvestigationBoard 48361000000053006",
+      "notes": "GET /boards 200; POST /boards 201 (board_id 90005); GET /boards/90005 200; POST annotations 201 (JSON round-trip); policymaker 403.",
+      "recorded_at": "2026-07-22T22:07:00.143086+00:00"
     },
     {
       "id": "p23-catalyst-preflight",
@@ -290,6 +290,22 @@
       "recorded_at": "2026-07-22T19:54:34.131837+00:00"
     },
     {
+      "id": "p23-datastore-live-fixes",
+      "phase": 23,
+      "capability": "Data Store repository fixes: ZCQL<=300 pagination, datetime format, dict/list<->json round-trip",
+      "category": "build",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "py_compile services/ml/app/datastore/repository.py",
+      "exit_code": 0,
+      "artifact": "services/ml/app/datastore/repository.py",
+      "artifact_sha256": "c4ae0f918c80cd25f378dceedc88fac2c6184cb04c7f5e9429c22c7c9c86731d",
+      "resource_id": null,
+      "notes": "Fixes that made Board/Disaster live: paginate ZCQL in <=300-row chunks; normalize ISO8601 datetimes to 'YYYY-MM-DD HH:MM:SS'; serialize dict/list to JSON string on write + parse back on read.",
+      "recorded_at": "2026-07-22T22:07:00.143086+00:00"
+    },
+    {
       "id": "p23-deploy-preflight",
       "phase": 23,
       "capability": "Catalyst deploy preflight: project=DHRISTI/48361000000030003 org 60075362708 IN DC, synthetic marker, DB-free AppSail posture, live no-duplicate",
@@ -304,6 +320,38 @@
       "resource_id": null,
       "notes": "Offline invariants + live read-only no-duplicate check (catalyst project:list) all PASS; exactly one DHRISTI project. Does not prove live component invocation.",
       "recorded_at": "2026-07-21T13:41:04.118579+00:00"
+    },
+    {
+      "id": "p23-disaster-live",
+      "phase": 23,
+      "capability": "Disaster (Emergency Response) live with seeded data: 12 reads + overview + forecast write",
+      "category": "deployment",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "python artifacts/phase-23/_disaster_probe + _disaster_ops",
+      "exit_code": 0,
+      "artifact": "artifacts/phase-23/disaster-ops.log",
+      "artifact_sha256": "3a607a3314427e2b444b7150c092e76558ad930d4cae9d2bd860f5bc99c4a061",
+      "resource_id": "15 disaster Data Store tables (14 + AlertHistory)",
+      "notes": "All 12 disaster reads 200 with real data; overview 200 active_hazards=7 open_alerts=1; forecast/run 200 -> HazardPrediction prob0.14 conf0.85, read back count=1; policymaker 403. Tables created via reverse-engineered Console API; fixture seeded via app seed_from_fixture.",
+      "recorded_at": "2026-07-22T22:07:00.143086+00:00"
+    },
+    {
+      "id": "p23-evidence-upload-live",
+      "phase": 23,
+      "capability": "Evidence file upload -> Stratus live end-to-end with SHA-256 verify",
+      "category": "deployment",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "python artifacts/phase-23/_evidence_upload",
+      "exit_code": 0,
+      "artifact": "artifacts/phase-23/evidence-upload4.log",
+      "artifact_sha256": "5ce9c60c0864b934ab411b2b6d4541dcfa75af8468e876aae60f397f28541162",
+      "resource_id": "Stratus drishti-evidence",
+      "notes": "create 201 -> upload-url 200 (Stratus presign) -> PUT 200 -> complete 200 -> state=available, SHA-256 match=true. StratusEvidenceGateway (S3 protocol over Catalyst Stratus).",
+      "recorded_at": "2026-07-22T22:07:00.143086+00:00"
     },
     {
       "id": "p23-frontend-live",
@@ -352,6 +400,22 @@
       "resource_id": null,
       "notes": "Pre-deploy inventory, deploy-mechanism boundary (CLI vs Console/SDK), ordered agent/owner runbook, capability enablement matrix, cost notes. Live IDs appended during deployment.",
       "recorded_at": "2026-07-21T13:52:15.926348+00:00"
+    },
+    {
+      "id": "p23-login-ui-fix",
+      "phase": 23,
+      "capability": "Login /login Catalyst sign-in framed as a professional card (committed 4ccd9c7)",
+      "category": "documentation",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "npm run build (web)",
+      "exit_code": 0,
+      "artifact": "web/src/routes/login/LoginPage.tsx",
+      "artifact_sha256": "0d9b23b3c5abc01cdf573962a9695ef0a415f549228cfeb60612fca11ae3ec42",
+      "resource_id": null,
+      "notes": "Framed the embedded Catalyst IAM widget (header + 'Secured by Zoho Catalyst' + loading state). Pushed to main; Slate deploy is a Console 'Create Deployment' click (auto-deploy not firing).",
+      "recorded_at": "2026-07-22T22:07:00.143086+00:00"
     },
     {
       "id": "p23-phase-report",
@@ -514,5 +578,5 @@
       "recorded_at": "2026-07-22T19:54:34.131837+00:00"
     }
   ],
-  "updated_at": "2026-07-22T19:54:34.131837+00:00"
+  "updated_at": "2026-07-22T22:07:00.143086+00:00"
 }

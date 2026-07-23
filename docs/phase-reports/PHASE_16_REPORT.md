@@ -369,3 +369,15 @@ Live on Catalyst (see `docs/phase-reports/PHASE_23_REPORT.md`):
   separately API-captured this session — the board is a Data Store-backed UI feature
   exercised through the live Slate frontend (`https://drishti-uryfmaue.onslate.in/`).
   No board behaviour was faked.
+
+
+### Update (2026-07-23) — Board is now fully live on Catalyst
+
+The earlier addendum's caveat ("a dedicated Board business API operation was not
+separately API-captured") is **resolved**. Live Board CRUD is proven end-to-end on the
+deployed AppSail over Catalyst Data Store: `GET /boards` → 200, `POST /boards` → 201
+(`board_id 90005`), `GET /boards/{id}` → 200, `POST /boards/{id}/annotations` → 201 (JSON
+columns round-trip), `policymaker → 403`. See `docs/phase-reports/PHASE_23_REPORT.md` §3.9
+and `artifacts/phase-23/board-disaster3.log`. The fixes that unblocked it (ZCQL ≤300
+pagination, Catalyst datetime format, dict/list↔JSON round-trip) are in
+`services/ml/app/datastore/repository.py`.

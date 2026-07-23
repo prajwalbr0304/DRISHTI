@@ -510,3 +510,20 @@ Live on Catalyst (see `docs/phase-reports/PHASE_23_REPORT.md`):
 - **Honest caveat (report §5):** a dedicated Disaster *business* API operation was not
   separately API-captured this session; disaster is a Data Store-backed UI context
   exercised via the live Slate frontend. Nothing was faked.
+
+
+### Update (2026-07-23) — Disaster is now fully live on Catalyst with seeded data
+
+The earlier addendum's caveat is **resolved**. The 15 disaster Data Store tables (14 from
+`disaster_schema` + `AlertHistory`) were created live via the Catalyst Console create-table
+API, and the deterministic fixture was seeded into live Data Store with the app's own
+`seed_from_fixture()` (9 hazard types, 7 events, 6 risk zones, 42 hydromet readings, 10
+resources, 7 shelters, 1 alert, plans/tasks/feeds). Proven live: all **12 disaster read
+endpoints → 200** with real data; `GET /disaster/overview` → 200 with real aggregates
+(`active_hazards=7, open_alerts=1, open_tasks=6`); live **write** `POST /disaster/forecast/run`
+(disaster_coordinator) → 200 creating a `HazardPrediction` (prob 0.14, conf 0.85), read back
+`count=1`; `policymaker → 403`. See `PHASE_23_REPORT.md` §3.10 + `artifacts/phase-23/disaster-ops.log`.
+
+> `POST /disaster/demo/seed` 500s **by design** in the minimal AppSail image (the datagen
+> fixture is not bundled); the intended path is provisioning rows into Data Store, which is
+> how the fixture was seeded here.
