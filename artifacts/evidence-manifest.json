@@ -222,8 +222,8 @@
       "artifact": "docs/phase-reports/PHASE_23_REPORT.md",
       "artifact_sha256": "651ac81bfda7ba18add6e4535cf5501d66e5ffc4e5db411885770f73a250cd73",
       "resource_id": "https://drishti-frvfpunc.onslate.in/login",
-      "notes": "Embedded Catalyst IAM login (email+password) -> redirect straight to /command (no double Enter-platform) -> 9 Gateway /api calls all 200 (CORS ok). All 6 Demo-view roles re-scope heading+scope correctly. See report 3.12.",
-      "recorded_at": "2026-07-23T12:26:08.518163+00:00"
+      "notes": "(HISTORICAL, IAM path) Embedded Catalyst IAM login (email+password) -> redirect straight to /command (no double Enter-platform) -> 9 Gateway /api calls all 200 (CORS ok). All 6 Demo-view roles re-scope heading+scope correctly. See report 3.12. NOTE: the submitted demo login is now Option B offline role cards (p23-option-b-demo-login-live); this IAM->gateway proof is retained as evidence the real-auth path works.",
+      "recorded_at": "2026-07-23T13:54:27.403026+00:00"
     },
     {
       "id": "p23-board-live",
@@ -450,6 +450,22 @@
       "recorded_at": "2026-07-23T07:23:22.482658+00:00"
     },
     {
+      "id": "p23-option-b-demo-login-live",
+      "phase": 23,
+      "capability": "Option B: offline role-card demo login -> live data for all 6 roles (no IAM)",
+      "category": "browser-e2e",
+      "environment": "live",
+      "status": "PASS",
+      "mandatory": true,
+      "command": "node artifacts/phase-23/_pw_optionb.mjs (fresh context per role, no session)",
+      "exit_code": 0,
+      "artifact": "docs/phase-reports/PHASE_23_REPORT.md",
+      "artifact_sha256": "76f9a0e215d2ea4bf127fd533b66ba3946767a3acc621a37cea7a2805ce9743c",
+      "resource_id": "https://drishti-frvfpunc.onslate.in/login",
+      "notes": "Each role card -> instant offline sign-in -> role home with live data, zero 401: Investigator/Case Explorer (6 api 200), Crime Analyst//command (9), Supervisor//command (9), Policymaker/Analytics (6), Disaster Coordinator//er (6), Super Admin//command (11; 9684 incidents/41 hotspots/200 alerts/12 POIs). Gateway demo-auth (DRISHTI_DEMO_AUTH=true) mints a full-access signed context after the /api/* route was set to No Authentication; AppSail unchanged + still verifies the signed context. Session-less curl /api/cases returns real data (case 100215).",
+      "recorded_at": "2026-07-23T13:54:27.403026+00:00"
+    },
+    {
       "id": "p23-phase-report",
       "phase": 23,
       "capability": "Phase 23 report (preflight complete; live deploy pending, honest DoD gap analysis)",
@@ -626,5 +642,5 @@
       "recorded_at": "2026-07-22T19:54:34.131837+00:00"
     }
   ],
-  "updated_at": "2026-07-23T12:26:08.518163+00:00"
+  "updated_at": "2026-07-23T13:54:27.403026+00:00"
 }

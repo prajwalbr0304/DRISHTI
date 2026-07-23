@@ -9,9 +9,10 @@
       "path": "/api/*",
       "target": { "type": "function", "name": "gateway_api" },
       "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      "authentication": "optional",
+      "authentication": "none",
+      "_console_value": "No Authentication (Console radio; Catalyst API Gateway offers No Authentication vs Custom Authentication, not an 'Optional' tier)",
       "throttle": { "general_per_min": 600, "per_ip_per_min": 120 },
-      "note": "Option B synthetic-demo mode: auth is OPTIONAL so the offline role-card demo (no Catalyst session) reaches gateway_api, which mints a full-access synthetic signed context when DRISHTI_DEMO_AUTH=true. A real Catalyst session, when present, is still resolved server-side. Set back to 'required' to restore IAM-only access. gateway_api always invokes AppSail with a signed context; AppSail still verifies it."
+      "note": "Option B synthetic-demo mode: authentication = No Authentication so the offline role-card demo (no Catalyst session) reaches gateway_api, which mints a full-access synthetic signed context when DRISHTI_DEMO_AUTH=true. gateway_api always invokes AppSail with a signed context and AppSail still verifies it. Bounded by the 600/min throttle, exact-origin CORS, synthetic data + the synthetic-DB write guard. Set back to Custom Authentication -> Catalyst Authentication to restore IAM-only access."
     },
     {
       "path": "/api/channel-token",
