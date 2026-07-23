@@ -136,3 +136,4 @@ artifacts/**/_*.js
 artifacts/**/_*.mjs
 artifacts/**/_*.state.json
 artifacts/**/_creds*
+artifacts/**/_*.png

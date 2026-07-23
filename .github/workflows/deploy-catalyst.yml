@@ -1,20 +1,28 @@
-name: Deploy frontend to Zoho Catalyst
+name: Frontend CI + deploy (Zoho Catalyst)
 
-# Auto-deploy the DRISHTI web client to the existing Catalyst project (DHRISTI)
-# on every push to main. Uses a Catalyst CLI token (non-interactive auth):
-#   1. locally (already logged in):  catalyst token:generate --current
-#   2. GitHub -> Settings -> Secrets and variables -> Actions -> New repository secret
-#        name:  CATALYST_TOKEN     value: <the token from step 1>
-# Only the web client is deployed here. Functions/AppSail are deployed separately
-# because `catalyst deploy --only functions` RESETS each function's Console env
-# (the signed-context secret that the live Signal + cron depend on).
+# On every push to main that touches web/, this:
+#   1. ALWAYS builds + validates the web client (tsc + vite + secret-scan) — a fast
+#      gate that catches a broken build before it reaches Catalyst.
+#   2. OPTIONALLY deploys to a Slate app, when you opt in by setting:
+#        - repo VARIABLE  SLATE_APP_NAME  = the CLI-registered Slate app name
+#        - repo SECRET    CATALYST_TOKEN  = catalyst token:generate --current
+#
+# Why "optional": the live demo app (drishti-uryfmaue) is a *Git-integrated* Slate
+# app, which the CLI cannot target (`deploy slate <name>` = "not found in config")
+# and `catalyst pull`/create are interactive. The classic Web Client Hosting
+# (`deploy --only client`) fails for this app with ZIPSANITIZER_FILES_COUNT_EXCEEDED
+# because the landing animation ships hundreds of frames (Slate handles it, the
+# classic client does not). So the recommended "push -> auto-deploy" for the live
+# app is the Slate Git integration's Auto-Deploy toggle (Console). This workflow
+# still guarantees a validated build on every push, and can deploy to a separate
+# CLI-managed Slate app if you set the two values above.
+# See docs/deployment/GITHUB_ACTIONS_DEPLOY.md.
 
 on:
   push:
     branches: [main]
     paths:
       - "web/**"
-      - "infra/catalyst/client/**"
       - ".github/workflows/deploy-catalyst.yml"
   workflow_dispatch: {}
 
@@ -23,8 +31,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy-web:
-    name: Build + deploy web client
+  build-and-deploy:
+    name: Build web client (+ optional Slate deploy)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,38 +49,25 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # Production build: VITE_API_BASE_URL comes from web/.env.production (the
-      # live API Gateway origin). check-bundle-secrets fails the build on leaks.
-      - name: Build web (production)
+      # Production build (VITE_API_BASE_URL from web/.env.production).
+      # check-bundle-secrets fails the build if a secret/DB/AWS URL leaks in.
+      - name: Build + validate web client
         working-directory: web
         run: npm run build
 
-      - name: Verify CATALYST_TOKEN secret is present
+      - name: Install Catalyst CLI
+        if: ${{ vars.SLATE_APP_NAME != '' }}
+        run: npm install -g zcatalyst-cli@1.27.0
+
+      - name: Deploy to Slate (opt-in)
+        if: ${{ vars.SLATE_APP_NAME != '' }}
+        working-directory: web/dist
         env:
           CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
         run: |
           if [ -z "$CATALYST_TOKEN" ]; then
-            echo "::error::CATALYST_TOKEN secret is missing. Run 'catalyst token:generate --current' locally and add it as an Actions secret named CATALYST_TOKEN."
+            echo "::error::SLATE_APP_NAME is set but the CATALYST_TOKEN secret is missing. Run 'catalyst token:generate --current' and add it as an Actions secret."
             exit 1
           fi
-
-      # The Catalyst client (catalyst.json -> client.source: "client") is served
-      # from infra/catalyst/client. Stage the fresh build there, keeping the
-      # committed client-package.json (name/homepage/login_redirect) + README.
-      - name: Stage build into the Catalyst client directory
-        run: |
-          set -euo pipefail
-          find infra/catalyst/client -mindepth 1 -maxdepth 1 \
-            ! -name 'client-package.json' ! -name 'README.md' -exec rm -rf {} +
-          cp -R web/dist/. infra/catalyst/client/
-
-      - name: Install Catalyst CLI
-        run: npm install -g zcatalyst-cli@1.27.0
-
-      # The project + DC binding come from infra/catalyst/.catalystrc; --token
-      # authenticates non-interactively as the token owner.
-      - name: Deploy web client to Catalyst
-        working-directory: infra/catalyst
-        env:
-          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
-        run: catalyst deploy client --token "$CATALYST_TOKEN"
+          catalyst deploy slate "${{ vars.SLATE_APP_NAME }}" --no-wait \
+            -m "CI ${GITHUB_SHA}" --token "$CATALYST_TOKEN"
