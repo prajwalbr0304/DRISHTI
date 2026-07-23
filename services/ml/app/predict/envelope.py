@@ -125,7 +125,10 @@ class PredictionRequestEnvelope(BaseModel):
                 if len(row) != n_feat:
                     raise ValueError(
                         f"context row {i} has {len(row)} values, expected {n_feat}")
-        if self.context_x is None and self.context_s3_uri is None:
+        # TimesFM forecasts a univariate series in query_rows and needs no labelled
+        # in-context examples; classification tasks still require context.
+        needs_context = self.task not in (ModelTask.TIMESFM_COUNT_FORECAST,)
+        if needs_context and self.context_x is None and self.context_s3_uri is None:
             raise ValueError("either context_x/y or context_s3_uri is required")
         if len(self.query_rows) > self.max_rows:
             raise ValueError(f"{len(self.query_rows)} query rows exceeds max_rows={self.max_rows}")
@@ -155,6 +158,8 @@ class PredictionResultEnvelope(BaseModel):
     model_artifact_digest: Optional[str] = None
     feature_schema_digest: Optional[str] = None
     context_digest: Optional[str] = None
+    # Echoed observation cutoff so the UI can show the data freshness of the result.
+    observation_cutoff: Optional[str] = None
 
     # Predictions (shape depends on task; probabilities/quantiles/intervals).
     predictions: list[dict[str, Any]] = Field(default_factory=list)

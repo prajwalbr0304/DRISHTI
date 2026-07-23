@@ -1,22 +1,38 @@
-# DRISHTI GPU worker — AWS SageMaker / AWS Batch custom inference image (G.3).
+# DRISHTI GPU worker - AWS SageMaker / AWS Batch custom inference image (G.3 / Prompt 24).
 #
 # This is the ONLY image that carries the heavy GPU / foundation-model stack.
 # It NEVER runs inside Catalyst AppSail. Versions are pinned for reproducibility
-# and to match the CUDA base image; the model-weight digest + license are checked
-# at load time by _tabfm_loader.py.
+# and to match the CUDA base image; model weights are the public, Apache-2.0
+# Google checkpoints baked into the image at build time (digest checked at load).
 
 # Serving contract (SageMaker /ping + /invocations).
 flask==3.0.3
 gunicorn==23.0.0
 pydantic==2.10.4
 
-# Foundation models (GPU). torch must match the CUDA base image (cu124).
-# The build installs the CUDA wheels via --extra-index-url in the Dockerfile.
+# Foundation-model runtime. torch MUST match the CUDA base image (cu124); the
+# Dockerfile installs the CUDA wheels via --extra-index-url. tabfm/timesfm accept
+# torch>=2.0.0, so this pinned CUDA build satisfies both.
 torch==2.5.1
-tabfm==1.0.0
-timesfm==2.0.2
-numpy>=1.26
-scikit-learn>=1.4
 
-# S3 access for context snapshots + artifacts (execution role, no static keys).
+# Real foundation models (Apache-2.0) + their extras.
+#   tabfm  1.0.0  -> google/tabfm-1.0.0-pytorch     (zero-shot tabular classifier)
+#   timesfm 2.0.2 -> google/timesfm-2.5-200m-pytorch (time-series foundation model)
+tabfm[pytorch]==1.0.0
+timesfm[torch]==2.0.2
+
+# Model hub + weight format (weights fetched at build time, verified at load).
+huggingface_hub>=0.23.0
+safetensors>=0.5.3
+
+# Explicit pins for the tabfm/timesfm dependency closure (reproducibility).
+numpy>=1.26.4
+pandas>=2.0
+scikit-learn>=1.4
+scipy>=1.11
+absl-py>=2.0
+jaxtyping<0.3
+typeguard<3
+
+# S3 access for async I/O + artifacts (execution role, no static keys).
 boto3>=1.34

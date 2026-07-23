@@ -1,0 +1,12 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-async-io",
+      "Filter": { "Prefix": "async-io/" },
+      "Status": "Enabled",
+      "Expiration": { "Days": 7 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 3 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 2 }
+    }
+  ]
+}

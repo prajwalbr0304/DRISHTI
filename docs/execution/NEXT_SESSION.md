@@ -1,8 +1,8 @@
 # Next DRISHTI session
 
-- Phase: 23
-- Status: in_progress
-- Updated: 2026-07-21T19:22:02+05:30
-- Next action: Prompt 23 live deploy is interleaved CLI+Console. Preflight COMPLETE/green. Next: owner Stage 1 (docs/deployment/CATALYST_LIVE_INVENTORY.md sec 3) - activate Slate in Console + choose ZOHO_APPSAIL_SIGNING_SECRET; then agent runs Stage 2 (catalyst apig:enable + deploy functions), Stage 3 AppSail, etc. No live DoD item met yet; nothing faked.
+- Phase: 24
+- Status: complete
+- Updated: 2026-07-23T23:24:58+05:30
+- Next action: Start Prompt 25 (integrated security, scale, recovery, final release). Prompt 24 AWS T4 endpoint is torn down (cost control); redeploy via sagemaker_ops.py deploy --image-digest sha256:a2944b79... to re-prove live AWS models. Adapter API GW/Lambda/secret/DLQ remain; wire deployed AppSail via DRISHTI_AWS_ADAPTER_URL/SECRET (Console) for the fully-deployed Signal->adapter chain.
 
 Read EXECUTION_STATE.json, FILE_MAP.json, DECISIONS.md, RELEASE_REQUIREMENTS.json, this file, the selected phase, and git status before acting.

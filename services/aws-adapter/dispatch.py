@@ -21,6 +21,7 @@ Two implementations (mirrors the app's fake/real split):
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import threading
 import time
@@ -213,9 +214,56 @@ class AwsDispatcher(ModelDispatcher):
         self._breaker.record_success()
         return out
 
+    # -- stateless persistence (Lambda-safe): job + idempotency in S3 --------
+    # A Lambda adapter is stateless across invocations, so dispatch() and poll()
+    # run in different processes. Persist the async job mapping + idempotency map
+    # to the encrypted S3 staging prefix so poll() and duplicate dispatch() work
+    # correctly across invocations (the in-memory store is a warm-instance cache).
+    def _s3_put_json(self, key: str, obj: dict) -> None:
+        import json
+        bucket, prefix = _split_s3(self.s3_staging)
+        self._clients()["s3"].put_object(
+            Bucket=bucket, Key=f"{prefix}/{key}",
+            Body=json.dumps(obj).encode("utf-8"), ServerSideEncryption="aws:kms")
+
+    def _s3_get_json(self, key: str) -> Optional[dict]:
+        import json
+        bucket, prefix = _split_s3(self.s3_staging)
+        try:
+            obj = self._clients()["s3"].get_object(Bucket=bucket, Key=f"{prefix}/{key}")
+            return json.loads(obj["Body"].read())
+        except Exception:  # noqa: BLE001 — treat any miss as "not found"
+            return None
+
+    @staticmethod
+    def _idem_hash(idem: str) -> str:
+        return hashlib.sha256(idem.encode("utf-8")).hexdigest()
+
+    def _persist_idem(self, idem: str, request_id: str) -> None:
+        try:
+            self._s3_put_json(f"idem/{self._idem_hash(idem)}.json", {"request_id": request_id})
+        except Exception:  # noqa: BLE001 — persistence is best-effort defence in depth
+            pass
+
+    def _lookup_idem(self, idem: str) -> Optional[str]:
+        rec = self._s3_get_json(f"idem/{self._idem_hash(idem)}.json")
+        return rec.get("request_id") if rec else None
+
+    def _persist_job(self, request_id: str, job: dict) -> None:
+        try:
+            self._s3_put_json(f"jobs/{request_id}.json", job)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _load_job(self, request_id: str) -> Optional[dict]:
+        return self._jobs.get(request_id) or self._s3_get_json(f"jobs/{request_id}.json")
+
     # -- dispatch ------------------------------------------------------------
     def dispatch(self, body: dict, view: RoutingView) -> str:
-        prior = self._store.existing(view.idempotency_key)
+        # Idempotency: warm-instance cache first, then the durable S3 map. The
+        # same idempotency_key always resolves to one logical request/result.
+        prior = self._store.existing(view.idempotency_key) or self._lookup_idem(
+            view.idempotency_key)
         if prior:
             return prior
         if view.requested_backend == "tabfm" and not (
@@ -229,6 +277,7 @@ class AwsDispatcher(ModelDispatcher):
         else:
             request_id = self._dispatch_batch(body, view)
         self._store.remember(view.idempotency_key, request_id)
+        self._persist_idem(view.idempotency_key, request_id)
         return request_id
 
     def _dispatch_realtime(self, body: dict, view: RoutingView) -> str:
@@ -238,7 +287,9 @@ class AwsDispatcher(ModelDispatcher):
             EndpointName=self.realtime_endpoint, ContentType="application/json",
             Body=json.dumps(body).encode("utf-8")))
         payload = resp["Body"].read()
-        self._store.put_result(view.request_id, json.loads(payload))
+        result = json.loads(payload)
+        self._store.put_result(view.request_id, result)
+        self._persist_job(view.request_id, {"mode": "result", "result": result})
         return view.request_id
 
     def _dispatch_async(self, body: dict, view: RoutingView) -> str:
@@ -252,8 +303,11 @@ class AwsDispatcher(ModelDispatcher):
         resp = self._guarded(lambda: clients["smr"].invoke_endpoint_async(
             EndpointName=self.async_endpoint, ContentType="application/json",
             InputLocation=f"s3://{bucket}/{in_key}"))
-        self._jobs[view.request_id] = {"mode": "sagemaker_async",
-                                       "output": resp.get("OutputLocation", "")}
+        job = {"mode": "sagemaker_async", "output": resp.get("OutputLocation", ""),
+               "failure": resp.get("FailureLocation", ""),
+               "task": view.task, "idempotency_key": view.idempotency_key}
+        self._jobs[view.request_id] = job
+        self._persist_job(view.request_id, job)
         return view.request_id
 
     def _dispatch_batch(self, body: dict, view: RoutingView) -> str:
@@ -273,8 +327,11 @@ class AwsDispatcher(ModelDispatcher):
                 {"name": "DRISHTI_OUTPUT_S3", "value": f"s3://{bucket}/{out_key}"},
             ]},
             timeout={"attemptDurationSeconds": max(60, view.timeout_s)}))
-        self._jobs[view.request_id] = {"mode": "aws_batch", "job_id": resp.get("jobId", ""),
-                                       "out": f"s3://{bucket}/{out_key}"}
+        job = {"mode": "aws_batch", "job_id": resp.get("jobId", ""),
+               "out": f"s3://{bucket}/{out_key}",
+               "task": view.task, "idempotency_key": view.idempotency_key}
+        self._jobs[view.request_id] = job
+        self._persist_job(view.request_id, job)
         return view.request_id
 
     # -- poll ----------------------------------------------------------------
@@ -283,15 +340,23 @@ class AwsDispatcher(ModelDispatcher):
         cached = self._store.get_result(request_id)
         if cached is not None:
             return cached
-        job = self._jobs.get(request_id)
+        job = self._load_job(request_id)
         if job is None:
             raise DispatchError(f"unknown request_id {request_id}")
         clients = self._clients()
+        if job.get("mode") == "result":              # realtime / cached completed result
+            return job["result"]
         if job["mode"] == "sagemaker_async":
             bucket, key = _split_s3(job["output"])
-            obj = self._guarded(lambda: clients["s3"].get_object(Bucket=bucket, Key=key))
+            try:
+                obj = clients["s3"].get_object(Bucket=bucket, Key=key)
+            except Exception as exc:  # noqa: BLE001
+                if _is_not_found(exc):
+                    return _running(request_id, job)  # output not written yet -> still running
+                raise DispatchError("async output read failed") from exc
             result = json.loads(obj["Body"].read())
             self._store.put_result(request_id, result)
+            self._persist_job(request_id, {"mode": "result", "result": result})
             return result
         # aws_batch: check job state; return running until the output object exists.
         desc = self._guarded(lambda: clients["batch"].describe_jobs(jobs=[job["job_id"]]))
@@ -303,11 +368,11 @@ class AwsDispatcher(ModelDispatcher):
             self._store.put_result(request_id, result)
             return result
         if status in ("FAILED",):
-            return {"envelope_version": "1.0.0", "request_id": request_id,
-                    "idempotency_key": "", "task": "", "state": "failed",
-                    "error_code": "BATCH_FAILED", "error_detail": "AWS Batch job failed"}
-        return {"envelope_version": "1.0.0", "request_id": request_id,
-                "idempotency_key": "", "task": "", "state": "running"}
+            out = _running(request_id, job)
+            out.update({"state": "failed", "error_code": "BATCH_FAILED",
+                        "error_detail": "AWS Batch job failed"})
+            return out
+        return _running(request_id, job)
 
 
 def _split_s3(uri: str) -> tuple[str, str]:
@@ -317,6 +382,22 @@ def _split_s3(uri: str) -> tuple[str, str]:
     rest = uri[len("s3://"):]
     bucket, _, key = rest.partition("/")
     return bucket, key.strip("/")
+
+
+def _is_not_found(exc: Exception) -> bool:
+    """True if an S3 get looks like a missing key (async output not written yet)."""
+    s = str(exc)
+    return any(m in s for m in ("NoSuchKey", "Not Found", "404", "does not exist"))
+
+
+def _running(request_id: str, job: Optional[dict] = None) -> dict:
+    """A 'still running' result envelope for an async poll before the output lands.
+    Carries the real task + idempotency_key from the stored job so the AppSail
+    client can parse it as a valid (non-terminal) PredictionResultEnvelope."""
+    job = job or {}
+    return {"envelope_version": "1.0.0", "request_id": request_id,
+            "idempotency_key": job.get("idempotency_key", ""),
+            "task": job.get("task") or "station_workload_band", "state": "running"}
 
 
 def get_dispatcher() -> ModelDispatcher:

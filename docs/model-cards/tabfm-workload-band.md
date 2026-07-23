@@ -83,3 +83,22 @@ Geographic holdout (TabPFN): accuracy 0.781, QWK 0.915.
   requires human review. Aggregate area/period support only, never person-level.
   Station-level workload is Poisson noise on this data and is intentionally not
   modelled.
+
+---
+
+## Prompt 24 - real Google TabFM on AWS GPU (live evidence)
+
+The production foundation backend was executed for real on AWS in Prompt 24 (this
+supersedes the "cutover in Prompt 14" note above).
+
+| | |
+|---|---|
+| **Model / package** | Google **TabFM v1.0.0** PyTorch (`tabfm==1.0.0`, repo `google/tabfm-1.0.0-pytorch`) |
+| **Weights licence** | **TabFM Non-Commercial License v1.0** (Google) - weights are for **non-commercial / research / evaluation** use only. The `tabfm` PyPI *code* is Apache-2.0. This hackathon uses it strictly on **synthetic data, non-commercial, non-production**; **no production/commercial licence is claimed**. |
+| **Weight digest** | `928cb350becdc77cdb7a9e8c36deda88917bfd14a3091894a2dc516db58a2085` (classification/model.safetensors, ~6.25 GB), verified at load (fail-closed on mismatch). |
+| **Runtime** | SageMaker asynchronous inference, `ml.g4dn.2xlarge`, **NVIDIA Tesla T4**, CUDA; in-context `TabFMClassifier` (fit sets labelled examples, never updates pretrained weights). AMP autocast fp16 on the T4 (bf16 on Ampere+). |
+| **Live run** | `actual_backend=tabfm`, `actual_device=cuda`, `gpu_name=Tesla T4`, cold-start 84,166 ms (weight pull+load), inference 2,567 ms, peak GPU 6,633 MB. `artifacts/phase-24/model-runs/tabfm-run.log`. |
+| **Held-out compare** | TabFM **0.9833** acc / 0.0167 ordinal MAE vs in-context CPU fallback 0.7333 vs majority 0.30 on the same 240-ctx/60-test split. `artifacts/phase-24/model-runs/baseline-compare.json`. |
+| **Fail-closed** | Missing CUDA / tampered weight digest / unexpected licence -> `BackendUnavailable` (`CUDA_UNAVAILABLE`), never a fallback mislabelled as TabFM. The CPU fallback reports `actual_backend=incontext`, `actual_device=cpu`. |
+
+Full phase evidence: `docs/phase-reports/PHASE_24_REPORT.md`.

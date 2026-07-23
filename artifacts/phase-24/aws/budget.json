@@ -1,0 +1,6 @@
+{
+  "BudgetName": "drishti-model-plane",
+  "BudgetType": "COST",
+  "TimeUnit": "MONTHLY",
+  "BudgetLimit": { "Amount": "25", "Unit": "USD" }
+}

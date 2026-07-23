@@ -80,3 +80,29 @@ superseded decision. Never put credentials or personal data here.
   DHRISTI 48361000000030003, synthetic marker, DB-free posture, no-duplicate)
   runs before deploy; the GPU worker is only static-checked here (built/deployed
   separately in Prompt 24). Live deploy/smoke/rollback proof is **Prompt 23**.
+
+## Prompt 24 decisions (2026-07-23)
+
+- **AWS GPU mechanism** is a **SageMaker asynchronous-inference endpoint on
+  `ml.g4dn.2xlarge` (NVIDIA T4)** in ap-south-1. This account's GPU quota is `0`
+  for every type EXCEPT `ml.g4dn.2xlarge for endpoint usage = 1` (code
+  `L-EA346344`); Prompt 25 redeploys must use that single-T4 mechanism (no
+  quota increase, no other GPU type). Credits do not bypass the quota.
+- **TabFM weights licence is "TabFM Non-Commercial License v1.0"** (Google;
+  HF tag `other`) - research/evaluation/non-commercial only. The `tabfm` PyPI
+  *code* is Apache-2.0. Prompts 25/26 must **never** claim a production/commercial
+  TabFM licence. TimesFM 2.5-200m is Apache-2.0. Weight digests: TabFM classification
+  `928cb350…`, TimesFM `2f776efe…` (verified at load, fail-closed).
+- **GPU image is built in AWS CodeBuild** (`drishti-gpu-worker-build`), not locally
+  (host disk too small; `tabfm`/`timesfm` need Python>=3.11). Immutable ECR digest
+  in use: `…/drishti-gpu-worker@sha256:a2944b79…` (tag 0.2.3). Weights are pulled
+  from HF at T4 cold-start (not baked; classification alone is ~6.25 GB).
+- **The temporary GPU endpoint is torn down** after proof (cost control); the
+  protected adapter (API GW `1ym4tv6g13`, Lambda `drishti-aws-adapter`, secret in
+  Secrets Manager `drishti/aws-adapter-secret`, DLQ), ECR images, KMS-encrypted S3
+  model plane, Budget + alarm all remain. Prompt 25 live AWS re-proof =
+  `sagemaker_ops.py deploy` then `invoke`, then teardown again.
+- **Deployed-AppSail -> adapter wiring** is a Console step: set
+  `DRISHTI_AWS_ADAPTER_URL` + `DRISHTI_AWS_ADAPTER_SECRET` on AppSail. Prompt 24
+  proved the exact server-side client code path against real AWS via a driver; the
+  live Catalyst Data Store + Signal side was proven in Prompt 23.

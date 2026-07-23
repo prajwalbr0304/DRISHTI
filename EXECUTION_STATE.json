@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-23T02:10:00+05:30",
-  "current_phase": 23,
+  "updated_at": "2026-07-23T23:24:58+05:30",
+  "current_phase": 24,
   "phases": {
     "18": {
       "status": "complete",
@@ -87,7 +87,9 @@
       "next_action": "Core DoD + Board + Disaster + evidence upload all proven LIVE. Residual items are non-core Console clicks / interactive: link+run pipeline (F1), credit snapshot (G1), delete 2 stale Slate apps (G2), interactive Catalyst IAM login for the fully-automated browser E2E (E1), FIR happy-path approval, and deploy the login-UI polish (Slate Create Deployment). Ready to proceed to Prompt 24 when the user chooses."
     },
     "24": {
-      "status": "pending"
+      "status": "complete",
+      "updated_at": "2026-07-23T23:24:58+05:30",
+      "next_action": "Start Prompt 25 (integrated security, scale, recovery, final release). Prompt 24 AWS T4 endpoint is torn down (cost control); redeploy via sagemaker_ops.py deploy --image-digest sha256:a2944b79... to re-prove live AWS models. Adapter API GW/Lambda/secret/DLQ remain; wire deployed AppSail via DRISHTI_AWS_ADAPTER_URL/SECRET (Console) for the fully-deployed Signal->adapter chain."
     },
     "25": {
       "status": "pending"

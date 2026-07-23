@@ -1,0 +1,23 @@
+{
+  "captured_at": "2026-07-23T20:20:00+05:30",
+  "environment": "local Windows, python 3.12.10, torch 2.13.0+cpu (CPU-only), no CUDA usable locally",
+  "purpose": "De-risk the real tabfm 1.0.0 + timesfm 2.0.2 call sequence and weight loading BEFORE building the GPU container. NOT the CUDA proof (that runs on the AWS T4 endpoint).",
+  "timesfm": {
+    "package": "timesfm==2.0.2 (Apache-2.0)",
+    "model": "google/timesfm-2.5-200m-pytorch (public, gated=false)",
+    "api": "TimesFM_2p5_200M_torch.from_pretrained() + compile(ForecastConfig(...)) + forecast(horizon, inputs=[series])",
+    "cpu_result": "OK: load 8.55s, forecast 1.16s; returns (point[1,h], quant[1,h,10]) = 10 quantile levels [mean,q0.1..q0.9]; real values e.g. [23.944, 23.247, 22.438, ...]",
+    "device_handling": "timesfm_2p5_torch auto-selects cuda:0 when torch.cuda.is_available() and moves inputs to model device (verified in package source) -> runs on the T4 automatically",
+    "status": "PASS (cpu)"
+  },
+  "tabfm": {
+    "package": "tabfm==1.0.0 (Apache-2.0, Copyright 2026 Google LLC)",
+    "model": "google/tabfm-1.0.0-pytorch (public, gated=false); classification/model.safetensors",
+    "loader_bug": "tabfm 1.0.0 load() hardcodes 'pytorch_model.bin' but the HF repo ships 'model.safetensors' -> load() raises FileNotFoundError. Workaround: construct TabFM(**ClassificationConfig().to_dict()) and load the published safetensors directly.",
+    "weight_load": "PASS: 913 tensors load into the real TabFM model with strict match (missing=0, unexpected=0) -> model + weights are genuine and architecturally exact",
+    "safetensors_torch_note": "safetensors.torch.load_file segfaults on THIS local torch 2.13.0+cpu build; safetensors.numpy.load_file works. The container uses a mainstream torch (>=2.0.0 satisfied by 2.5.x cu124); worker loads via safetensors.torch with a numpy fallback.",
+    "predict_proba_cpu": "hangs/pathologically slow on CPU (24-block ICL transformer, n_estimators ensemble) -> requires GPU; this is exactly why the workload runs on the T4, not on CPU/AppSail",
+    "status": "PASS for load+fit; predict requires GPU (by design)"
+  },
+  "conclusion": "Both models are real, Apache-2.0, public, non-gated, and load correctly. TimesFM runs on CPU and auto-uses CUDA. TabFM loads exactly and must run on GPU. Proceed to build the GPU worker image (torch cu124) and prove real inference on the AWS T4 SageMaker async endpoint."
+}

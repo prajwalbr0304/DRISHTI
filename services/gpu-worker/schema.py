@@ -86,7 +86,10 @@ class PredictionRequestEnvelope(BaseModel):
         if self.context_x is not None:
             if self.context_y is None or len(self.context_x) != len(self.context_y):
                 raise ValueError("context_x and context_y must be equal length")
-        if self.context_x is None and self.context_s3_uri is None:
+        # TimesFM forecasts a univariate series carried in query_rows and needs no
+        # labelled in-context examples; all other (classification) tasks require context.
+        needs_context = self.task not in (ModelTask.TIMESFM_COUNT_FORECAST,)
+        if needs_context and self.context_x is None and self.context_s3_uri is None:
             raise ValueError("context_x/y or context_s3_uri required")
         if len(self.query_rows) > self.max_rows:
             raise ValueError(f"{len(self.query_rows)} query rows > max_rows={self.max_rows}")
@@ -107,6 +110,8 @@ class PredictionResultEnvelope(BaseModel):
     model_artifact_digest: Optional[str] = None
     feature_schema_digest: Optional[str] = None
     context_digest: Optional[str] = None
+    # Echoed observation cutoff so the UI can show data freshness of the result.
+    observation_cutoff: Optional[str] = None
     predictions: list[dict[str, Any]] = Field(default_factory=list)
     confidence: Optional[float] = None
     abstained: Optional[bool] = None

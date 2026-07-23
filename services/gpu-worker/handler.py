@@ -99,6 +99,7 @@ def handle_invocation(body: dict) -> dict:
         state=JobState.COMPLETED, actual_backend=BackendKind(res.actual_backend),
         actual_device=res.actual_device, model_artifact_digest=res.model_artifact_digest,
         feature_schema_digest=env.feature_schema_digest, context_digest=env.context_digest,
+        observation_cutoff=env.observation_cutoff,
         predictions=res.predictions, confidence=res.confidence, abstained=res.abstained,
         runtime_ms=res.runtime_ms, cold_start_ms=res.cold_start_ms,
         peak_gpu_mem_mb=res.peak_gpu_mem_mb, gpu_name=res.gpu_name, warnings=res.warnings))
