@@ -358,6 +358,8 @@ def list_boards(actor: str, role: str) -> BoardListResponse:
     repo = board_repo()
     seen: dict[int, dict] = {}
     for b in repo.all_boards():
+        if str(b.get("Status") or "").lower() == "archived":
+            continue  # archived boards are hidden from the active list + picker
         bid = int(b["BoardID"])
         if _effective_role(repo, b, actor, role) is not None:
             seen[bid] = b
@@ -1132,8 +1134,11 @@ def seed_reference(board_id: int, req: SeedRequest, actor: str, role: str, *,
     detail = "Pinned reference."
 
     if req.ref_table == "CaseMaster" and primary_node_id is not None:
-        parties = searcharound.entities_for_case(_int(req.ref_id) or 0,
-                                                  limit=req.max_neighbors)
+        try:
+            parties = searcharound.entities_for_case(_int(req.ref_id) or 0,
+                                                      limit=req.max_neighbors)
+        except Exception:  # noqa: BLE001 — party lookup is best-effort
+            parties = []
         if parties:
             existing = {_int(n.get("RefID")): int(n["BoardNodeID"])
                         for n in repo.list_by_board("BoardNode", board_id)
@@ -1164,11 +1169,17 @@ def seed_reference(board_id: int, req: SeedRequest, actor: str, role: str, *,
                     "case_master_id": _int(req.ref_id), "parties_added": nodes_added,
                     "party_edges": edges_added}
 
-            _mutate(repo, board, actor, role, action="subgraph.seed", apply=apply,
-                    idem_key=(f"{idem_key}:parties" if idem_key else None))
-            detail = f"Seeded {nodes_added} involved parties from the FIR."
+            try:
+                _mutate(repo, board, actor, role, action="subgraph.seed", apply=apply,
+                        idem_key=(f"{idem_key}:parties" if idem_key else None))
+                detail = f"Seeded {nodes_added} involved parties from the FIR."
+            except Exception:  # noqa: BLE001 — enrichment best-effort; the case node stands
+                detail = "Pinned the case (party enrichment unavailable)."
     elif primary_node_id is not None:
-        focal_entity = _resolve_node_entity(repo, board_id, primary_node_id)
+        try:
+            focal_entity = _resolve_node_entity(repo, board_id, primary_node_id)
+        except Exception:  # noqa: BLE001 — resolution best-effort
+            focal_entity = None
 
     expanded = False
     if req.expand and focal_entity:
@@ -1180,8 +1191,8 @@ def seed_reference(board_id: int, req: SeedRequest, actor: str, role: str, *,
                 expanded = True
                 nodes_added += sa.node_count and 0  # counts tracked in the import
                 detail += f" Expanded {len(sa.neighbors)} verified neighbour(s)."
-        except BoardError:
-            pass  # expansion is best-effort; the pinned network already stands
+        except Exception:  # noqa: BLE001 — expansion is best-effort; the pinned network stands
+            pass
 
     return SeedResult(board_id=board_id, primary_node_id=primary_node_id,
                       focal_entity=focal_entity, nodes_added=nodes_added,

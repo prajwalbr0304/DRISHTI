@@ -34,6 +34,7 @@
  *                                  demo. Synthetic hackathon demo ONLY.
  */
 const crypto = require('crypto');
+const https = require('https');
 const catalyst = require('zcatalyst-sdk-node');
 
 const CONTEXT_TTL_MS = 60 * 1000; // signed context is valid for 60s
@@ -160,14 +161,23 @@ function signContext(ctx, secret) {
   return { payload, signature: mac };
 }
 
-async function readBody(req) {
-  if (req.body && typeof req.body === 'object') return JSON.stringify(req.body);
-  if (typeof req.body === 'string') return req.body;
-  return await new Promise((resolve) => {
-    let data = '';
-    req.on('data', (c) => { data += c; });
-    req.on('end', () => resolve(data));
-    req.on('error', () => resolve(''));
+function readRawBody(req) {
+  // Some runtimes pre-parse the body onto req.body; normalize it once.
+  const b = req.body;
+  if (b !== undefined && b !== null) {
+    if (Buffer.isBuffer(b)) return Promise.resolve(b);
+    if (typeof b === 'string') return Promise.resolve(Buffer.from(b));
+    if (typeof b === 'object') return Promise.resolve(Buffer.from(JSON.stringify(b)));
+    return Promise.resolve(Buffer.from(String(b)));
+  }
+  // Catalyst Advanced I/O does NOT set req.body — it hands us the raw stream.
+  // Drain it FULLY into a Buffer. This MUST run before any await that lets the
+  // Catalyst SDK consume the stream, or only a fragment survives.
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', () => resolve(Buffer.concat(chunks)));
   });
 }
 
@@ -210,6 +220,15 @@ module.exports = async (req, res) => {
     }
     return;
   }
+
+  // 0b. Read the request body NOW — BEFORE catalyst.initialize()/getCurrentUser()
+  //     touch the request. The Catalyst SDK drains the raw request stream, so
+  //     reading the body later returned only a 2-byte fragment and every
+  //     POST/PUT forwarded a truncated body (AppSail rejected it with 422).
+  //     Advanced I/O does not pre-parse req.body, so we drain the stream here.
+  const method = req.method || 'GET';
+  const hasBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  const bodyBuf = hasBody ? await readRawBody(req) : undefined;
 
   // 1. Resolve identity from Catalyst Authentication (USER scope only).
   let user = null;
@@ -275,36 +294,61 @@ module.exports = async (req, res) => {
     const lk = k.toLowerCase();
     if (STRIPPED_INBOUND_HEADERS.includes(lk)) continue;      // never forward spoofable identity
     if (lk.startsWith('x-drishti-')) continue;                 // reserved internal namespace
-    if (['host', 'content-length', 'connection'].includes(lk)) continue;
+    // Hop-by-hop / body-framing headers must NOT be forwarded: undici sets its
+    // own Content-Length from the buffered body, so a stale inbound
+    // Content-Length or a Transfer-Encoding here produces invalid request
+    // framing and the upstream resets the connection — which is why every
+    // request WITH A BODY (POST/PUT/PATCH) failed with 502 while GET worked.
+    // Also strip accept-encoding: we forward the upstream response body as raw
+    // bytes (no decompression), so the upstream must not gzip it or the browser
+    // would receive compressed bytes without a Content-Encoding header.
+    if (['host', 'content-length', 'connection', 'transfer-encoding',
+         'keep-alive', 'expect', 'upgrade', 'te', 'accept-encoding'].includes(lk)) continue;
     fwdHeaders[k] = v;
   }
   fwdHeaders['X-DRISHTI-Context'] = payload;
   fwdHeaders['X-DRISHTI-Signature'] = signature;
   fwdHeaders['X-Request-ID'] = requestId;
 
-  const method = req.method || 'GET';
-  const hasBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
-  const body = hasBody ? await readBody(req) : undefined;
+  // (method / hasBody / bodyBuf were captured at the top, before the stream was drained.)
 
-  // 5. Proxy to AppSail with a bounded timeout (Advanced I/O caps at 30s).
+  // 5. Proxy to AppSail via Node's core https module (NOT global fetch): the
+  //    runtime's fetch JSON-re-encoded a string body (double-encoding the JSON
+  //    so AppSail rejected it 422). https.request writes the raw body bytes
+  //    verbatim with an exact Content-Length.
   const timeoutMs = parseInt(process.env.DRISHTI_GATEWAY_TIMEOUT_MS || '25000', 10);
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  if (bodyBuf !== undefined) fwdHeaders['Content-Length'] = String(bodyBuf.length);
   try {
-    const upstream = await fetch(upstreamUrl, { method, headers: fwdHeaders, body, signal: ac.signal });
-    const text = await upstream.text();
-    res.writeHead(upstream.status, {
-      'Content-Type': upstream.headers.get('content-type') || 'application/json',
-      'X-Request-ID': requestId,
+    const u = new URL(upstreamUrl);
+    const upstream = await new Promise((resolve, reject) => {
+      const r = https.request(
+        { method, hostname: u.hostname, port: u.port || 443,
+          path: u.pathname + u.search, headers: fwdHeaders, timeout: timeoutMs },
+        (resp) => {
+          const chunks = [];
+          resp.on('data', (c) => chunks.push(c));
+          resp.on('end', () => resolve({
+            status: resp.statusCode || 502,
+            contentType: resp.headers['content-type'] || 'application/json',
+            body: Buffer.concat(chunks),
+          }));
+        });
+      r.on('error', reject);
+      r.on('timeout', () => r.destroy(Object.assign(new Error('timeout'), { _timedOut: true })));
+      if (bodyBuf !== undefined) r.write(bodyBuf);   // raw bytes, verbatim
+      r.end();
     });
-    res.end(text);
+    res.writeHead(upstream.status, { 'Content-Type': upstream.contentType, 'X-Request-ID': requestId });
+    res.end(upstream.body);
   } catch (err) {
-    const timedOut = err && err.name === 'AbortError';
+    const timedOut = !!(err && err._timedOut);
+    try {
+      console.error('[gateway] upstream request failed', method, upstreamPath,
+        'code=' + (err && err.code), 'msg=' + (err && err.message));
+    } catch (_e) { /* never let logging mask the response */ }
     sendJson(res, timedOut ? 504 : 502, {
       error: timedOut ? 'upstream_timeout' : 'upstream_unavailable',
       request_id: requestId,
     });
-  } finally {
-    clearTimeout(timer);
   }
 };
