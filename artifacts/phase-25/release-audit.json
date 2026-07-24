@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "audited_at": "2026-07-24T13:51:51.469324+00:00",
+  "status": "FAIL",
+  "requirements_count": 7,
+  "evidence_count": 7,
+  "finding_count": 7,
+  "failed_count": 2,
+  "findings": [
+    {
+      "id": "p25-all-live-catalyst-journeys",
+      "phase": 25,
+      "issues": [
+        "mandatory item is FAIL"
+      ]
+    },
+    {
+      "id": "p25-all-separated-suites-green",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-deploy-rollback-recovery",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-measured-load-claims",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-real-model-and-cleanup-proof",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-release-artifacts-consistent",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-strict-acceptance-zero",
+      "phase": 25,
+      "issues": [
+        "mandatory item is FAIL"
+      ]
+    }
+  ],
+  "coverage_note": "Every declared requirement has an explicit evidence disposition."
+}

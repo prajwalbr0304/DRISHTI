@@ -1,0 +1,83 @@
+{
+  "captured_at": "2026-07-24T18:38:53+05:30",
+  "frontend": "https://drishti-uryfmaue.onslate.in/",
+  "appsail": "https://drishti-api-50044118953.development.catalystappsail.in",
+  "gateway": "https://dhristi-60075362708.development.catalystserverless.in",
+  "checks": {
+    "frontend_spa_200": {
+      "result": {
+        "code": 200,
+        "content_type": "text/html",
+        "acao": null,
+        "len": 1038,
+        "is_html": true
+      },
+      "pass": true
+    },
+    "appsail_health_live_200": {
+      "result": {
+        "code": 200,
+        "content_type": "application/json",
+        "acao": null,
+        "len": 54,
+        "is_html": false
+      },
+      "pass": true
+    },
+    "appsail_health_ready_200": {
+      "result": {
+        "code": 200,
+        "content_type": "application/json",
+        "acao": null,
+        "len": 240,
+        "is_html": false
+      },
+      "pass": true
+    },
+    "direct_unsigned_internal_rejected_401": {
+      "result": {
+        "code": 401,
+        "content_type": "application/json",
+        "acao": null,
+        "detail": "{\"detail\":\"invalid or missing gateway context\"}"
+      },
+      "pass": true
+    },
+    "direct_protected_read_rejected_401": {
+      "result": {
+        "code": 401,
+        "content_type": "application/json",
+        "acao": null,
+        "detail": "{\"detail\":\"invalid or missing gateway context\"}"
+      },
+      "pass": true
+    },
+    "gateway_health_route": {
+      "gateway": "https://dhristi-60075362708.development.catalystserverless.in",
+      "result": {
+        "code": 200,
+        "content_type": "application/json",
+        "acao": null,
+        "len": 54,
+        "is_html": false
+      },
+      "pass": true
+    },
+    "gateway_protected_read_needs_session": {
+      "gateway": "https://dhristi-60075362708.development.catalystserverless.in",
+      "result": {
+        "code": 200,
+        "content_type": "application/json",
+        "acao": null,
+        "len": 4096,
+        "is_html": false
+      },
+      "pass": false
+    },
+    "cors_foreign_origin_not_allowed": {
+      "acao": null,
+      "pass": true
+    }
+  },
+  "all_pass": false
+}

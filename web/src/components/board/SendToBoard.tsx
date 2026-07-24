@@ -58,7 +58,7 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
   const navigate = useNavigate();
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ boardId: number } | null>(null);
+  const [done, setDone] = useState<{ boardId: number; detail?: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
 
@@ -71,17 +71,22 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
       .finally(() => setBusy(false));
   }
 
+  // Seed a subgraph, not a lone node: a case brings its involved parties, an
+  // entity brings its verified neighbourhood. Falls back to a single pin server-side.
+  const seedBody = () => ({
+    ref_table: target.refTable,
+    ref_id: String(target.refId),
+    node_kind: target.nodeKind ?? "entity",
+    label: target.label,
+    expand: true,
+  });
+
   const pin = async (boardId: number) => {
     setBusy(true);
     setErr(null);
     try {
-      await api.board.addNode(boardId, {
-        node_kind: target.nodeKind ?? "entity",
-        ref_table: target.refTable,
-        ref_id: String(target.refId),
-        label: target.label,
-      });
-      setDone({ boardId });
+      const r = await api.board.seed(boardId, seedBody());
+      setDone({ boardId, detail: r.detail });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Pin failed");
     } finally {
@@ -94,11 +99,8 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
     setErr(null);
     try {
       const b = await api.board.create({ title: newTitle.trim() || `Board · ${target.label ?? target.refTable}` });
-      await api.board.addNode(b.board.board_id, {
-        node_kind: target.nodeKind ?? "entity",
-        ref_table: target.refTable, ref_id: String(target.refId), label: target.label,
-      });
-      setDone({ boardId: b.board.board_id });
+      const r = await api.board.seed(b.board.board_id, seedBody());
+      setDone({ boardId: b.board.board_id, detail: r.detail });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Create failed");
     } finally {
@@ -112,7 +114,8 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Workflow className="size-4" /> Send to board</DialogTitle>
           <DialogDescription>
-            Pin <b>{target.label ?? `${target.refTable}:${target.refId}`}</b> as a live reference.
+            Add <b>{target.label ?? `${target.refTable}:${target.refId}`}</b> and its immediate
+            network (a case brings its involved parties; an entity brings its verified links) as live references.
             {target.unverified && " This is unverified open-source material and stays labelled as such."}
           </DialogDescription>
         </DialogHeader>
@@ -120,7 +123,7 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
         {done ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2 rounded-control border border-primary/30 bg-primary/10 px-3 py-2 text-13">
-              <Check className="size-4 text-primary" /> Pinned to the board.
+              <Check className="size-4 text-primary" /> {done.detail || "Added to the board."}
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={onClose}>Close</Button>

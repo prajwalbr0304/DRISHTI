@@ -1,0 +1,38 @@
+{
+  "captured_at": "2026-07-24T18:56:56+05:30",
+  "disclaimer": "TRANSPARENT MODEL from a BOUNDED live measurement on a pinned single-instance AppSail. NOT a target-scale or HA certification. Instance scaling is assumed linear until the shared datastore/DB becomes the bottleneck, which is unproven here. Full 1M-case / 100k-user HA certification is in POST_HACKATHON_BACKLOG.",
+  "assumptions": {
+    "target_stations": 2000,
+    "target_users": 100000,
+    "target_cases": 1000000,
+    "peak_concurrent_user_fraction": 0.03,
+    "requests_per_active_user_per_min": 6,
+    "measured_instances": 1,
+    "instance_scaling": "assumed-linear-until-DB-bound (optimistic; unproven)",
+    "safety_headroom": 0.7
+  },
+  "measured_throughput": {
+    "blended_mean_rps_per_instance": 14.2,
+    "heavy_read_floor_rps_per_instance": 5.2,
+    "workloads_counted": 12,
+    "measured_concurrency": 6
+  },
+  "projection": {
+    "required_peak_rps": 300.0,
+    "by_blended_mean": {
+      "sustainable_rps_per_instance_at_70pct": 9.9,
+      "appsail_instances_needed": 30.2
+    },
+    "by_heavy_read_floor": {
+      "sustainable_rps_per_instance_at_70pct": 3.6,
+      "appsail_instances_needed": 82.4
+    }
+  },
+  "gating_constraints_to_close_before_certification": [
+    "AppSail is pinned min=max=1 (in-process ID allocation + nonce replay); horizontal scale needs shared monotonic ID allocation (Data Store sequence / Cache incr) \u2014 tracked in appsail.deploy.json instance_correctness + backlog.",
+    "Heavy RDS aggregations (performance_overview ~1.6s, cases list ~1.2s) need materialized views (app/matviews.py) + read replicas + query indexing at 1M cases.",
+    "Server-side pagination/aggregation is present; browser-side virtualization + bounded graph fan-out must be re-verified at target row counts.",
+    "Catalyst Data Store ZCQL page cap (<=300) requires cursor pagination for large scans.",
+    "No load test above the bounded budget was run; do not extrapolate to certification."
+  ]
+}

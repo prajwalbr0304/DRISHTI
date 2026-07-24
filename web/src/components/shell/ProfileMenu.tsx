@@ -44,28 +44,31 @@ export function ProfileMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-9 gap-2 px-1.5" aria-label="Profile and role">
+        <Button variant="ghost" className="h-9 shrink-0 gap-2 px-1.5" aria-label="Profile and role">
           <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/15 text-12 font-semibold uppercase text-primary">
             {def.label.charAt(0)}
           </span>
-          <span className="hidden text-left leading-tight md:block">
-            <span className="block text-12 font-medium text-content">{def.label}</span>
-            <span className="block text-[11px] text-content-dim">{def.scope}</span>
+          <span className="hidden max-w-[11rem] text-left leading-tight md:block">
+            <span className="block truncate text-12 font-medium text-content">{def.label}</span>
+            <span className="block truncate text-[11px] text-content-dim">{def.scope}</span>
           </span>
-          <ChevronsUpDown className="hidden size-3.5 text-content-dim md:block" />
+          <ChevronsUpDown className="hidden size-3.5 shrink-0 text-content-dim md:block" />
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72">
         {user && (
-          <>
-            <div className="px-2 pt-1.5">
-              <div className="truncate text-13 font-semibold text-content">{user.fullName}</div>
-              <div className="truncate text-11 text-content-dim">{user.email}</div>
-            </div>
-            <DropdownMenuSeparator />
-          </>
+          <div className="px-2 pt-1.5">
+            <div className="truncate text-13 font-semibold text-content">{user.fullName}</div>
+            <div className="truncate text-11 text-content-dim">{user.email}</div>
+          </div>
         )}
+
+        <DropdownMenuItem onSelect={() => signOut()}>
+          <LogOut className="size-3.5" /> Sign out
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
 
         <div className="px-2 py-1.5">
           <div className="text-13 font-semibold text-content">{def.label}</div>
@@ -127,12 +130,6 @@ export function ProfileMenu() {
             </span>
             {health.data?.version && <span className="tnum"> · v{health.data.version}</span>}
           </span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onSelect={() => signOut()}>
-          <LogOut className="size-3.5" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

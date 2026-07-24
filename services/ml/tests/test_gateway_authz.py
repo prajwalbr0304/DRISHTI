@@ -177,7 +177,15 @@ def test_appsail_pinned_to_single_instance():
                         / "appsail.deploy.json").read_text(encoding="utf-8"))
     assert deploy["instances"]["min"] == 1
     assert deploy["instances"]["max"] == 1          # pinned single instance
-    assert "DATABASE_URL" in deploy["env_var_keys"]["must_not_set_for_crud"]
+    # Prompt 23 Option A (documented deviation, see appsail.deploy.json
+    # database_url_policy): DATABASE_URL is an OPTIONAL server-to-server RDS
+    # connection for the not-yet-migrated crime-domain CRUD, never REQUIRED to
+    # boot. The DB-free posture invariant (mandatory Board/Disaster/health/read
+    # journeys run without a DB) is preserved: DATABASE_URL must NOT be a
+    # required key. The browser never reaches RDS (gateway -> signed context ->
+    # AppSail -> RDS).
+    assert "DATABASE_URL" not in deploy["env_var_keys"]["required"]
+    assert "DATABASE_URL" in deploy["env_var_keys"]["optional"]
     assert deploy["health_check_path"] == "/health/ready"
     assert deploy["liveness_path"] == "/health/live"
 

@@ -20,10 +20,10 @@ from . import promote as promote_mod
 from . import references, searcharound, service
 from . import guards
 from .schemas import (AnnotationCreate, AnnotationPatch, BoardCreate, BoardDetail,
-                      BoardListResponse, BoardPatch, CollaboratorAdd, EdgeCreate,
-                      EdgePatch, ExportOut, ExportRequest, MutationResult, NodeCreate,
-                      NodePatch, PromoteEdgeRequest, SearchAroundRequest,
-                      SearchAroundResult)
+                      BoardListResponse, BoardPatch, BoardPathResult, CollaboratorAdd,
+                      EdgeCreate, EdgePatch, ExportOut, ExportRequest, MutationResult,
+                      NodeCreate, NodePatch, PathRequest, PromoteEdgeRequest,
+                      SearchAroundRequest, SearchAroundResult, SeedRequest, SeedResult)
 
 router = APIRouter(prefix="/boards", tags=["investigation-board"])
 
@@ -280,6 +280,28 @@ def import_subgraph(board_id: int, req: SearchAroundRequest, request: Request,
     guards.require_board_write_allowed(request)
     req.preview = False
     return _call(service.search_around, board_id, req, guards.resolve_actor(request),
+                 role, idem_key=_idem(x_idempotency_key))
+
+
+@router.post("/{board_id}/seed", response_model=SeedResult, status_code=201)
+def seed_reference(board_id: int, req: SeedRequest, request: Request,
+                   role: str = Depends(guards.require_board_role),
+                   x_idempotency_key: Optional[str] = Header(default=None)):
+    """Pin an object AND auto-populate its immediate network (parties for a case,
+    verified neighbourhood for an entity). Graceful: degrades to a single pin."""
+    guards.require_board_write_allowed(request)
+    return _call(service.seed_reference, board_id, req, guards.resolve_actor(request),
+                 role, idem_key=_idem(x_idempotency_key))
+
+
+@router.post("/{board_id}/path", response_model=BoardPathResult)
+def find_path(board_id: int, req: PathRequest, request: Request,
+              role: str = Depends(guards.require_board_role),
+              x_idempotency_key: Optional[str] = Header(default=None)):
+    """Shortest associative path between two entity-backed nodes, imported as
+    read-only evidence nodes/edges (reuses the canonical graph path finder)."""
+    guards.require_board_write_allowed(request)
+    return _call(service.find_path, board_id, req, guards.resolve_actor(request),
                  role, idem_key=_idem(x_idempotency_key))
 
 

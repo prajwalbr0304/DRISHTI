@@ -177,3 +177,56 @@ def benchmark_two_hop(entity_id: int, max_neighbors: int = 15) -> dict[str, Any]
         "graph_latency_ms": res["latency_ms"], "cached": res["cached"],
         "target_ms": 2000, "model": res["model"],
     }
+
+
+def entities_for_case(case_master_id: int, limit: int = 12) -> list[dict[str, Any]]:
+    """Best-effort: resolve a case to the EntityGraph entities of its parties.
+
+    Joins ``CasePartyRole`` (the FIR's accused/victim/complainant/witness rows)
+    to the canonical ``EntityGraph`` node for each party. Read-only, id-keyed
+    (never name matching). NEVER raises into the request path: returns ``[]`` on
+    any schema variation or store-unavailable condition, so a case seed always
+    degrades to a plain single-node pin.
+
+    Returns ``[{entity_id, label, entity_type, role}]`` ranked by role priority
+    (accused first) then entity id, capped at ``limit``.
+    """
+    try:
+        cid = int(case_master_id)
+    except (TypeError, ValueError):
+        return []
+    # Parties resolve to canonical graph nodes via EntityGraph.RefTable =
+    # 'CanonicalEntity' keyed by the party's CanonicalPersonID/OrganisationID.
+    sql = (
+        'SELECT eg."EntityID", eg."Label", eg."EntityType"::text, cpr."RoleType"::text '
+        'FROM "CasePartyRole" cpr '
+        'JOIN "EntityGraph" eg '
+        '  ON eg."RefTable" = \'CanonicalEntity\' '
+        ' AND (eg."RefID"::text = cpr."CanonicalPersonID"::text '
+        '      OR eg."RefID"::text = cpr."CanonicalOrganisationID"::text) '
+        'WHERE cpr."CaseMasterID" = %s '
+        'LIMIT %s'
+    )
+    try:
+        with db.ro_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (cid, max(1, min(int(limit), MAX_NEIGHBORS))))
+                rows = cur.fetchall()
+    except Exception:  # noqa: BLE001 — must never break the seed path
+        return []
+    seen: set[int] = set()
+    out: list[dict[str, Any]] = []
+    _priority = {"accused": 0, "suspect": 0, "victim": 1, "complainant": 2}
+    for r in rows:
+        try:
+            eid = int(r[0])
+        except (TypeError, ValueError):
+            continue
+        if eid in seen:
+            continue
+        seen.add(eid)
+        out.append({"entity_id": eid, "label": r[1], "entity_type": r[2],
+                    "role": (r[3] or "party")})
+    out.sort(key=lambda d: (_priority.get(str(d.get("role") or "").lower(), 5),
+                            d["entity_id"]))
+    return out

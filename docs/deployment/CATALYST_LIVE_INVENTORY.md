@@ -23,7 +23,7 @@
 
 | Resource | Live ID / URL | Status |
 |---|---|---|
-| Public frontend (Slate, Git auto-deploy) | `https://drishti-uryfmaue.onslate.in/` | **LIVE** (SPA 200; role-boxes build; CORS authorized) |
+| Public frontend (Slate, Git auto-deploy) | `https://drishti-frvfpunc.onslate.in/` (canonical; stale `drishti-uryfmaue` to be decommissioned) | **LIVE** (SPA 200; role-boxes build; CORS authorized) |
 | AppSail `drishti-api` (primary API) | `https://drishti-api-50044118953.development.catalystappsail.in` | **LIVE**; `/health/live`=200, `/health/ready`=200 (config/operational_datastore/gateway_auth/object_store/analytics_db all ok) |
 | Serverless domain (functions + Gateway) | `dhristi-60075362708.development.catalystserverless.in` | live |
 | API Gateway | ENABLED; `/api/*` → `gateway_api` (auth); exact-origin CORS (Slate origin only) | **LIVE** |

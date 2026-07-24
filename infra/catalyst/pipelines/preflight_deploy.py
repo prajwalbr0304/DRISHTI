@@ -9,8 +9,9 @@ Run this BEFORE any `catalyst deploy` step in the pipeline (no `|| true`).
     * the bound project is EXACTLY DHRISTI / 48361000000030003 / org 60075362708
       (India DC) — never a duplicate or a different project;
     * catalyst.json declares the intended single client + the known function set;
-    * appsail.deploy.json keeps DATABASE_URL under must_not_set_for_crud, pins a
-      single instance, and does NOT enable wildcard CORS;
+    * appsail.deploy.json never REQUIRES DATABASE_URL (DB-free boot posture; it is
+      an explicitly-optional server-to-server RDS connection per Prompt 23 Option A),
+      pins a single instance, and does NOT enable wildcard CORS;
     * the synthetic-demo marker is present (web + backend).
 
   Live (with --require-live, mandatory in the pipeline; needs an authenticated
@@ -70,8 +71,18 @@ def check_catalyst_json(problems: list) -> dict:
 
 def check_appsail_posture(problems: list) -> dict:
     ad = json.loads((INFRA_CATALYST / "appsail" / "appsail.deploy.json").read_text("utf-8"))
-    if "DATABASE_URL" not in ad.get("env_var_keys", {}).get("must_not_set_for_crud", []):
-        _fail(problems, "appsail.deploy.json: DATABASE_URL not in must_not_set_for_crud")
+    # DB-free BOOT invariant (Prompt 23 Option A documented deviation): the AppSail
+    # must never REQUIRE a database to start + serve the mandatory journeys, so
+    # DATABASE_URL must not be a required key. It is an OPTIONAL server-to-server
+    # RDS connection for the not-yet-migrated crime-domain CRUD (browser never
+    # reaches RDS — enforced by the web_no_db_url gate). See appsail.deploy.json
+    # database_url_policy.
+    keys = ad.get("env_var_keys", {})
+    if "DATABASE_URL" in keys.get("required", []):
+        _fail(problems, "appsail.deploy.json: DATABASE_URL is REQUIRED (breaks DB-free boot posture)")
+    if "DATABASE_URL" not in keys.get("optional", []):
+        _fail(problems, "appsail.deploy.json: DATABASE_URL not declared under optional "
+                        "(Prompt 23 Option A: it must be an explicitly-optional RDS connection)")
     inst = ad.get("instances", {})
     if not (inst.get("min") == 1 and inst.get("max") == 1):
         _fail(problems, f"appsail.deploy.json: instances not pinned to 1 (got {inst})")

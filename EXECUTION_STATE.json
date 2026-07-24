@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-24T00:23:11+05:30",
-  "current_phase": 25,
+  "updated_at": "2026-07-24T22:15:00+05:30",
+  "current_phase": 26,
   "phases": {
     "18": {
       "status": "complete",
@@ -92,10 +92,28 @@
       "next_action": "Start Prompt 25 (integrated security, scale, recovery, final release). Prompt 24 AWS T4 endpoint is torn down (cost control); redeploy via sagemaker_ops.py deploy --image-digest sha256:a2944b79... to re-prove live AWS models. Adapter API GW/Lambda/secret/DLQ remain; wire deployed AppSail via DRISHTI_AWS_ADAPTER_URL/SECRET (Console) for the fully-deployed Signal->adapter chain."
     },
     "25": {
-      "status": "in_progress"
+      "status": "blocked",
+      "updated_at": "2026-07-24T19:23:06+05:30",
+      "next_action": "Prompt 25 PENDING per rule J: strict acceptance (scripts/release_accept.py) returns non-zero. All local/security/AWS-model/load/recovery suites GREEN + local gate 16/16; the ONLY blocker is live-edge authorization. Remediate then re-run release_accept.py: RB-1 set DRISHTI_DEMO_AUTH=false on gateway_api + create 6 Catalyst users (drishti_role/district_id/unit_id) + re-run live six-role allow/deny (unauth /api/* must 401); RB-2 restore live NL /api/ask (QuickML or wired deterministic planner); RB-3 set DRISHTI_AWS_ADAPTER_URL/SECRET on deployed AppSail for the live Signal->adapter->TabFM chain; RB-4 automate IAM login for full browser E2E. See docs/phase-reports/PHASE_25_REPORT.md + POST_HACKATHON_BACKLOG.md. Do NOT start Prompt 26 until 25 is complete."
     },
     "26": {
-      "status": "pending"
+      "status": "audit_complete_submission_conditional",
+      "updated_at": "2026-07-24T22:15:00+05:30",
+      "report": "docs/phase-reports/PHASE_26_REPORT.md",
+      "outputs": [
+        "FINAL_IMPLEMENTATION_AUDIT.md",
+        "SUBMISSION_EVIDENCE_INDEX.md",
+        "artifacts/phase-26/FINAL_AUDIT_MANIFEST.json",
+        "artifacts/phase-26/{route-boundary-recheck,db-free-tests,live-probes,aws-cleanup-recheck}.log"
+      ],
+      "verdict": "Independent four-way audit complete: 44 PASS, 5 PASS(offline), 1 accepted auth deviation (RB-1/RB-4, owner decision), 2 FAIL (RB-2 live NL /api/ask 502; strict acceptance non-zero). 26-row Catalyst matrix + 15 organizer-note requirements dispositioned. Architecture re-verified: route boundary 336/0, AWS SageMaker endpoints=0, six-role enum parity. Hackathon-demo-ready via documented deterministic fallbacks; NOT unconditionally all-live until RB-2 closes; never production-ready.",
+      "accepted_deviations": ["RB-1 gateway demo-auth", "RB-4 IAM login E2E (superseded by role cards)"],
+      "open_items": {
+        "RB-2": "live POST /api/ask returns 502 (owner Prompt 19/23): enable QuickML LLM Serving OR make deployed /ask degrade to the deterministic planner; verify /api/ask -> 200 with citations+visualization.",
+        "RB-3": "deployed AppSail not wired to AWS adapter + T4 torn down for cost (owner Prompt 24/25): redeploy endpoint (sha256:a2944b79), set DRISHTI_AWS_ADAPTER_URL/SECRET on AppSail, run one approved FIR, tear down again.",
+        "HYGIENE-1": "decommission the duplicate live Slate app drishti-uryfmaue (canonical is drishti-frvfpunc)."
+      },
+      "next_action": "Optionally close RB-2 (then re-run scripts/release_accept.py -> zero) for an unconditional all-live claim, and decommission the duplicate frontend. Auth (RB-1/RB-4) intentionally deferred to post-shortlist per owner."
     }
   }
 }

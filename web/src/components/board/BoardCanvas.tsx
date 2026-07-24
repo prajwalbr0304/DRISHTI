@@ -16,10 +16,16 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
-  Crosshair, ExternalLink, LayoutGrid, Maximize2, Minimize2, Radius, Trash2,
+  Crosshair, ExternalLink, LayoutGrid, Maximize2, Minimize2, Radius, Route, Trash2,
   Waypoints, Workflow,
 } from "lucide-react";
 import type { BoardDetail, BoardEdgeT, BoardNodeT, NodeDiff } from "@/api/endpoints/board";
+
+/** A node can be expanded / path-found when it resolves to a canonical graph
+ *  entity (an EntityGraph reference or a canonical entity id). */
+export function isEntityResolvable(obj?: BoardNodeT | null): boolean {
+  return !!obj && (obj.ref_table === "EntityGraph" || obj.canonical_entity_id != null);
+}
 import { kindStyle } from "@/components/board/boardEncoding";
 import { boardNodeTypes } from "@/components/board/nodes/BoardNodes";
 import { Button } from "@/components/ui/button";
@@ -50,6 +56,7 @@ interface ContextMenuState {
   refTable?: string | null;
   openSrc?: string | null;
   label: string;
+  canExpand?: boolean;
 }
 
 export interface BoardSelection {
@@ -60,7 +67,7 @@ export interface BoardSelection {
 interface Props {
   detail: BoardDetail;
   diffs: Record<number, NodeDiff["status"]>;
-  filters: { evidence: boolean; hypothesis: boolean; search: string };
+  filters: { evidence: boolean; hypothesis: boolean; search: string; hiddenKinds?: string[] };
   scrubTime?: string | null;
   focusMode: boolean;
   readOnly: boolean;
@@ -73,6 +80,8 @@ interface Props {
   onToggleFocus: () => void;
   onSearchAround: (nodeId: number) => void;
   onDeleteNode: (nodeId: number) => void;
+  onExpandNode?: (nodeId: number) => void;
+  onFindPath?: (sourceNodeId: number, targetNodeId: number) => void;
 }
 
 type LayoutMode = "radial" | "force" | "hierarchical";
@@ -167,16 +176,36 @@ function computeLayout(
   return pos;
 }
 
+/** A board layout is "degenerate" when its persisted positions are collinear /
+ *  stacked, or a large share of cards overlap (a legacy row/grid import or a
+ *  tight seed ring) — it reads as a strip/hairball until spread out. A
+ *  hand-arranged, well-spread board is NOT degenerate (high overlap bar). */
+function isDegenerateLayout(nodes: BoardNodeT[], edges: BoardEdgeT[]): boolean {
+  if (nodes.length < 3 || edges.length === 0) return false;
+  const xs = nodes.map((n) => n.pos_x);
+  const ys = nodes.map((n) => n.pos_y);
+  if (Math.max(...ys) - Math.min(...ys) < 60 || Math.max(...xs) - Math.min(...xs) < 60) return true;
+  let overlapping = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      if (Math.abs(nodes[i].pos_x - nodes[j].pos_x) < 150 &&
+          Math.abs(nodes[i].pos_y - nodes[j].pos_y) < 64) { overlapping += 1; break; }
+    }
+  }
+  return overlapping / nodes.length > 0.3;
+}
+
 function Inner(props: Props) {
   const {
     detail, diffs, filters, scrubTime, readOnly, selection, onSelect, onMoveNode,
     onMoveAnnotation, onConnect, onOpenSource, focusMode, onToggleFocus,
-    onSearchAround, onDeleteNode,
+    onSearchAround, onDeleteNode, onExpandNode, onFindPath,
   } = props;
   const rf = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [multiSel, setMultiSel] = useState<number[]>([]);
 
   const search = filters.search.trim().toLowerCase();
 
@@ -210,7 +239,9 @@ function Inner(props: Props) {
   );
 
   const matchesSearch = useCallback((n: BoardNodeT) => {
-    const q = (filtersRef.current.search || "").trim().toLowerCase();
+    const f = filtersRef.current;
+    if ((f.hiddenKinds ?? []).includes(n.node_kind)) return false;   // facet filter
+    const q = (f.search || "").trim().toLowerCase();
     if (!q) return true;
     return (n.label ?? "").toLowerCase().includes(q) || (n.node_kind ?? "").includes(q);
   }, []);
@@ -225,10 +256,21 @@ function Inner(props: Props) {
   // this never snaps a node back. Reads overlay state via refs (latest values).
   useEffect(() => {
     const sel = selRef.current;
+    // If the persisted layout is degenerate, lay the objects out on a clean
+    // radial ring FOR DISPLAY so the canvas opens readable (not a strip/hairball)
+    // and react-flow's built-in fitView fits the final positions. Display-only:
+    // persisted coordinates are untouched; a spread/hand-arranged board is kept.
+    const autoPos = isDegenerateLayout(detail.nodes, detail.edges)
+      ? computeLayout(
+          detail.nodes.map((n) => n.board_node_id),
+          detail.edges.map((e) => ({ s: e.source_node_id, t: e.target_node_id })),
+          "radial",
+        )
+      : null;
     const rfNodes: Node[] = detail.nodes.map((n) => ({
       id: `n:${n.board_node_id}`,
       type: "object",
-      position: { x: n.pos_x, y: n.pos_y },
+      position: autoPos?.get(n.board_node_id) ?? { x: n.pos_x, y: n.pos_y },
       selected: sel.kind === "node" && sel.id === n.board_node_id,
       hidden: !matchesSearch(n),
       data: {
@@ -333,8 +375,17 @@ function Inner(props: Props) {
     [onMoveNode, onMoveAnnotation],
   );
 
-  const tidy = useCallback(
-    (mode: LayoutMode) => {
+  // Fit the view AFTER react-flow commits new node positions. Double rAF waits
+  // for the actual paint, so it is robust to slow/cold first renders (a fixed
+  // timeout can fire before the layout paints and leave the graph off-centre).
+  const fitSoon = useCallback(() => {
+    const fit = () => { try { rf.fitView({ padding: 0.2, duration: 300 }); } catch { /* not mounted */ } };
+    requestAnimationFrame(() => requestAnimationFrame(fit));
+    window.setTimeout(fit, 480);   // fallback: slow/cold first paint + panel/container settle
+  }, [rf]);
+
+  const applyLayout = useCallback(
+    (mode: LayoutMode, persist: boolean) => {
       const objIds = detail.nodes.map((n) => n.board_node_id);
       const eds = detail.edges.map((e) => ({ s: e.source_node_id, t: e.target_node_id }));
       const layout = computeLayout(objIds, eds, mode);
@@ -346,15 +397,48 @@ function Inner(props: Props) {
         }),
       );
       // persist new positions (manual positions elsewhere are preserved: only
-      // object nodes in the layout set move).
-      layout.forEach((p, id) => onMoveNode(id, Math.round(p.x), Math.round(p.y)));
-      setTimeout(() => rf.fitView({ padding: 0.2, duration: 400 }), 50);
+      // object nodes in the layout set move). Auto-layout is display-only.
+      if (persist) layout.forEach((p, id) => onMoveNode(id, Math.round(p.x), Math.round(p.y)));
+      fitSoon();
     },
-    [detail, onMoveNode, rf, setNodes],
+    [detail, onMoveNode, rf, setNodes, fitSoon],
   );
+  const tidy = useCallback((mode: LayoutMode) => applyLayout(mode, true), [applyLayout]);
+
+  // Auto-lay-out a DEGENERATE persisted layout (e.g. legacy collinear/stacked
+  // imports) so the Flow canvas opens as a readable graph instead of an
+  // unreadable strip. Display-only (never writes); fires only when the layout
+  // is actually broken, so a manually-arranged / already-spread board is left
+  // untouched. Re-checks whenever the object set changes (add/expand/import).
+  // Re-fit the view whenever the object set changes (initial load, expand,
+  // subgraph/path import). Initial degenerate layouts are already spread in the
+  // node build above, so this only needs to frame them.
+  useEffect(() => {
+    fitSoon();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structuralSig]);
+
+  // Double-click an entity node to expand its verified neighbours in place.
+  const handleNodeDoubleClick = useCallback(
+    (_e: ReactMouseEvent, node: Node) => {
+      if (readOnly || !node.id.startsWith("n:")) return;
+      const obj = (node.data as { obj?: BoardNodeT }).obj;
+      if (isEntityResolvable(obj)) onExpandNode?.(Number(node.id.slice(2)));
+    },
+    [onExpandNode, readOnly],
+  );
+
+  // Path Finder lights up when exactly two entity-backed nodes are selected.
+  const pathPair = useMemo<[number, number] | null>(() => {
+    if (multiSel.length !== 2) return null;
+    const ok = multiSel.every((id) =>
+      isEntityResolvable(detail.nodes.find((n) => n.board_node_id === id)));
+    return ok ? [multiSel[0], multiSel[1]] : null;
+  }, [multiSel, detail.nodes]);
 
   const onSelChange = useCallback(
     (params: { nodes: Node[]; edges: Edge[] }) => {
+      setMultiSel(params.nodes.filter((n) => n.id.startsWith("n:")).map((n) => Number(n.id.slice(2))));
       if (params.edges.length) {
         onSelect({ kind: "edge", id: Number(params.edges[0].id.slice(2)) });
       } else if (params.nodes.length) {
@@ -377,7 +461,8 @@ function Inner(props: Props) {
       const obj = (node.data as { obj?: BoardNodeT }).obj;
       onSelect({ kind: "node", id });
       setMenu({ x: e.clientX, y: e.clientY, nodeId: id, refTable: obj?.ref_table,
-                openSrc: obj?.open_in_source, label: obj?.label || `Node ${id}` });
+                openSrc: obj?.open_in_source, label: obj?.label || `Node ${id}`,
+                canExpand: isEntityResolvable(obj) });
     },
     [onSelect],
   );
@@ -394,11 +479,13 @@ function Inner(props: Props) {
       onNodeDragStop={handleDragStop}
       onSelectionChange={onSelChange}
       onNodeContextMenu={onNodeContextMenu}
+      onNodeDoubleClick={handleNodeDoubleClick}
       onPaneClick={() => { closeMenu(); onSelect({ kind: null, id: null }); }}
       onMoveStart={closeMenu}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly}
       elementsSelectable
+      deleteKeyCode={null}
       selectionOnDrag
       panOnDrag={[1, 2]}
       minZoom={0.15}
@@ -416,6 +503,14 @@ function Inner(props: Props) {
       />
       <Controls className="!border-hairline" />
       <Panel position="top-right" className="flex gap-1">
+        {pathPair && !readOnly && onFindPath && (
+          <div className="flex overflow-hidden rounded-control border border-primary/50 bg-surface/90 backdrop-blur">
+            <IconBtn label="Find path between the two selected nodes"
+                     onClick={() => onFindPath(pathPair[0], pathPair[1])}>
+              <Route className="size-4 text-primary" />
+            </IconBtn>
+          </div>
+        )}
         <div className="flex overflow-hidden rounded-control border border-hairline bg-surface/90 backdrop-blur">
           <IconBtn label="Radial tidy" onClick={() => tidy("radial")}><Radius className="size-4" /></IconBtn>
           <IconBtn label="Force tidy" onClick={() => tidy("force")}><Workflow className="size-4" /></IconBtn>
@@ -439,7 +534,7 @@ function Inner(props: Props) {
           <div className="truncate px-2 py-1 text-11 font-medium uppercase tracking-wide text-content-dim">
             {menu.label}
           </div>
-          {menu.refTable === "EntityGraph" && (
+          {menu.canExpand && (
             <MenuItem icon={Waypoints} onClick={() => { onSearchAround(menu.nodeId); closeMenu(); }}>
               Search around
             </MenuItem>

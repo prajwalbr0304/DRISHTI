@@ -1,0 +1,782 @@
+{
+  "schema_version": 1,
+  "audited_at": "2026-07-24T14:27:55.116816+00:00",
+  "status": "FAIL",
+  "requirements_count": 52,
+  "evidence_count": 73,
+  "finding_count": 118,
+  "failed_count": 67,
+  "findings": [
+    {
+      "id": "p22-appsail-image-dbfree",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-backend-offline-suite",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-browser-e2e",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-catalyst-pipeline-corrected",
+      "phase": 22,
+      "issues": [
+        "artifact hash mismatch: infra/catalyst/pipelines/catalyst-pipelines.yaml"
+      ]
+    },
+    {
+      "id": "p22-dependency-audit",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-deploy-preflight",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-frontend-build-guard",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-frontend-lint-type-test",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-secret-scan",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-static-security-checks",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p22-strict-release-gate",
+      "phase": 22,
+      "issues": []
+    },
+    {
+      "id": "p23-apig-enabled",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-appsail-deployed",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-auth-e2e-live",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/phase-reports/PHASE_23_REPORT.md"
+      ]
+    },
+    {
+      "id": "p23-board-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-catalyst-preflight",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: artifacts/phase-23/catalyst-preflight.json"
+      ]
+    },
+    {
+      "id": "p23-chat-journey-live",
+      "phase": 23,
+      "issues": [
+        "live PASS lacks resource_id"
+      ]
+    },
+    {
+      "id": "p23-console-setup-guide",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/deployment/CATALYST_CONSOLE_SETUP.md"
+      ]
+    },
+    {
+      "id": "p23-cors-repoint-frvfpunc",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/phase-reports/PHASE_23_REPORT.md"
+      ]
+    },
+    {
+      "id": "p23-cron-live",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/phase-reports/PHASE_23_REPORT.md"
+      ]
+    },
+    {
+      "id": "p23-datastore-live-fixes",
+      "phase": 23,
+      "issues": [
+        "live PASS lacks resource_id"
+      ]
+    },
+    {
+      "id": "p23-deploy-preflight",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: artifacts/phase-23/preflight-deploy.json"
+      ]
+    },
+    {
+      "id": "p23-disaster-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-evidence-upload-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-frontend-live",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/phase-reports/PHASE_23_REPORT.md"
+      ]
+    },
+    {
+      "id": "p23-functions-deployed",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-live-inventory-runbook",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/deployment/CATALYST_LIVE_INVENTORY.md"
+      ]
+    },
+    {
+      "id": "p23-login-ui-fix",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: web/src/routes/login/LoginPage.tsx"
+      ]
+    },
+    {
+      "id": "p23-option-b-demo-login-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-phase-report",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/phase-reports/PHASE_23_REPORT.md"
+      ]
+    },
+    {
+      "id": "p23-phase-report-final",
+      "phase": 23,
+      "issues": [
+        "artifact hash mismatch: docs/phase-reports/PHASE_23_REPORT.md",
+        "live PASS lacks resource_id"
+      ]
+    },
+    {
+      "id": "p23-pipeline-rollback-fix",
+      "phase": 23,
+      "issues": [
+        "live PASS lacks resource_id"
+      ]
+    },
+    {
+      "id": "p23-rollback-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-security-probe-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-serving-export-prep",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-signal-idempotency-live",
+      "phase": 23,
+      "issues": [
+        "live PASS lacks resource_id"
+      ]
+    },
+    {
+      "id": "p23-signal-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-signout-antistuck",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p23-six-role-authz-live",
+      "phase": 23,
+      "issues": [
+        "live PASS lacks resource_id"
+      ]
+    },
+    {
+      "id": "p23-stratus-evidence-live",
+      "phase": 23,
+      "issues": []
+    },
+    {
+      "id": "p24-aws-inventory",
+      "phase": 24,
+      "issues": [
+        "artifact hash mismatch: artifacts/phase-24/aws-inventory.json"
+      ]
+    },
+    {
+      "id": "p24-baseline-comparison",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-catalyst-aws-ui-live",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-cost-monitoring",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-failclosed-digest",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-gpu-image-ecr",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-gpu-quota-feasibility",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-gpu-teardown",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-guards-idempotency-app",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-idempotency-live",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-labelled-fallback",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-model-licenses-digests",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-model-plane-infra",
+      "phase": 24,
+      "issues": [
+        "artifact hash mismatch: infra/aws/gpu-worker/deploy.generated.json"
+      ]
+    },
+    {
+      "id": "p24-protected-adapter",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-scale-to-zero",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-tabfm-cuda-real",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p24-timesfm-cuda-real",
+      "phase": 24,
+      "issues": []
+    },
+    {
+      "id": "p25-all-live-catalyst-journeys",
+      "phase": 25,
+      "issues": [
+        "mandatory item is FAIL"
+      ]
+    },
+    {
+      "id": "p25-all-separated-suites-green",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-deploy-rollback-recovery",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-measured-load-claims",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-real-model-and-cleanup-proof",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-release-artifacts-consistent",
+      "phase": 25,
+      "issues": []
+    },
+    {
+      "id": "p25-strict-acceptance-zero",
+      "phase": 25,
+      "issues": [
+        "mandatory item is FAIL"
+      ]
+    },
+    {
+      "id": "p26-final-implementation-audit",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-phase-report",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-submission-evidence-index",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-audit-manifest",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-route-boundary-recheck",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-dbfree-tests-recheck",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-aws-cleanup-recheck",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-live-catalyst-reverify",
+      "phase": 26,
+      "issues": []
+    },
+    {
+      "id": "p26-live-nl-ask-fail",
+      "phase": 26,
+      "issues": [
+        "mandatory item is FAIL"
+      ]
+    },
+    {
+      "id": "p19-bilingual-grounded-cited-answer",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p19-typed-trend-and-map-visuals",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p19-aggregate-user-detail-denied",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p19-voice-zia-or-truthful-disable",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p19-low-confidence-voice-guard",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p19-evidence-extraction-disabled",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p19-primary-semantic-planner",
+      "phase": 19,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p20-synthetic-domain-scenarios",
+      "phase": 20,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p20-hierarchy-server-scopes",
+      "phase": 20,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p20-supervisor-real-metrics",
+      "phase": 20,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p20-investigation-assistant-journey",
+      "phase": 20,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p20-fir-aggregate-freshness",
+      "phase": 20,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p20-visual-and-forecast-tests",
+      "phase": 20,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-route-data-boundary-complete",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-appsail-no-database-url",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-catalyst-operational-ownership",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-six-roles-through-gateway",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-functions-real-and-tested",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-disaster-schema-idempotent",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p21-readiness-operational-plane",
+      "phase": 21,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p22-local-quality-gates-green",
+      "phase": 22,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p22-appsail-linux-image-local",
+      "phase": 22,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p22-browser-e2e-local-journeys",
+      "phase": 22,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p22-release-url-and-secret-guard",
+      "phase": 22,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p22-catalyst-pipeline-blocking",
+      "phase": 22,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p22-strict-local-release-command",
+      "phase": 22,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-public-catalyst-urls",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-live-catalyst-service-paths",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-live-six-role-scopes",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-signal-and-scheduled-job",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-enabled-catalyst-capabilities-proof",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-no-held-live-acceptance",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p23-pipeline-deploy-and-rollback",
+      "phase": 23,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p24-tabfm-real-cuda-proof",
+      "phase": 24,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p24-timesfm-real-forecast-proof",
+      "phase": 24,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p24-catalyst-aws-ui-flow",
+      "phase": 24,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p24-live-guards-and-idempotency",
+      "phase": 24,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p24-labelled-fallbacks-fail-closed",
+      "phase": 24,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p24-gpu-teardown-and-cost-proof",
+      "phase": 24,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p26-organizer-matrix-dispositions",
+      "phase": 26,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p26-four-surface-agreement",
+      "phase": 26,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p26-no-fake-mandatory-service",
+      "phase": 26,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p26-redacted-current-consistent-evidence",
+      "phase": 26,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p26-reproducible-submission-index",
+      "phase": 26,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    },
+    {
+      "id": "p26-hackathon-only-declaration",
+      "phase": 26,
+      "mandatory": true,
+      "issues": [
+        "missing evidence (NOT_RUN)"
+      ]
+    }
+  ],
+  "coverage_note": "Every declared requirement has an explicit evidence disposition."
+}

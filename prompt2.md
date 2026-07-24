@@ -3412,3 +3412,35 @@ Deferred); Prompts 9-17 were then implemented locally and proceed in numerical
 order. The line "Prompt 18 is the final release gate" refers to the OLD Prompt 18
 in this file and is superseded — the final live release phase is now
 `prompt3.md` Prompt 25, with an independent audit in Prompt 26.
+
+
+---
+
+## Addendum — Prompt 26 final status correction (2026-07-24)
+
+> Appended by the independent Prompt 26 audit. This older spec (`prompt2.md`) is
+> **superseded** by `prompt3new.md` Prompts 18–26 for all post-Prompt-17 work. The
+> authoritative, evidence-backed final status lives in:
+> `docs/phase-reports/PHASE_26_REPORT.md`, `FINAL_IMPLEMENTATION_AUDIT.md`,
+> `SUBMISSION_EVIDENCE_INDEX.md`, and `artifacts/phase-26/FINAL_AUDIT_MANIFEST.json`.
+
+**Audited state (do not read older status lines above as current):**
+
+- Prompts 18–24 (prompt3new): **Complete** with live/offline evidence.
+- Prompt 25: **Pending** — all local/security/AWS-model/load/recovery suites green +
+  local gate 16/16; blocked only at the live edge by **RB-2** (live `/api/ask` 502).
+- Prompt 26: **Audit complete; submission CONDITIONAL** — 44 PASS, 5 PASS(offline),
+  1 accepted auth deviation, 2 FAIL across the 52 Definition-of-Done requirements.
+
+**Accepted demo deviation (owner decision):** real Catalyst IAM login is intentionally
+replaced by the offline synthetic role-card picker + gateway demo-auth for the submission
+(RB-1/RB-4). It is reversible and the real IAM + six-role server-side authorization logic
+is proven. This does not weaken any non-auth honesty gate.
+
+**Architecture stands as stated in this file's override note:** Catalyst hosts the public
+app + operational serving/object data; AWS is bounded to the justified custom-ML plane +
+the synthetic analytics corpus (server-to-server only); the browser never reaches AWS/RDS
+or a database directly. Re-verified this pass: route boundary 336/0, AWS SageMaker
+endpoints = 0, six-role enum parity across frontend/gateway/backend.
+
+**This remains a synthetic hackathon demonstration on Zoho Catalyst — never production.**

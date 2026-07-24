@@ -35,6 +35,7 @@ from .schemas import (ANNOTATION_KINDS, BOARD_STATUSES, BOARD_VISIBILITY,
                       CollaboratorAdd, EdgeCreate, EdgePatch, MutationResult,
                       NodeCreate, NodeDiffOut, NodePatch, ReferenceOut,
                       SearchAroundNeighbor, SearchAroundRequest, SearchAroundResult,
+                      BoardPathResult, PathRequest, SeedRequest, SeedResult,
                       TableResponse, TableRow, TimelineEvent, TimelineResponse)
 
 # graph entity_type -> board NodeKind
@@ -1070,3 +1071,197 @@ def search_around(board_id: int, req: SearchAroundRequest, actor: str, role: str
     result.imported = _mutate(repo, board, actor, role, action="subgraph.import",
                               apply=apply, idem_key=idem_key)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Seed-a-subgraph (send-to-board UX): pin an object AND populate its network
+# ---------------------------------------------------------------------------
+def _resolve_node_entity(repo: BoardRepo, board_id: int, node_id: int) -> Optional[int]:
+    """Best-effort map a board node to its canonical EntityGraph id (or None)."""
+    n = repo.get("BoardNode", node_id)
+    if n is None or int(n.get("BoardID", -1)) != board_id or n.get("DeletedAt"):
+        return None
+    if n.get("RefTable") == "EntityGraph" and n.get("RefID") is not None:
+        return _int(n.get("RefID"))
+    if n.get("CanonicalEntityID"):
+        return _entitygraph_for_canonical(int(n["CanonicalEntityID"]))
+    return None
+
+
+def _create_case_party_edge(repo: BoardRepo, board_id: int, case_node: int,
+                            entity_node: int, role: Optional[str],
+                            case_master_id: Optional[int], actor: str) -> int:
+    rel = (role or "party").strip().lower().replace(" ", "_") or "party"
+    row = {
+        "BoardID": board_id, "SourceNodeID": case_node, "TargetNodeID": entity_node,
+        "EdgeClass": "evidence",                     # structural fact from the FIR
+        "Label": (role or "party"), "RelationshipType": rel, "Directed": True,
+        "Confidence": None, "Rationale": None,
+        "EvidenceCaseID": case_master_id, "SourceRecordID": f"CaseParty:{case_master_id}",
+        "StyleJSON": {"verified": True, "case_seed": True}, "PromotedStatus": None,
+        "PromotedRef": None, "CreatedBy": actor,
+    }
+    return int(repo.create("BoardEdge", row)["BoardEdgeID"])
+
+
+def seed_reference(board_id: int, req: SeedRequest, actor: str, role: str, *,
+                   idem_key: Optional[str] = None) -> SeedResult:
+    """Pin the primary object, then populate its immediate network.
+
+    * CaseMaster -> add the case node + an evidence node per involved party
+      (accused/victim/...) with an evidence edge, then expand the strongest party.
+    * Entity/canonical-backed -> add the node + Search-Around its neighbourhood.
+    * Anything else (or nothing resolvable) -> just the primary node (graceful).
+    """
+    import math
+    repo = board_repo()
+    board = _load_board(repo, board_id)
+    _require_access(repo, board, actor, role, write=True)
+    _ensure_not_locked(board)
+
+    center = (480.0, 320.0)
+    primary = add_node(board_id, NodeCreate(
+        node_kind=req.node_kind or "entity", ref_table=req.ref_table,
+        ref_id=req.ref_id, label=req.label, pos_x=center[0], pos_y=center[1]),
+        actor, role, idem_key=(f"{idem_key}:primary" if idem_key else None))
+    primary_node_id = int(primary.target_id) if primary.target_id else None
+    board = _load_board(repo, board_id)                 # refresh Version
+
+    nodes_added = edges_added = 0
+    focal_entity: Optional[int] = None
+    detail = "Pinned reference."
+
+    if req.ref_table == "CaseMaster" and primary_node_id is not None:
+        parties = searcharound.entities_for_case(_int(req.ref_id) or 0,
+                                                  limit=req.max_neighbors)
+        if parties:
+            existing = {_int(n.get("RefID")): int(n["BoardNodeID"])
+                        for n in repo.list_by_board("BoardNode", board_id)
+                        if n.get("RefTable") == "EntityGraph" and n.get("RefID")}
+
+            def apply(b: dict):
+                nonlocal nodes_added, edges_added, focal_entity
+                n_p = max(1, len(parties))
+                for i, pt in enumerate(parties):
+                    eid = int(pt["entity_id"])
+                    if eid in existing:
+                        pnode = existing[eid]
+                    else:
+                        ang = (2 * math.pi * i) / n_p
+                        px = center[0] + 260.0 * math.cos(ang)
+                        py = center[1] + 260.0 * math.sin(ang)
+                        pnode = _create_evidence_node(repo, board_id, eid,
+                                                      pt.get("label"), pt.get("entity_type"),
+                                                      px, py, actor)
+                        existing[eid] = pnode
+                        nodes_added += 1
+                    _create_case_party_edge(repo, board_id, primary_node_id, pnode,
+                                            pt.get("role"), _int(req.ref_id), actor)
+                    edges_added += 1
+                    if focal_entity is None:
+                        focal_entity = eid
+                return "subgraph", _int(req.ref_id), {
+                    "case_master_id": _int(req.ref_id), "parties_added": nodes_added,
+                    "party_edges": edges_added}
+
+            _mutate(repo, board, actor, role, action="subgraph.seed", apply=apply,
+                    idem_key=(f"{idem_key}:parties" if idem_key else None))
+            detail = f"Seeded {nodes_added} involved parties from the FIR."
+    elif primary_node_id is not None:
+        focal_entity = _resolve_node_entity(repo, board_id, primary_node_id)
+
+    expanded = False
+    if req.expand and focal_entity:
+        try:
+            sa = search_around(board_id, SearchAroundRequest(
+                entity_id=int(focal_entity), hops=req.hops,
+                max_neighbors=req.max_neighbors, preview=False), actor, role)
+            if sa.imported is not None:
+                expanded = True
+                nodes_added += sa.node_count and 0  # counts tracked in the import
+                detail += f" Expanded {len(sa.neighbors)} verified neighbour(s)."
+        except BoardError:
+            pass  # expansion is best-effort; the pinned network already stands
+
+    return SeedResult(board_id=board_id, primary_node_id=primary_node_id,
+                      focal_entity=focal_entity, nodes_added=nodes_added,
+                      edges_added=edges_added, expanded=expanded, detail=detail)
+
+
+# ---------------------------------------------------------------------------
+# Path Finder: shortest associative path between two board nodes (as evidence)
+# ---------------------------------------------------------------------------
+def find_path(board_id: int, req: PathRequest, actor: str, role: str, *,
+              idem_key: Optional[str] = None) -> BoardPathResult:
+    import math
+    repo = board_repo()
+    board = _load_board(repo, board_id)
+    _require_access(repo, board, actor, role, write=True)
+    _ensure_not_locked(board)
+
+    src = _resolve_node_entity(repo, board_id, req.source_node_id)
+    tgt = _resolve_node_entity(repo, board_id, req.target_node_id)
+    if not src or not tgt:
+        raise BoardValidationError(
+            "Path Finder needs two entity-backed nodes (person/vehicle/phone/"
+            "account/location). One of the selected nodes has no graph entity.")
+    if int(src) == int(tgt):
+        raise BoardValidationError("Pick two different nodes to find a path.")
+
+    from ..graph import service as graph_service
+    pr = graph_service.path(int(src), int(tgt))
+    entity_path = [n.entity_id for n in pr.nodes] if pr.found else []
+    edge_lookup = {(int(e.source), int(e.target)): e for e in pr.edges}
+    edge_lookup.update({(int(e.target), int(e.source)): e for e in pr.edges})
+    label_by_entity = {n.entity_id: (n.label, n.entity_type) for n in pr.nodes}
+
+    nodes_added = edges_added = 0
+    node_ids: list[int] = []
+    imported: Optional[MutationResult] = None
+
+    if pr.found and entity_path:
+        existing = {_int(n.get("RefID")): int(n["BoardNodeID"])
+                    for n in repo.list_by_board("BoardNode", board_id)
+                    if n.get("RefTable") == "EntityGraph" and n.get("RefID")}
+
+        def apply(b: dict):
+            nonlocal nodes_added, edges_added, node_ids
+            base_x, base_y = 200.0, 200.0
+            for i, eid in enumerate(entity_path):
+                if eid in existing:
+                    nid = existing[eid]
+                else:
+                    lbl, etype = label_by_entity.get(eid, (None, None))
+                    nid = _create_evidence_node(repo, board_id, int(eid), lbl, etype,
+                                                base_x + i * 240.0, base_y, actor)
+                    existing[eid] = nid
+                    nodes_added += 1
+                node_ids.append(nid)
+            present = {(int(e["SourceNodeID"]), int(e["TargetNodeID"]))
+                       for e in repo.list_by_board("BoardEdge", board_id)}
+            for a, c in zip(entity_path, entity_path[1:]):
+                sn, tn = existing.get(a), existing.get(c)
+                if sn is None or tn is None:
+                    continue
+                if (sn, tn) in present or (tn, sn) in present:
+                    continue
+                ge = edge_lookup.get((int(a), int(c)))
+                _create_evidence_edge(repo, board_id, sn, tn, {
+                    "relationship_type": (ge.relationship_type if ge else "path"),
+                    "weight": (ge.weight if ge else None),
+                    "confidence": None, "edge_id": (ge.edge_id if ge else None),
+                }, actor)
+                present.add((sn, tn))
+                edges_added += 1
+            return "path", int(src), {"source_entity": int(src),
+                                      "target_entity": int(tgt),
+                                      "hops": pr.hops, "nodes_added": nodes_added,
+                                      "edges_added": edges_added}
+
+        imported = _mutate(repo, board, actor, role, action="path.import",
+                           apply=apply, idem_key=idem_key)
+
+    return BoardPathResult(result=pr.result, found=pr.found, method=pr.method,
+                           hops=pr.hops, entity_path=entity_path, node_ids=node_ids,
+                           nodes_added=nodes_added, edges_added=edges_added,
+                           imported=imported)

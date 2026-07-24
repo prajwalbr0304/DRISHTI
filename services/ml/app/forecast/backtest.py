@@ -73,7 +73,37 @@ def _load_matrix(conn, head_id: Optional[int], valid_geo_only: bool):
         all_months.add(ym)
     periods = _month_axis(min(all_months), max(all_months))
     series = {d: [months.get(p, 0) for p in periods] for d, months in raw.items()}
-    return periods, series
+    return _trim_incomplete_tail(periods, series)
+
+
+def _trim_incomplete_tail(periods: list[str], series: dict[int, list[int]]):
+    """Drop trailing months that fall OUTSIDE the data's real coverage.
+
+    The shared month axis runs from the first to the last month that appears in
+    ANY district's data, so a single stray/demo case in the current (partial)
+    month — or the natural gap between the synthetic corpus end and today's date —
+    zero-fills every intervening month. Scoring those empty future/partial months
+    as ``actual == 0`` is not a real forecast target: it silently destroys the
+    scale-relative metrics (WAPE/sMAPE explode toward the count magnitude / 200)
+    and makes a collapse-to-zero baseline look artificially perfect. A trailing
+    month is only a valid backtest target once its total activity across districts
+    is a meaningful fraction of the median monthly total; incomplete/near-empty
+    trailing months are trimmed. Internal zero months (genuinely quiet months
+    inside the coverage) are preserved."""
+    if not periods:
+        return periods, series
+    totals = [sum(series[d][i] for d in series) for i in range(len(periods))]
+    nonzero = sorted(t for t in totals if t > 0)
+    if not nonzero:
+        return periods, series
+    median = nonzero[len(nonzero) // 2]
+    floor = max(1.0, 0.1 * median)
+    last = len(periods)
+    while last > 0 and totals[last - 1] < floor:
+        last -= 1
+    if last <= 0 or last == len(periods):
+        return periods, series
+    return periods[:last], {d: c[:last] for d, c in series.items()}
 
 
 def _month_axis(first: str, last: str) -> list[str]:

@@ -18,7 +18,7 @@ export function TopBar() {
       <button
         type="button"
         onClick={() => setCommandOpen(true)}
-        className="group flex h-8 w-full max-w-md items-center gap-2 rounded-control border border-hairline bg-surface-2 px-2.5 text-content-dim transition-colors hover:border-primary/50"
+        className="group flex h-8 w-full min-w-0 max-w-md items-center gap-2 rounded-control border border-hairline bg-surface-2 px-2.5 text-content-dim transition-colors hover:border-primary/50"
         aria-label="Ask DRISHTI (open command palette)"
       >
         <Search className="size-4" />
@@ -33,7 +33,7 @@ export function TopBar() {
         <TimeScrubber />
       </div>
 
-      <div className="ml-auto flex items-center gap-1.5 lg:ml-0">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:ml-0">
         <div className="lg:hidden">
           <TimeScrubber />
         </div>

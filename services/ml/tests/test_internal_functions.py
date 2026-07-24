@@ -56,7 +56,7 @@ def test_persist_before_emit_ordering():
     out = service.emit_prediction_requested(
         prediction_request_id="PR-1", task="workload_band", district_id=3,
         repo=repo, signals=_Spy())
-    assert out["record"]["State"] == "approved"
+    assert out["record"]["state"] == "approved"
     assert out["signal"]["event_type"] == "prediction.requested"
     assert order == ["emit"]
 
@@ -108,7 +108,7 @@ def test_dispatch_records_terminal_failed_state(monkeypatch):
         repo=repo, cache=cache)
     assert out["status"] == "failed"
     assert out["retryable"] is True
-    assert repo.get("PredictionRequest", "predreq:PR-11")["State"] == "failed"
+    assert repo.get("PredictionRequest", "predreq:PR-11")["state"] == "failed"
 
 
 def test_forecast_run_idempotent_per_window_and_disabled_by_default():

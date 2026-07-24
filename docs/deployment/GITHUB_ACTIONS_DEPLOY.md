@@ -10,7 +10,7 @@ fast gate that catches a broken build **before** it reaches Catalyst.
 
 ## Deploying to the live app — recommended path (Slate Git integration)
 
-The live demo (`drishti-uryfmaue.onslate.in`) is a **Git-integrated Slate app**. The
+The live demo (`drishti-frvfpunc.onslate.in`, canonical) is a **Git-integrated Slate app**. The
 native "push → auto-deploy" for it is the **Slate Git integration's Auto-Deploy**, not
 GitHub Actions:
 

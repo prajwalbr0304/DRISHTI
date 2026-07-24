@@ -251,6 +251,51 @@ class SearchAroundRequest(BaseModel):
     preview: bool = True                            # preview-before-add (default)
 
 
+class SeedRequest(BaseModel):
+    """Pin an object AND auto-populate its immediate network on send.
+
+    A CaseMaster seeds its involved parties (read-only evidence edges); an
+    entity seeds its verified neighbourhood. Fully graceful: if nothing
+    resolves, only the primary reference node is created (never worse than a
+    plain pin)."""
+    ref_table: str
+    ref_id: str
+    node_kind: Optional[str] = None
+    label: Optional[str] = Field(None, max_length=255)
+    expand: bool = True                             # auto-expand the seeded subgraph
+    hops: int = Field(1, ge=1, le=3)
+    max_neighbors: int = Field(12, ge=1, le=50)
+
+
+class SeedResult(BaseModel):
+    board_id: int
+    primary_node_id: Optional[int] = None
+    focal_entity: Optional[int] = None
+    nodes_added: int = 0
+    edges_added: int = 0
+    expanded: bool = False
+    detail: str = ""
+
+
+class PathRequest(BaseModel):
+    """Find (and import as evidence) the shortest associative path between two
+    entity-backed board nodes."""
+    source_node_id: int = Field(..., ge=1)
+    target_node_id: int = Field(..., ge=1)
+
+
+class BoardPathResult(BaseModel):
+    result: AiResult
+    found: bool
+    method: Optional[str] = None
+    hops: Optional[int] = None
+    entity_path: list[int] = Field(default_factory=list)
+    node_ids: list[int] = Field(default_factory=list)
+    nodes_added: int = 0
+    edges_added: int = 0
+    imported: Optional[MutationResult] = None
+
+
 class SearchAroundNeighbor(BaseModel):
     entity_id: int
     label: Optional[str] = None

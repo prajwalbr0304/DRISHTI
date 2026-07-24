@@ -1,0 +1,21 @@
+{
+  "name": "backend-db-integration-final",
+  "phase": 25,
+  "started_at": "2026-07-24T18:55:04+05:30",
+  "duration_seconds": 436.563,
+  "command": [
+    "C:\\Users\\Prajwal\\AppData\\Local\\Programs\\Python\\Python312\\python.EXE",
+    "-m",
+    "pytest",
+    "tests",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "-m",
+    "not slow"
+  ],
+  "cwd": "C:\\Users\\Prajwal\\Desktop\\DRISHTI\\services\\ml",
+  "exit_code": 0,
+  "status": "PASS",
+  "log": "artifacts\\phase-25\\test-runs\\backend-db-integration-final.log"
+}

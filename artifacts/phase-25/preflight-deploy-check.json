@@ -1,0 +1,37 @@
+{
+  "gate": "preflight_deploy",
+  "passed": true,
+  "require_live": false,
+  "detail": {
+    "project_binding": {
+      "ids": [
+        "48361000000030003"
+      ],
+      "names": [
+        "DHRISTI"
+      ]
+    },
+    "catalyst_json": {
+      "function_targets": 9,
+      "client": true
+    },
+    "appsail_posture": {
+      "service": "drishti-api",
+      "instances": {
+        "min": 1,
+        "max": 1,
+        "scale_up_threshold_pct": 80
+      }
+    },
+    "synthetic_marker": {
+      "web_badge": true,
+      "backend_marker": true
+    },
+    "no_duplicate": {
+      "live": "ok",
+      "dhristi_count": 0,
+      "id_present": true
+    }
+  },
+  "problems": []
+}

@@ -1,0 +1,285 @@
+{
+  "captured_at": "2026-07-24T18:54:28+05:30",
+  "gateway": "https://dhristi-60075362708.development.catalystserverless.in",
+  "bounded": true,
+  "note": "Bounded live load through the actual Catalyst API Gateway -> single-instance AppSail. Synthetic super_admin path (DRISHTI_DEMO_AUTH). Not target-scale certification; feeds the transparent capacity model only.",
+  "concurrency": 6,
+  "per_workload": 30,
+  "workloads_modelled": 13,
+  "results": [
+    {
+      "workload": "cases_list_map",
+      "method": "GET",
+      "path": "/api/cases?limit=25",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 5.79,
+      "throughput_rps": 5.2,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 1176.0,
+        "p95": 1285.1,
+        "p99": 1313.3,
+        "max": 1313.3,
+        "mean": 1088.9
+      }
+    },
+    {
+      "workload": "cases_filters",
+      "method": "GET",
+      "path": "/api/cases/filters",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 1.9,
+      "throughput_rps": 15.8,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 326.1,
+        "p95": 580.4,
+        "p99": 581.8,
+        "max": 581.8,
+        "mean": 350.6
+      }
+    },
+    {
+      "workload": "dashboard_analytics",
+      "method": "GET",
+      "path": "/api/analytics/patterns",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 3.05,
+      "throughput_rps": 9.8,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 471.9,
+        "p95": 1460.5,
+        "p99": 1612.6,
+        "max": 1612.6,
+        "mean": 575.2
+      }
+    },
+    {
+      "workload": "prediction_status",
+      "method": "GET",
+      "path": "/api/predict/enablement",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 0.88,
+      "throughput_rps": 33.9,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 166.9,
+        "p95": 182.9,
+        "p99": 185.1,
+        "max": 185.1,
+        "mean": 169.0
+      }
+    },
+    {
+      "workload": "performance_overview",
+      "method": "GET",
+      "path": "/api/performance/overview?window_days=30",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 8.13,
+      "throughput_rps": 3.7,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 1599.6,
+        "p95": 1888.3,
+        "p99": 1937.6,
+        "max": 1937.6,
+        "mean": 1556.0
+      }
+    },
+    {
+      "workload": "geo_hotspots_map",
+      "method": "GET",
+      "path": "/api/geo/hotspots",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 1.93,
+      "throughput_rps": 15.6,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 328.5,
+        "p95": 580.2,
+        "p99": 584.7,
+        "max": 584.7,
+        "mean": 374.0
+      }
+    },
+    {
+      "workload": "geo_stations_map",
+      "method": "GET",
+      "path": "/api/geo/stations",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 6.03,
+      "throughput_rps": 5.0,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 1105.0,
+        "p95": 1432.4,
+        "p99": 1589.9,
+        "max": 1589.9,
+        "mean": 1100.6
+      }
+    },
+    {
+      "workload": "graph_search_around",
+      "method": "GET",
+      "path": "/api/graph/neighbourhood",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 0.99,
+      "throughput_rps": 30.4,
+      "ok": 0,
+      "error_rate": 1.0,
+      "status_dist": {
+        "422": 30
+      },
+      "latency_ms": {
+        "p50": 182.8,
+        "p95": 227.3,
+        "p99": 234.3,
+        "max": 234.3,
+        "mean": 191.5
+      }
+    },
+    {
+      "workload": "graph_communities",
+      "method": "GET",
+      "path": "/api/graph/communities/list",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 4.43,
+      "throughput_rps": 6.8,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 852.9,
+        "p95": 1024.4,
+        "p99": 1052.8,
+        "max": 1052.8,
+        "mean": 860.5
+      }
+    },
+    {
+      "workload": "disaster_overview",
+      "method": "GET",
+      "path": "/api/disaster/overview",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 1.73,
+      "throughput_rps": 17.3,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 335.0,
+        "p95": 370.3,
+        "p99": 375.9,
+        "max": 375.9,
+        "mean": 338.2
+      }
+    },
+    {
+      "workload": "board_list",
+      "method": "GET",
+      "path": "/api/boards",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 2.03,
+      "throughput_rps": 14.8,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 388.0,
+        "p95": 441.0,
+        "p99": 454.7,
+        "max": 454.7,
+        "mean": 395.6
+      }
+    },
+    {
+      "workload": "workload_predictions",
+      "method": "GET",
+      "path": "/api/workload/predictions",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 1.51,
+      "throughput_rps": 19.9,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 290.5,
+        "p95": 316.5,
+        "p99": 317.5,
+        "max": 317.5,
+        "mean": 291.2
+      }
+    },
+    {
+      "workload": "forecast_map",
+      "method": "GET",
+      "path": "/api/forecast/map",
+      "concurrency": 6,
+      "requests": 30,
+      "wall_s": 1.33,
+      "throughput_rps": 22.5,
+      "ok": 30,
+      "error_rate": 0.0,
+      "status_dist": {
+        "200": 30
+      },
+      "latency_ms": {
+        "p50": 254.0,
+        "p95": 293.6,
+        "p99": 314.1,
+        "max": 314.1,
+        "mean": 259.1
+      }
+    }
+  ],
+  "all_workloads_error_free": false
+}

@@ -19,10 +19,10 @@ export function SyntheticBadge() {
     <TooltipProvider delayDuration={200}>
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 rounded-full border border-severity-medium/40 bg-severity-medium/10 px-2 py-0.5 text-11 font-medium text-severity-medium">
-          <FlaskConical className="size-3" />
+        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-severity-medium/40 bg-severity-medium/10 px-2 py-0.5 text-11 font-medium text-severity-medium">
+          <FlaskConical className="size-3 shrink-0" />
           <span className="hidden sm:inline">{label}</span>
-          <span className="hidden md:inline text-content-dim">· Not for Operational Use</span>
+          <span className="hidden text-content-dim xl:inline">· Not for Operational Use</span>
         </span>
       </TooltipTrigger>
       <TooltipContent>

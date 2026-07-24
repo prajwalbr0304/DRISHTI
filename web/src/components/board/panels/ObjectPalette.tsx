@@ -3,13 +3,16 @@ import { Frame, Plus, Search, StickyNote, Type, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { NODE_KIND_LEGEND } from "@/components/board/boardEncoding";
+import { NODE_KIND_LEGEND, kindStyle } from "@/components/board/boardEncoding";
 import { cn } from "@/lib/utils";
 
+type BoardFilters = { evidence: boolean; hypothesis: boolean; search: string; hiddenKinds: string[] };
+
 interface Props {
-  filters: { evidence: boolean; hypothesis: boolean; search: string };
-  setFilters: (f: { evidence: boolean; hypothesis: boolean; search: string }) => void;
+  filters: BoardFilters;
+  setFilters: (f: BoardFilters) => void;
   refTables: string[];
+  kinds: string[];
   readOnly: boolean;
   hasSelectedNode: boolean;
   onAddNote: () => void;
@@ -46,6 +49,40 @@ export function ObjectPalette(props: Props) {
         </div>
         <p className="mt-1 text-11 text-content-dim">Filters hide objects without deleting them.</p>
       </section>
+
+      {props.kinds.length > 0 && (
+        <section>
+          <SectionTitle>Types on board</SectionTitle>
+          <div className="flex flex-wrap gap-1">
+            {props.kinds.map((k) => {
+              const ks = kindStyle(k);
+              const hidden = (filters.hiddenKinds ?? []).includes(k);
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={!hidden}
+                  onClick={() => {
+                    const set = new Set(filters.hiddenKinds ?? []);
+                    if (set.has(k)) set.delete(k);
+                    else set.add(k);
+                    setFilters({ ...filters, hiddenKinds: Array.from(set) });
+                  }}
+                  title={hidden ? `Show ${ks.label}` : `Hide ${ks.label}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border border-hairline px-2 py-0.5 text-11 transition-colors",
+                    hidden ? "text-content-dim opacity-50 line-through" : "text-content hover:border-primary/50",
+                  )}
+                >
+                  <span className="size-2 rounded-full" style={{ background: ks.color }} />
+                  {ks.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-11 text-content-dim">Click a type to hide/show it on the canvas.</p>
+        </section>
+      )}
 
       {!readOnly && (
         <section>

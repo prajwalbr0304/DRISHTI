@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft, Clock, Download, GitBranch, Loader2, Lock, ScrollText, Share2, Users, Workflow,
@@ -8,6 +8,7 @@ import type { BoardSelection } from "@/components/board/BoardCanvas";
 import type { ExportOut, NodeDiff } from "@/api/endpoints/board";
 import { useRole } from "@/providers/RoleProvider";
 import { BoardCanvas } from "@/components/board/BoardCanvas";
+import { BoardGraphView } from "@/components/board/BoardGraphView";
 import { ObjectPalette } from "@/components/board/panels/ObjectPalette";
 import { SelectionInspector } from "@/components/board/panels/SelectionInspector";
 import { HelperDrawer } from "@/components/board/panels/HelperDrawer";
@@ -40,7 +41,9 @@ export function BoardWorkspace() {
 
   const [selection, setSelection] = useState<BoardSelection>({ kind: null, id: null });
   const presence = useBoardPresence(boardId, selection);
-  const [filters, setFilters] = useState({ evidence: true, hypothesis: true, search: "" });
+  const [filters, setFilters] = useState<{ evidence: boolean; hypothesis: boolean; search: string; hiddenKinds: string[] }>(
+    { evidence: true, hypothesis: true, search: "", hiddenKinds: [] });
+  const [renderMode, setRenderMode] = useState<"flow" | "graph">("flow");
   const [focusMode, setFocusMode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,6 +55,10 @@ export function BoardWorkspace() {
   const [diffs, setDiffs] = useState<Record<number, NodeDiff>>({});
   const [scrubTime, setScrubTime] = useState<string | null>(null);
   const [spawn, setSpawn] = useState(0);
+  // Latest selection/readOnly/delete for the (mount-once) keyboard handler.
+  const kbd = useRef<{ selection: BoardSelection; readOnly: boolean; del: (s: BoardSelection) => void }>({
+    selection: { kind: null, id: null }, readOnly: false, del: () => {},
+  });
 
   const readOnly = !!detail?.board.is_locked || detail?.board.my_role === "viewer";
   const canShareLock = SHARE_LOCK_ROLES.has(role);
@@ -59,6 +66,10 @@ export function BoardWorkspace() {
     "CaseMaster", "CanonicalPerson", "CanonicalEntity", "EntityGraph",
     "FinancialAccount", "EvidenceItem", "CrimeHotspot",
   ])) : [], [detail]);
+  const presentKinds = useMemo(
+    () => (detail ? Array.from(new Set(detail.nodes.map((n) => n.node_kind))).sort() : []),
+    [detail],
+  );
 
   // live-vs-snapshot diffs (best-effort)
   useEffect(() => {
@@ -83,6 +94,10 @@ export function BoardWorkspace() {
         setFocusMode((v) => !v);
       } else if (e.key === "Escape") {
         setFocusMode(false);
+      } else if ((e.key === "Delete" || e.key === "Backspace")
+                 && kbd.current.selection.id != null && !kbd.current.readOnly) {
+        e.preventDefault();
+        kbd.current.del(kbd.current.selection);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -130,7 +145,8 @@ export function BoardWorkspace() {
   const b = detail.board;
   const selectedNode = selection.kind === "node"
     ? detail.nodes.find((n) => n.board_node_id === selection.id) : undefined;
-  const canSearchAround = !!selectedNode?.ref_table && selectedNode.ref_table === "EntityGraph";
+  const canSearchAround = !!selectedNode &&
+    (selectedNode.ref_table === "EntityGraph" || selectedNode.canonical_entity_id != null);
 
   // handlers -----------------------------------------------------------------
   const addObject = (refTable: string, refId: string) => {
@@ -176,6 +192,29 @@ export function BoardWorkspace() {
     run(() => api.board.patchEdge(boardId, edgeId, { rationale }), "Rationale saved.");
   const promote = (edgeId: number) =>
     run(() => api.board.promoteEdge(boardId, edgeId), "Hypothesis proposed for review (no confirmed edge created).");
+  // Double-click / instant expand: pull the node's verified 1-hop neighbourhood.
+  const expandNode = (nodeId: number) =>
+    run(() => api.board.importSubgraph(boardId, { node_id: nodeId, hops: 1, max_neighbors: 12 }),
+      "Expanded verified neighbours.");
+  // Path Finder: shortest associative path between two entity nodes (imported as evidence).
+  const findPath = async (a: number, c: number) => {
+    setBusy(true);
+    setBanner(null);
+    try {
+      const r = await api.board.findPath(boardId, a, c);
+      invalidate();
+      setBanner({
+        kind: "info",
+        msg: r.found
+          ? `Path found — ${r.hops} hop(s); added ${r.nodes_added} node(s) + ${r.edges_added} link(s).`
+          : (r.result?.answer || "No path found between the two selected nodes."),
+      });
+    } catch (e) {
+      setBanner({ kind: "error", msg: e instanceof Error ? e.message : "Path Finder failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
   const doLock = () =>
     run(() => api.board.lock(boardId), "Board locked for filing.");
   const doBranch = async () => {
@@ -198,6 +237,9 @@ export function BoardWorkspace() {
   };
   const openSource = (path: string) => navigate(path);
 
+  // keep the mount-once keyboard handler pointed at the latest state/handlers
+  kbd.current = { selection, readOnly, del: deleteSelection };
+
   return (
     <div className={cn("flex flex-col", focusMode ? "fixed inset-0 z-50 bg-bg p-2" : "h-[calc(100vh-8rem)]")}>
       {/* toolbar */}
@@ -213,6 +255,9 @@ export function BoardWorkspace() {
             <Badge variant="neutral">v{b.version}</Badge>
             {b.is_locked && <Badge variant="high"><Lock className="size-3" /> locked</Badge>}
             <Badge variant={b.visibility === "private" ? "neutral" : "primary"}>{b.visibility}</Badge>
+            <span className="hidden text-11 text-content-dim tnum sm:inline" title="Objects and links on this board">
+              {detail.nodes.length} obj · {detail.edges.length} links
+            </span>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -263,6 +308,7 @@ export function BoardWorkspace() {
                   filters={filters}
                   setFilters={setFilters}
                   refTables={refTables}
+                  kinds={presentKinds}
                   readOnly={readOnly}
                   hasSelectedNode={canSearchAround}
                   onAddNote={addNote}
@@ -273,6 +319,7 @@ export function BoardWorkspace() {
               </div>
             )}
             <div className="relative min-w-0 flex-1">
+              {renderMode === "flow" ? (
               <BoardCanvas
                 detail={detail}
                 diffs={Object.fromEntries(Object.entries(diffs).map(([k, v]) => [k, v.status]))}
@@ -289,7 +336,21 @@ export function BoardWorkspace() {
                 onToggleFocus={() => setFocusMode((v) => !v)}
                 onSearchAround={(nodeId) => { setSelection({ kind: "node", id: nodeId }); setSearchAroundOpen(true); }}
                 onDeleteNode={(nodeId) => deleteSelection({ kind: "node", id: nodeId })}
+                onExpandNode={expandNode}
+                onFindPath={findPath}
               />
+              ) : (
+                <BoardGraphView
+                  detail={detail}
+                  selection={selection}
+                  onSelect={setSelection}
+                  onExpandNode={expandNode}
+                />
+              )}
+              <div className="absolute left-2 top-2 z-10 flex overflow-hidden rounded-control border border-hairline bg-surface/90 backdrop-blur">
+                <RenderBtn active={renderMode === "flow"} onClick={() => setRenderMode("flow")} title="Editable link canvas">Flow</RenderBtn>
+                <RenderBtn active={renderMode === "graph"} onClick={() => setRenderMode("graph")} title="Force-directed network (read-only)">Network</RenderBtn>
+              </div>
               {detail.nodes.length === 0 && detail.annotations.length === 0 && (
                 <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
                   <EmptyState icon={Workflow} title="Empty board"
@@ -361,6 +422,18 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button type="button" onClick={onClick}
       className={cn("inline-flex items-center gap-1.5 px-2.5 py-1.5 text-12 font-medium transition-colors",
         active ? "bg-surface-2 text-content" : "text-content-dim hover:text-content")}>
+      {children}
+    </button>
+  );
+}
+
+function RenderBtn({ active, onClick, title, children }: {
+  active: boolean; onClick: () => void; title?: string; children: React.ReactNode;
+}) {
+  return (
+    <button type="button" onClick={onClick} title={title}
+      className={cn("px-2.5 py-1 text-11 font-medium transition-colors",
+        active ? "bg-primary text-primary-fg" : "text-content-dim hover:text-content")}>
       {children}
     </button>
   );

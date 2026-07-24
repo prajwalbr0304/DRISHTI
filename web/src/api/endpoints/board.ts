@@ -328,6 +328,38 @@ export interface SearchAroundBody {
   preview?: boolean;
 }
 
+export interface SeedBody {
+  ref_table: string;
+  ref_id: string;
+  node_kind?: string | null;
+  label?: string | null;
+  expand?: boolean;
+  hops?: number;
+  max_neighbors?: number;
+}
+
+export interface SeedResult {
+  board_id: number;
+  primary_node_id?: number | null;
+  focal_entity?: number | null;
+  nodes_added: number;
+  edges_added: number;
+  expanded: boolean;
+  detail: string;
+}
+
+export interface BoardPathResult {
+  result: AiResult;
+  found: boolean;
+  method?: string | null;
+  hops?: number | null;
+  entity_path: number[];
+  node_ids: number[];
+  nodes_added: number;
+  edges_added: number;
+  imported?: MutationResult | null;
+}
+
 /** Optional idempotency key + If-Match version for a mutation. */
 function mutOpts(idemKey?: string, ifMatch?: number): { headers: Record<string, string> } {
   const headers: Record<string, string> = {};
@@ -403,6 +435,16 @@ export const boardApi = {
     apiClient.post<SearchAroundResult>(`/boards/${boardId}/search-around`, body, undefined, signal),
   importSubgraph: (boardId: number, body: SearchAroundBody, signal?: AbortSignal) =>
     apiClient.post<SearchAroundResult>(`/boards/${boardId}/import/subgraph`, body, undefined, signal),
+
+  // seed a subgraph on send (case parties / entity neighbourhood); graceful single-pin fallback
+  seed: (boardId: number, body: SeedBody, idemKey?: string, signal?: AbortSignal) =>
+    apiClient.request<SeedResult>(`/boards/${boardId}/seed`,
+      { method: "POST", body, signal, ...mutOpts(idemKey) }),
+
+  // shortest associative path between two entity-backed board nodes (imported as evidence)
+  findPath: (boardId: number, sourceNodeId: number, targetNodeId: number, signal?: AbortSignal) =>
+    apiClient.post<BoardPathResult>(`/boards/${boardId}/path`,
+      { source_node_id: sourceNodeId, target_node_id: targetNodeId }, undefined, signal),
 
   // promotion
   promoteEdge: (boardId: number, edgeId: number, note?: string, signal?: AbortSignal) =>

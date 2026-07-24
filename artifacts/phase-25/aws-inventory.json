@@ -1,0 +1,257 @@
+{
+  "timestamp": "2026-07-24T18:35:05+05:30",
+  "profile": "drishti",
+  "region": "ap-south-1",
+  "read_only": true,
+  "results": [
+    {
+      "operation": [
+        "sts",
+        "get-caller-identity"
+      ],
+      "exit_code": 0,
+      "result": {
+        "UserId": "AROA4QWTR6BA6XG3AVLLR:db@swipin.in",
+        "Account": "[ACCOUNT-REDACTED-5713]",
+        "Arn": "arn:aws:sts::[ACCOUNT-REDACTED-5713]:assumed-role/AWSReservedSSO_AdministratorAccess_8818af40271b6e65/db@swipin.in"
+      }
+    },
+    {
+      "operation": [
+        "ecr",
+        "describe-repositories"
+      ],
+      "exit_code": 0,
+      "result": {
+        "repositories": [
+          {
+            "repositoryArn": "arn:aws:ecr:ap-south-1:[ACCOUNT-REDACTED-5713]:repository/drishti-gpu-worker",
+            "registryId": "[ACCOUNT-REDACTED-5713]",
+            "repositoryName": "drishti-gpu-worker",
+            "repositoryUri": "[ACCOUNT-REDACTED-5713].dkr.ecr.ap-south-1.amazonaws.com/drishti-gpu-worker",
+            "createdAt": "2026-07-23T20:29:58.862000+05:30",
+            "imageTagMutability": "IMMUTABLE",
+            "imageScanningConfiguration": {
+              "scanOnPush": true
+            },
+            "encryptionConfiguration": {
+              "encryptionType": "AES256"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operation": [
+        "s3api",
+        "list-buckets"
+      ],
+      "exit_code": 0,
+      "result": {
+        "Buckets": [
+          {
+            "Name": "amazon-sagemaker-[ACCOUNT-REDACTED-5713]-us-east-1-b63j6wbwyi5kpz",
+            "CreationDate": "2026-07-16T10:10:58+00:00"
+          },
+          {
+            "Name": "drishti-model-plane-[ACCOUNT-REDACTED-5713]-ap-south-1",
+            "CreationDate": "2026-07-23T15:02:11+00:00"
+          },
+          {
+            "Name": "drishti-synthetic-evidence-[ACCOUNT-REDACTED-5713]-ap-south-1",
+            "CreationDate": "2026-07-17T10:17:13+00:00"
+          }
+        ],
+        "Owner": {
+          "ID": "65fab6395e8fc5f4f324c834529bee1604d08015bdb7895f22b680a2366e7fc3"
+        }
+      }
+    },
+    {
+      "operation": [
+        "kms",
+        "list-keys"
+      ],
+      "exit_code": 0,
+      "result": {
+        "Keys": [
+          {
+            "KeyId": "0d9659f7-40be-4a9f-9213-7c7086375e5f",
+            "KeyArn": "arn:aws:kms:ap-south-1:[ACCOUNT-REDACTED-5713]:key/0d9659f7-40be-4a9f-9213-7c7086375e5f"
+          },
+          {
+            "KeyId": "207b025a-2c9e-4b38-9d89-5da33087e8dc",
+            "KeyArn": "arn:aws:kms:ap-south-1:[ACCOUNT-REDACTED-5713]:key/207b025a-2c9e-4b38-9d89-5da33087e8dc"
+          },
+          {
+            "KeyId": "6f81cab9-c76d-4347-b8c5-e25632191a6f",
+            "KeyArn": "arn:aws:kms:ap-south-1:[ACCOUNT-REDACTED-5713]:key/6f81cab9-c76d-4347-b8c5-e25632191a6f"
+          },
+          {
+            "KeyId": "7e8cdb2e-61fd-4776-ab5a-53123ce51492",
+            "KeyArn": "arn:aws:kms:ap-south-1:[ACCOUNT-REDACTED-5713]:key/7e8cdb2e-61fd-4776-ab5a-53123ce51492"
+          },
+          {
+            "KeyId": "f235a896-d807-4945-a6a3-e32f4618e482",
+            "KeyArn": "arn:aws:kms:ap-south-1:[ACCOUNT-REDACTED-5713]:key/f235a896-d807-4945-a6a3-e32f4618e482"
+          }
+        ],
+        "Truncated": false
+      }
+    },
+    {
+      "operation": [
+        "sqs",
+        "list-queues"
+      ],
+      "exit_code": 0,
+      "result": {
+        "QueueUrls": [
+          "https://sqs.ap-south-1.amazonaws.com/[ACCOUNT-REDACTED-5713]/drishti-adapter-dlq"
+        ]
+      }
+    },
+    {
+      "operation": [
+        "sagemaker",
+        "list-endpoints"
+      ],
+      "exit_code": 0,
+      "result": {
+        "Endpoints": []
+      }
+    },
+    {
+      "operation": [
+        "sagemaker",
+        "list-transform-jobs"
+      ],
+      "exit_code": 0,
+      "result": {
+        "TransformJobSummaries": []
+      }
+    },
+    {
+      "operation": [
+        "batch",
+        "describe-job-queues"
+      ],
+      "exit_code": 0,
+      "result": {
+        "jobQueues": []
+      }
+    },
+    {
+      "operation": [
+        "lambda",
+        "list-functions"
+      ],
+      "exit_code": 0,
+      "result": {
+        "Functions": [
+          {
+            "FunctionName": "drishti-aws-adapter",
+            "FunctionArn": "arn:aws:lambda:ap-south-1:[ACCOUNT-REDACTED-5713]:function:drishti-aws-adapter",
+            "Runtime": "python3.12",
+            "Role": "arn:aws:iam::[ACCOUNT-REDACTED-5713]:role/drishti-aws-adapter-exec",
+            "Handler": "handler.lambda_handler",
+            "CodeSize": 14945,
+            "Description": "DRISHTI Prompt 24 protected AWS adapter (signed HMAC ingress to SageMaker async)",
+            "Timeout": 60,
+            "MemorySize": 512,
+            "LastModified": "2026-07-23T17:36:47.000+0000",
+            "CodeSha256": "zgKmWnJJ+RKVn8+M7fNL0uhToVAM2GDzxtKLV4jFR28=",
+            "Version": "$LATEST",
+            "DeadLetterConfig": {
+              "TargetArn": "arn:aws:sqs:ap-south-1:[ACCOUNT-REDACTED-5713]:drishti-adapter-dlq"
+            },
+            "Environment": {
+              "Variables": {
+                "DRISHTI_AWS_ADAPTER_SECRET": "17d26c[ACCOUNT-REDACTED-8263]f0f88730d13b05d84d722f74a2af62cb3f2943d0fcc02a",
+                "DRISHTI_SM_ASYNC_ENDPOINT": "drishti-gpu-async2",
+                "DRISHTI_ADAPTER_RATE_PER_MIN": "600",
+                "DRISHTI_ADAPTER_MAX_SKEW_S": "300",
+                "DRISHTI_ADAPTER_S3_STAGING": "s3://drishti-model-plane-[ACCOUNT-REDACTED-5713]-ap-south-1/async-io"
+              }
+            },
+            "TracingConfig": {
+              "Mode": "PassThrough"
+            },
+            "RevisionId": "723d522c-6926-45da-b9be-2a9207beed23",
+            "PackageType": "Zip",
+            "Architectures": [
+              "x86_64"
+            ],
+            "EphemeralStorage": {
+              "Size": 512
+            },
+            "SnapStart": {
+              "ApplyOn": "None",
+              "OptimizationStatus": "Off"
+            },
+            "LoggingConfig": {
+              "LogFormat": "Text",
+              "LogGroup": "/aws/lambda/drishti-aws-adapter"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operation": [
+        "apigateway",
+        "get-rest-apis"
+      ],
+      "exit_code": 0,
+      "result": {
+        "items": []
+      }
+    },
+    {
+      "operation": [
+        "cloudwatch",
+        "describe-alarms"
+      ],
+      "exit_code": 0,
+      "result": {
+        "CompositeAlarms": [],
+        "MetricAlarms": [
+          {
+            "AlarmName": "drishti-gpu-async2-invocations",
+            "AlarmArn": "arn:aws:cloudwatch:ap-south-1:[ACCOUNT-REDACTED-5713]:alarm:drishti-gpu-async2-invocations",
+            "AlarmDescription": "DRISHTI Prompt 24: alert if the T4 async endpoint is invoked unusually often (runaway/cost guard)",
+            "AlarmConfigurationUpdatedTimestamp": "2026-07-23T17:40:14.926000+00:00",
+            "ActionsEnabled": true,
+            "OKActions": [],
+            "AlarmActions": [],
+            "InsufficientDataActions": [],
+            "StateValue": "OK",
+            "StateReason": "Threshold Crossed: no datapoints were received for 1 period and 1 missing datapoint was treated as [NonBreaching].",
+            "StateReasonData": "{\"version\":\"1.0\",\"queryDate\":\"2026-07-23T17:41:15.547+0000\",\"statistic\":\"Sum\",\"period\":300,\"recentDatapoints\":[],\"threshold\":500.0,\"evaluatedDatapoints\":[{\"timestamp\":\"2026-07-23T17:34:00.000+0000\"}]}",
+            "StateUpdatedTimestamp": "2026-07-23T17:41:15.549000+00:00",
+            "MetricName": "Invocations",
+            "Namespace": "AWS/SageMaker",
+            "Statistic": "Sum",
+            "Dimensions": [
+              {
+                "Name": "EndpointName",
+                "Value": "drishti-gpu-async2"
+              },
+              {
+                "Name": "VariantName",
+                "Value": "main"
+              }
+            ],
+            "Period": 300,
+            "EvaluationPeriods": 1,
+            "Threshold": 500.0,
+            "ComparisonOperator": "GreaterThanThreshold",
+            "TreatMissingData": "notBreaching",
+            "StateTransitionedTimestamp": "2026-07-23T17:41:15.549000+00:00"
+          }
+        ]
+      }
+    }
+  ],
+  "all_commands_succeeded": true
+}
