@@ -212,12 +212,26 @@ function MetricRow({ label, m, highlight }: { label: string; m: WorkloadMetricBl
 
 function PredictionsPanel({ q }: { q: { data?: Awaited<ReturnType<typeof api.workload.predictions>>; isLoading: boolean; error: unknown; refetch: () => void } }) {
   const rows = q.data?.predictions ?? [];
+  const served = rows.find((r) => r.actual_device || r.served_via);
+  const onGpu = !!served && (served.actual_device === "cuda" || (served.served_via ?? "").includes("sagemaker"));
   return (
     <Widget title="District workload bands (next quarter)" contextChip={q.data?.cutoff_period ? `as of ${q.data.cutoff_period}` : undefined}
       loading={q.isLoading} error={q.error} empty={!q.isLoading && !q.error && rows.length === 0}
       emptyLabel="No governed workload predictions yet — run the pipeline." onRefresh={() => q.refetch()}
       info={<p className="text-content-dim">Each row ties to an immutable feature snapshot and a governed prediction result. Aggregate, decision-support only.</p>}
       flush>
+      {onGpu && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 text-12">
+          <Badge variant="low">
+            <Cpu className="size-3" /> Real Google TabFM · {served?.gpu_name ?? "GPU"}
+            {served?.actual_device ? ` (${served.actual_device.toUpperCase()})` : ""}
+          </Badge>
+          <span className="text-content-dim">
+            served live via AWS SageMaker · fail-closed validated
+            {served?.model_artifact_digest ? ` · weights ${served.model_artifact_digest.slice(0, 12)}…` : ""}
+          </span>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-13">
           <thead>

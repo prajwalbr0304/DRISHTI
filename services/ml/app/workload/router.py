@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 
 from ..config import get_settings
 from ..intake.guards import require_write_allowed
@@ -108,6 +108,35 @@ def run(body: WorkloadRunRequest, request: Request, role: str = Depends(require_
                                     lifecycle=body.lifecycle, actor=body.actor or f"demo.{role}")
     except Exception as exc:  # noqa: BLE001
         raise _map_error(exc)
+
+
+def _run_sagemaker_bg(context_limit: int, actor: str) -> None:
+    """Background worker: real TabFM-on-SageMaker workload run + RDS persist.
+    Runs outside the request so the API-Gateway 25s cap never truncates the
+    SageMaker cold-start + async poll. Failures are logged, not surfaced."""
+    import logging
+    try:
+        service.run_governed_sagemaker(context_limit=context_limit, actor=actor)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("drishti.workload").error("sagemaker workload run failed: %s", exc)
+
+
+@router.post("/run-sagemaker")
+def run_sagemaker(request: Request, background_tasks: BackgroundTasks,
+                  context_limit: int = Query(512, ge=16, le=2000),
+                  role: str = Depends(require_workload_write)):
+    """Trigger a LIVE workload run on the REAL AWS SageMaker TabFM (T4/CUDA).
+
+    The SageMaker async round-trip (weights cold start + poll) exceeds the API
+    Gateway 25s cap, so the governed dispatch->poll->RDS-persist runs in the
+    background and this returns immediately. The Workload screen
+    (/workload/predictions) shows the real GPU bands once persisted. Requires the
+    AppSail adapter env (DRISHTI_AWS_ADAPTER_URL/SECRET) + a live endpoint."""
+    require_write_allowed(request)
+    background_tasks.add_task(_run_sagemaker_bg, context_limit, f"demo.{role}")
+    return {"status": "scheduled", "context_limit": context_limit,
+            "message": ("Real TabFM-on-SageMaker workload run started; poll "
+                        "/workload/predictions for the governed GPU bands.")}
 
 
 @router.post("/benchmark", response_model=WorkloadBenchmarkListResponse)

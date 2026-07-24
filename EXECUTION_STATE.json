@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-23T23:24:58+05:30",
-  "current_phase": 24,
+  "updated_at": "2026-07-24T00:23:11+05:30",
+  "current_phase": 25,
   "phases": {
     "18": {
       "status": "complete",
@@ -92,7 +92,7 @@
       "next_action": "Start Prompt 25 (integrated security, scale, recovery, final release). Prompt 24 AWS T4 endpoint is torn down (cost control); redeploy via sagemaker_ops.py deploy --image-digest sha256:a2944b79... to re-prove live AWS models. Adapter API GW/Lambda/secret/DLQ remain; wire deployed AppSail via DRISHTI_AWS_ADAPTER_URL/SECRET (Console) for the fully-deployed Signal->adapter chain."
     },
     "25": {
-      "status": "pending"
+      "status": "in_progress"
     },
     "26": {
       "status": "pending"

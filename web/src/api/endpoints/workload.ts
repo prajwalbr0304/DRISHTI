@@ -65,6 +65,11 @@ export interface WorkloadPredictionRow {
   is_stale: boolean;
   model_version?: string | null;
   created_at?: string | null;
+  actual_backend?: string | null;
+  actual_device?: string | null;
+  gpu_name?: string | null;
+  served_via?: string | null;
+  model_artifact_digest?: string | null;
 }
 export interface WorkloadPredictionListResponse {
   predictions: WorkloadPredictionRow[];

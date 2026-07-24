@@ -187,7 +187,10 @@ def list_predictions(page: int = 1, page_size: int = 50, include_stale: bool = F
             "confidence": float(r[5]) if r[5] is not None else None,
             "abstained": out.get("abstained"), "recent_case_volume": out.get("recent_case_volume"),
             "is_stale": bool(r[6]), "model_version": f"{r[8]}@{r[9]}",
-            "created_at": r[7].isoformat() if r[7] else None})
+            "created_at": r[7].isoformat() if r[7] else None,
+            "actual_backend": out.get("actual_backend"), "actual_device": out.get("actual_device"),
+            "gpu_name": out.get("gpu_name"), "served_via": out.get("served_via"),
+            "model_artifact_digest": out.get("model_artifact_digest")})
     return {"predictions": preds, "total": total, "page": page, "page_size": page_size,
             "cutoff_period": cutoff_period, "aggregate_only": True, "limitations": gb._LIMITATIONS}
 
@@ -260,6 +263,20 @@ def run_governed(*, foundation_kind: str = "incontext", limit: Optional[int] = N
         result = gb.persist_predictions(conn, foundation_kind=foundation_kind, limit=limit,
                                         lifecycle=lifecycle, actor=actor)
     _EVAL_CACHE.update(key=None, at=0.0, report=None)  # data changed
+    return result
+
+
+def run_governed_sagemaker(*, context_limit: int = 512,
+                           actor: str = "workload-sagemaker") -> dict:
+    """Run the LIVE per-district workload band on the REAL AWS SageMaker TabFM
+    (T4/CUDA) via the protected adapter and persist the governed result to RDS
+    (the store the Workload UI reads). Long-running (SageMaker cold start + async
+    poll); intended for a background task or an offline driver, never a
+    gateway-bounded synchronous request."""
+    with db.rw_conn() as conn:
+        result = gb.persist_predictions_via_sagemaker(conn, context_limit=context_limit,
+                                                      actor=actor)
+    _EVAL_CACHE.update(key=None, at=0.0, report=None)  # served data changed
     return result
 
 

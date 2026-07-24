@@ -404,3 +404,155 @@ def persist_benchmark(conn, benchmark_rows: list[dict], *, model_version_id: Opt
     audit.record(audit.Action.MODEL_RUN, "workload_benchmark", model_version_id, actor=actor,
                  conn=conn, detail={"rows": n})
     return n
+
+
+# ---------------------------------------------------------------------------
+# Public: persist a LIVE workload run computed on the REAL AWS SageMaker TabFM
+# ---------------------------------------------------------------------------
+def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
+                                      poll_timeout_s: int = 420, poll_interval_s: int = 6,
+                                      actor: str = "workload-sagemaker") -> dict:
+    """Run the LIVE per-district workload band on the REAL Google TabFM on AWS
+    SageMaker (T4/CUDA) through the protected adapter, then persist the governed
+    result into the RDS ``PredictionResult`` the Workload UI reads.
+
+    Reuses the proven ``PredictionRuntime`` + ``SignedHttpsAdapter`` so the
+    fail-closed guarantee holds: a ``tabfm`` request that comes back as any
+    fallback is REJECTED by ``validate_result`` and nothing is persisted (never a
+    CPU fallback mislabelled as TabFM). The runtime's own Data-Store writes go to a
+    throwaway in-memory store; only the validated result is persisted here to RDS.
+
+    Requires ``DRISHTI_AWS_ADAPTER_URL`` / ``DRISHTI_AWS_ADAPTER_SECRET`` and a live
+    SageMaker endpoint. Aggregate DISTRICT support only — never a person-level score.
+    """
+    import hashlib
+    import time
+
+    import numpy as np
+
+    from ..datastore.repository import InMemoryDataStore
+    from ..predict.adapter import SignedHttpsAdapter
+    from ..predict.envelope import BackendKind, ColumnDef, ModelTask
+    from ..predict.routing import InputEvent, RoutingContext
+    from ..predict.runtime import PredictionJobInput, PredictionRuntime
+
+    schema_id = workload_schema_id(conn)
+    ds = feat.build_dataset(conn)
+
+    # Labelled in-context examples for TabFM (deterministic subsample to a context
+    # budget so the crossing payload stays bounded). All rows are historical.
+    ctx_X, ctx_y = ds.X, ds.y
+    if len(ctx_X) > context_limit:
+        idx = np.random.default_rng(42).choice(len(ctx_X), size=context_limit, replace=False)
+        ctx_X, ctx_y = ctx_X[idx], ctx_y[idx]
+    context_x = [[round(float(v), 6) for v in row] for row in ctx_X]
+    context_y = [int(v) for v in ctx_y]
+
+    live = feat.build_live_features(conn)
+    rows = live["rows"]
+    if not rows:
+        raise WorkloadGovernanceError("no live district features to score")
+    cutoff_dt = feat._period_end_dt(live["cutoff_period"])
+    query_rows = [[round(float(v), 6) for v in r["vector"]] for r in rows]
+
+    columns = [ColumnDef(name=n) for n in feat.FEATURE_NAMES]
+    svh = hashlib.sha256(
+        f'{live["cutoff_period"]}:{len(rows)}:{feat.SCHEMA_VERSION}'.encode()).hexdigest()[:16]
+
+    job = PredictionJobInput(
+        routing_ctx=RoutingContext(event=InputEvent.FIR_APPROVED, subject_kind=feat.SUBJECT_KIND,
+                                   has_verified_geography=True, has_verified_time=True,
+                                   has_verified_head=True),
+        task=ModelTask.STATION_WORKLOAD_BAND, requested_backend=BackendKind.TABFM,
+        subject_kind=feat.SUBJECT_KIND, subject_ids=[str(r["district_id"]) for r in rows],
+        columns=columns, query_rows=query_rows,
+        feature_schema_version=feat.SCHEMA_VERSION, model_version=WORKLOAD_MODEL_VERSION,
+        feature_schema_digest=f"wl-schema-{schema_id}", observation_cutoff=live["cutoff"],
+        source_version_hash=svh, context_x=context_x, context_y=context_y,
+        output_schema={"n_bands": ds.n_bands})
+
+    runtime = PredictionRuntime(adapter=SignedHttpsAdapter(), repository=InMemoryDataStore())
+    handle = runtime.submit(job)                              # signed dispatch to real SageMaker
+    terminal = {"completed", "failed", "rejected", "timed_out", "cancelled"}
+    deadline = time.time() + poll_timeout_s
+    result = None
+    while time.time() < deadline:
+        result = runtime.collect(handle)
+        if result.state in terminal:
+            break
+        time.sleep(poll_interval_s)
+    if result is None or result.state != "completed" or not result.result:
+        raise WorkloadGovernanceError(
+            "SageMaker TabFM workload run did not complete: "
+            f"state={getattr(result, 'state', None)} "
+            f"reason={getattr(result, 'rejected_reason', None)}")
+
+    res = result.result                                      # validated PredictionResultEnvelope
+    device = getattr(res.actual_device, "value", str(res.actual_device))
+    gpu = res.gpu_name
+    digest = res.model_artifact_digest
+    preds = res.predictions or []
+    backend_label = f"google-tabfm-v1 ({device}/{gpu})"
+
+    # Register/serve the governed model with the REAL backend/device evidence.
+    ts_id = register_training_snapshot(conn, ds, feature_schema_version_id=schema_id, actor=actor)
+    metrics = {"backend": "tabfm", "actual_device": device, "gpu_name": gpu,
+               "model_artifact_digest": digest, "served_via": "aws_sagemaker_async_t4",
+               "adapter_request_id": res.request_id, "runtime_ms": res.runtime_ms,
+               "cold_start_ms": res.cold_start_ms, "peak_gpu_mem_mb": res.peak_gpu_mem_mb}
+    mv_id = ensure_workload_model(conn, schema_id, training_dataset_snapshot_id=ts_id,
+                                  metrics=metrics, backend=backend_label,
+                                  lifecycle="active", actor=actor)
+
+    src_base = {"canonical_layer": "CaseVersion", "throughput_layer": "ChargesheetDetails",
+                "as_of": cutoff_dt.isoformat(), "feature_schema_version_id": schema_id,
+                "task": feat.TASK, "backend": "google-tabfm-v1", "actual_device": device,
+                "gpu_name": gpu, "model_artifact_digest": digest, "dispatch": "sagemaker_async"}
+    snapshots = requests = results = reused = superseded = 0
+    for i, row in enumerate(rows):
+        pred = preds[i] if i < len(preds) else {}
+        probs = pred.get("band_probabilities") or [0.0] * ds.n_bands
+        band = int(pred.get("band_ordinal", int(np.argmax(probs))))
+        band = min(max(band, 0), ds.n_bands - 1)
+        conf = float(max(probs)) if probs else 0.0
+        src = {**src_base, "unit_id": row["unit_id"], "district_id": row["district_id"]}
+        snap = build_workload_snapshot(conn, schema_id=schema_id, unit_id=row["unit_id"],
+                                       cutoff=cutoff_dt, values=row["features"],
+                                       source_versions=src, actor=actor)
+        snapshots += 0 if snap["reused"] else 1
+        reused += 1 if snap["reused"] else 0
+        superseded += snap.get("superseded_prior", 0)
+        req_id, created_req = _get_or_create_request(conn, mv_id, snap["feature_snapshot_id"], actor)
+        requests += 1 if created_req else 0
+        output = {"workload_band": ds.bands[band], "band_ordinal": band,
+                  "band_probabilities": {ds.bands[b]: round(float(probs[b]), 4)
+                                         for b in range(ds.n_bands)},
+                  "abstained": bool(conf < 0.34), "cutoff_period": live["cutoff_period"],
+                  "recent_case_volume": row["features"]["wl_recent_case_volume"],
+                  "aggregate_subject": "police_district", "district_id": row["district_id"],
+                  "district_name": row["unit_name"], "actual_backend": "tabfm",
+                  "actual_device": device, "gpu_name": gpu, "model_artifact_digest": digest,
+                  "served_via": "aws_sagemaker_async"}
+        explanation = {"method": (f"REAL Google TabFM v1 in-context classifier on AWS SageMaker "
+                                  f"({device}, {gpu}); fail-closed validated; ordinal band from "
+                                  "pre-cutoff district volume/trend/seasonality/throughput features"),
+                       "top_features": ["wl_recent_case_volume", "wl_trailing_year_volume",
+                                        "wl_prioryear_same_quarter", "wl_trend_slope"],
+                       "aggregate_only": True, "not_person_level": True,
+                       "model_artifact_digest": digest}
+        _res_id, created_res = _write_result(conn, req_id, mv_id, snap["feature_snapshot_id"],
+                                             output=output, explanation=explanation, confidence=conf)
+        results += 1 if created_res else 0
+
+    audit.record(audit.Action.MODEL_RUN, "workload_sagemaker", mv_id, actor=actor, conn=conn,
+                 detail={"model_version_id": mv_id, "backend": "tabfm", "device": device,
+                         "gpu_name": gpu, "model_artifact_digest": digest, "districts": len(rows),
+                         "results_new": results, "adapter_request_id": res.request_id})
+    return {"model_version_id": mv_id, "feature_schema_version_id": schema_id,
+            "training_dataset_snapshot_id": ts_id, "backend": "google-tabfm-v1",
+            "actual_device": device, "gpu_name": gpu, "model_artifact_digest": digest,
+            "cutoff": live["cutoff_period"], "districts": len(rows), "snapshots_new": snapshots,
+            "snapshots_reused": reused, "requests_new": requests, "results_new": results,
+            "superseded_prior": superseded, "runtime_ms": res.runtime_ms,
+            "cold_start_ms": res.cold_start_ms, "peak_gpu_mem_mb": res.peak_gpu_mem_mb,
+            "adapter_request_id": res.request_id}

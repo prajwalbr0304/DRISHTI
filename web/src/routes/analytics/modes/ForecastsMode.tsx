@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, CalendarClock, CheckCircle2, Gauge, Layers, Radar,
+  Activity, AlertTriangle, CalendarClock, CheckCircle2, Cpu, Gauge, Layers, Radar,
   ShieldCheck, Sparkles, Target, TrendingUp, XCircle,
 } from "lucide-react";
 import type { BacktestResponse, ForecastMetric, FreshnessResponse, LayerPrediction } from "@/api/types";
@@ -115,6 +115,9 @@ export function ForecastsMode() {
   const timesfm = layers.find((l) => l.layer === "timesfm");
   const trajectory = ((timesfm?.features?.trajectory as TrajectoryStep[] | undefined) ?? []);
   const history = (timesfm?.features?.history_tail as number[] | undefined) ?? undefined;
+  const tsGpu = timesfm?.features?.gpu_name as string | undefined;
+  const tsDigest = timesfm?.features?.model_artifact_digest as string | undefined;
+  const tsOnGpu = (timesfm?.features?.actual_device as string | undefined) === "cuda";
   const fusedLayer = layers.find((l) => l.layer === "fused");
   const ff = fusedLayer?.features ?? {};
   const riskClass = (ff.tabfm_risk_class as string | undefined) ?? (ff.risk_class as string | undefined) ?? null;
@@ -215,6 +218,16 @@ export function ForecastsMode() {
           </p>
         }
       >
+        {tsOnGpu && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-12">
+            <Badge variant="low">
+              <Cpu className="size-3" /> Real Google TimesFM 2.5 · {tsGpu ?? "GPU"} (CUDA)
+            </Badge>
+            <span className="text-content-dim">
+              served live via AWS SageMaker{tsDigest ? ` · weights ${tsDigest.slice(0, 12)}…` : ""}
+            </span>
+          </div>
+        )}
         {trajectory.length > 0 && <FanChart trajectory={trajectory} history={history} height={300} />}
       </Widget>
 

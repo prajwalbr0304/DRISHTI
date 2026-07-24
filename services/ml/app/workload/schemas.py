@@ -57,6 +57,14 @@ class WorkloadPredictionRow(BaseModel):
     is_stale: bool = False
     model_version: Optional[str] = None
     created_at: Optional[str] = None
+    # Real-backend/device provenance (populated when served via the AWS SageMaker
+    # TabFM path; null for the CPU/in-context fallback) — surfaced so the UI can
+    # show "computed on <GPU>" honestly.
+    actual_backend: Optional[str] = None
+    actual_device: Optional[str] = None
+    gpu_name: Optional[str] = None
+    served_via: Optional[str] = None
+    model_artifact_digest: Optional[str] = None
 
 
 class WorkloadPredictionListResponse(BaseModel):

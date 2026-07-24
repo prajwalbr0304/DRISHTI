@@ -23,7 +23,7 @@ from typing import Optional
 import numpy as np
 from psycopg2.extras import Json, execute_values
 
-from .. import models
+from .. import db, models
 from ..geo import trends
 from . import features as feat
 
@@ -129,8 +129,94 @@ class TimesFMForecaster(TrajectoryForecaster):
         gc.collect()
 
 
+class SageMakerTimesFMForecaster(TrajectoryForecaster):
+    """Real Google TimesFM 2.5 on AWS SageMaker (T4/CUDA) via the protected
+    adapter. Same TrajectoryForecaster contract, so the existing pipeline +
+    persistence are unchanged. Fails closed: a result that is not TimesFM on CUDA
+    raises, so a CPU fallback can never be written as the real TimesFM layer.
+    Records the actual device/gpu/digest for the UI provenance banner. Requires
+    DRISHTI_AWS_ADAPTER_URL/SECRET + a live SageMaker endpoint."""
+    name = "drishti-timesfm-2.5-200m"
+    family = "foundation"
+    _MAX_HORIZON = 12
+    _MAX_CONTEXT = 512
+
+    def __init__(self, poll_timeout_s: int = 300, poll_interval_s: int = 5):
+        from ..predict.adapter import SignedHttpsAdapter
+        self._adapter = SignedHttpsAdapter()
+        self._poll_timeout_s = poll_timeout_s
+        self._poll_interval_s = poll_interval_s
+        self.actual_device: Optional[str] = None
+        self.gpu_name: Optional[str] = None
+        self.model_artifact_digest: Optional[str] = None
+
+    def forecast(self, counts, months, horizon: int) -> list[dict]:
+        import time
+        import uuid
+
+        from ..predict.envelope import (BackendKind, ColumnDef, DispatchMode, JobState,
+                                        ModelTask, PredictionRequestEnvelope)
+
+        import calendar
+
+        h = int(min(max(horizon, 1), self._MAX_HORIZON))
+        series = [float(c) for c in counts[-self._MAX_CONTEXT:]]
+        _y, _m = map(int, months[-1].split("-"))
+        cutoff_iso = dt.datetime(_y, _m, calendar.monthrange(_y, _m)[1], 23, 59, 59,
+                                 tzinfo=dt.timezone.utc).isoformat()
+        env = PredictionRequestEnvelope(
+            request_id=uuid.uuid4().hex,
+            idempotency_key=f"timesfm:{months[-1]}:{h}:{len(series)}",
+            task=ModelTask.TIMESFM_COUNT_FORECAST, requested_backend=BackendKind.TIMESFM,
+            feature_schema_version="forecast-timesfm-1", model_version="timesfm-2.5-200m",
+            feature_schema_digest="ts-series", subject_kind="district", subject_ids=[],
+            observation_cutoff=cutoff_iso,
+            source_version_hash=f"ts-{months[-1]}-{len(series)}",
+            columns=[ColumnDef(name="count")], query_rows=[[v] for v in series],
+            output_schema={"horizon": h, "freq": "M"}, dispatch_mode=DispatchMode.SAGEMAKER_ASYNC)
+        env.validate_shapes()
+        rid = self._adapter.dispatch(env)
+        deadline = time.time() + self._poll_timeout_s
+        res = None
+        while time.time() < deadline:
+            res = self._adapter.poll(rid)
+            if res.state in (JobState.COMPLETED, JobState.FAILED, JobState.TIMED_OUT,
+                             JobState.CANCELLED):
+                break
+            time.sleep(self._poll_interval_s)
+        if res is None or res.state != JobState.COMPLETED:
+            raise RuntimeError(f"TimesFM SageMaker dispatch did not complete: "
+                               f"state={getattr(res, 'state', None)} "
+                               f"error={getattr(res, 'error_code', None)}")
+        dev = res.actual_device.value if res.actual_device else None
+        if res.actual_backend != BackendKind.TIMESFM or dev != "cuda":
+            raise RuntimeError(f"TimesFM returned {res.actual_backend}/{dev} — not real "
+                               "TimesFM on CUDA (fail closed).")
+        self.actual_device, self.gpu_name = dev, res.gpu_name
+        self.model_artifact_digest = res.model_artifact_digest
+        periods = _next_periods(months[-1], h)
+        out = []
+        for k, pred in enumerate(res.predictions[:h]):
+            q = pred.get("quantiles") or []
+            p25 = 0.5 * (float(q[2]) + float(q[3])) if len(q) >= 4 else float(pred.get("p10", 0.0))
+            p75 = 0.5 * (float(q[7]) + float(q[8])) if len(q) >= 9 else float(pred.get("p90", 0.0))
+            median = float(pred.get("p50", pred.get("point", 0.0)))
+            out.append({"step": k + 1, "period": periods[k],
+                        "median": round(median, 2),
+                        "p10": round(max(0.0, float(pred.get("p10", 0.0))), 2),
+                        "p25": round(max(0.0, p25), 2),
+                        "p75": round(p75, 2),
+                        "p90": round(float(pred.get("p90", 0.0)), 2)})
+        return out
+
+
 def get_forecaster() -> TrajectoryForecaster:
-    """Prefer the real TimesFM 2.5 model; fall back to the seasonal forecaster."""
+    """Resolve the trajectory forecaster. Order: explicit SageMaker T4 path
+    (DRISHTI_TIMESFM_SAGEMAKER=true) -> real local TimesFM 2.5 (if importable) ->
+    always-available seasonal fallback."""
+    import os
+    if os.getenv("DRISHTI_TIMESFM_SAGEMAKER", "").strip().lower() == "true":
+        return SageMakerTimesFMForecaster()
     try:
         import timesfm  # noqa: F401
         return TimesFMForecaster()
@@ -175,6 +261,10 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
         lon, lat = centroids.get(d, (None, None))
         features_json = {"layer": "timesfm", "model": fc.name, "trajectory": traj,
                          "history_tail": counts[-12:]}
+        if getattr(fc, "actual_device", None):   # real SageMaker T4 provenance
+            features_json.update(actual_device=fc.actual_device, gpu_name=fc.gpu_name,
+                                 model_artifact_digest=fc.model_artifact_digest,
+                                 served_via="aws_sagemaker_async")
         trajectories.append({"district_id": d, "district": names.get(d),
                              "next_median": s0["median"], "confidence": conf, "trajectory": traj})
         rows.append((mv_id, d, head_id, start, end, s0["median"],
@@ -203,3 +293,79 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
         fc.release()
     return {"written": len(rows), "model": model_name, "model_version_id": mv_id,
             "horizon": horizon, "trajectories": trajectories}
+
+
+def forecast_trajectories_safe(head_id: Optional[int] = None, horizon: int = 6) -> dict:
+    """Connection-safe TimesFM layer for the slow SageMaker path.
+
+    The SageMaker async round-trips take minutes across all districts, which would
+    idle-timeout a single held-open RDS connection (as the full pipeline hit). So:
+      1. read every district series with a short-lived read connection;
+      2. run the forecasts with NO DB connection held (the slow part);
+      3. persist the timesfm layer with a fresh write connection.
+    Writes the same CrimePrediction layer='timesfm' rows as ``forecast_trajectories``
+    (+ real device/gpu/digest provenance when served on the T4)."""
+    with db.ro_conn() as conn:
+        centroids = feat.district_centroids(conn)
+        names = feat.district_names(conn)
+        with conn.cursor() as cur:
+            cur.execute('SELECT DISTINCT u."DistrictID" FROM "Unit" u '
+                        'WHERE u."DistrictID" IS NOT NULL')
+            district_ids = sorted(int(r[0]) for r in cur.fetchall())
+        series = {}
+        for d in district_ids:
+            periods, counts = trends.monthly_series(conn, district_id=d, head_id=head_id,
+                                                    valid_geo_only=True)
+            if len(counts) >= _SEASON + 2:
+                series[d] = (periods, counts)
+
+    fc = get_forecaster()                                   # SageMaker T4 when flagged
+    done = []
+    for d, (periods, counts) in series.items():
+        traj = fc.forecast(counts, periods, horizon)        # no DB connection held
+        done.append((d, periods, counts, traj, _confidence(traj[0])))
+    device = getattr(fc, "actual_device", None)
+    gpu = getattr(fc, "gpu_name", None)
+    digest = getattr(fc, "model_artifact_digest", None)
+
+    with db.rw_conn() as conn:
+        mv_id = models.get_or_create_model_version(
+            conn, fc.name, "forecasting", "1.0.0", framework=fc.family,
+            hyperparameters={"horizon": horizon, "season": _SEASON,
+                             "served_via": "aws_sagemaker_async" if device else "local"})
+        rows = []
+        for d, periods, counts, traj, conf in done:
+            s0 = traj[0]
+            y, m = map(int, s0["period"].split("-"))
+            start = dt.datetime(y, m, 1, tzinfo=dt.timezone.utc)
+            end = (start + dt.timedelta(days=31 * horizon)).replace(day=1)
+            lon, lat = centroids.get(d, (None, None))
+            features_json = {"layer": "timesfm", "model": fc.name, "trajectory": traj,
+                             "history_tail": counts[-12:], "district": names.get(d)}
+            if device:
+                features_json.update(actual_device=device, gpu_name=gpu,
+                                     model_artifact_digest=digest,
+                                     served_via="aws_sagemaker_async")
+            rows.append((mv_id, d, head_id, start, end, s0["median"],
+                         round(min(1.0, s0["median"] / (max(counts) or 1)), 5), conf,
+                         Json(features_json), lon, lon, lat))
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM "CrimePrediction" WHERE "Features"->>\'layer\'=\'timesfm\' '
+                        'AND "CrimeHeadID" IS NOT DISTINCT FROM %s', (head_id,))
+            if rows:
+                execute_values(
+                    cur,
+                    'INSERT INTO "CrimePrediction" ("ModelVersionID","DistrictID","CrimeHeadID",'
+                    '"PredictionStart","PredictionEnd","PredictedCount","Probability","Confidence",'
+                    '"Features","geom") VALUES %s',
+                    rows,
+                    template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                             "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
+                    page_size=200)
+            models.log_inference(conn, mv_id, ref_table="CrimePrediction",
+                                inputs={"head_id": head_id, "horizon": horizon},
+                                outputs={"districts": len(rows), "model": fc.name,
+                                         "actual_device": device, "gpu_name": gpu})
+    return {"written": len(rows), "model": fc.name, "model_version_id": mv_id,
+            "actual_device": device, "gpu_name": gpu, "model_artifact_digest": digest,
+            "districts": len(done)}
