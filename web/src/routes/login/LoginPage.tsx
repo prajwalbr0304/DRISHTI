@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowRight, FlaskConical, KeyRound, Landmark, LineChart, Loader2, LogIn, RotateCw,
+  ArrowRight, KeyRound, Landmark, LineChart, Loader2, LogIn, RotateCw,
   ScanEye, Search, ShieldAlert, ShieldCheck, Siren, TriangleAlert, Users,
   type LucideIcon,
 } from "lucide-react";
-import { runtime } from "@/config/runtime";
 import { ROLES, ROLE_LIST, type UserRole } from "@/config/roles";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
@@ -89,7 +88,7 @@ export function LoginPage() {
       <HeroPanel />
       <main className="relative flex items-center justify-center px-5 py-10 sm:px-8">
         <div className="login-rise w-full max-w-md">
-          {/* header: mobile brand + demo badge */}
+          {/* header: mobile brand */}
           <div className="mb-6 flex items-center justify-between gap-3">
             <Link to="/" className="flex items-center gap-2 lg:hidden" aria-label="DRISHTI home">
               <span className="grid size-9 place-items-center rounded-control bg-primary/15 text-primary">
@@ -97,9 +96,6 @@ export function LoginPage() {
               </span>
               <span className="text-16 font-semibold tracking-tight text-content">DRISHTI</span>
             </Link>
-            <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-severity-medium/40 bg-severity-medium/10 px-2.5 py-1 text-11 font-medium text-severity-medium">
-              <FlaskConical className="size-3" /> {runtime.demoBadge}
-            </span>
           </div>
 
           <h1 className="text-28 font-semibold tracking-tight text-content">

@@ -4,7 +4,6 @@ import { TimeScrubber } from "@/components/shell/TimeScrubber";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { NotificationsBell } from "@/components/shell/NotificationsBell";
 import { ProfileMenu } from "@/components/shell/ProfileMenu";
-import { SyntheticBadge } from "@/components/shell/SyntheticBadge";
 
 const isMac =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -37,7 +36,6 @@ export function TopBar() {
         <div className="lg:hidden">
           <TimeScrubber />
         </div>
-        <SyntheticBadge />
         <ThemeToggle />
         <NotificationsBell />
         <ProfileMenu />
