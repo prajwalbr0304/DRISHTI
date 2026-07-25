@@ -4,13 +4,13 @@
 Examples
 --------
 Full state-wide load into the database referenced by DATABASE_URL:
-    python generate.py --truncate
+    python scripts/generate.py --truncate
 
 Smaller reproducible load:
-    python generate.py --firs 20000 --workers 4 --seed 7 --truncate
+    python scripts/generate.py --firs 20000 --workers 4 --seed 7 --truncate
 
 Validate the generation logic locally WITHOUT a database (no inserts):
-    python generate.py --dry-run 5000
+    python scripts/generate.py --dry-run 5000
 
 Database connection
 -------------------
@@ -22,8 +22,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import sys
 from collections import Counter
+
+# This CLI entry point lives in scripts/; make the repo root importable so the
+# `datagen` package resolves regardless of the current working directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datagen import cases
 from datagen.config import GenConfig

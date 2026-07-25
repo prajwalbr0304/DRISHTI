@@ -1,7 +1,7 @@
 """Configuration for the data generation engine.
 
 All sizes, the random seed, the date window and the database connection are
-centralised here. Values can be overridden from the CLI (see generate.py).
+centralised here. Values can be overridden from the CLI (see scripts/generate.py).
 """
 from __future__ import annotations
 

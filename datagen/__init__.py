@@ -14,7 +14,7 @@ skewed (Zipf/power-law) crime-type frequencies, Poisson event counts, Gaussian
 spatial clustering around police-station jurisdictions, gang co-offending
 networks, serial offenders and geographic/temporal hotspots.
 
-Run with:  python generate.py --help
+Run with:  python scripts/generate.py --help
 """
 
 __version__ = "1.0.0"

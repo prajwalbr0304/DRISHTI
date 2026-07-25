@@ -42,7 +42,7 @@ connection; it is server-side only and is never shipped to the browser.
 | Layer | Path | Stack |
 | --- | --- | --- |
 | Database schema & migrations | `services/ml/sql/` | PostgreSQL 15+ (AWS RDS), PostGIS, pgvector, pg_trgm |
-| Synthetic data generator | `generate.py`, `datagen/` | Python, psycopg2 (COPY) |
+| Synthetic data generator | `scripts/generate.py`, `datagen/` | Python, psycopg2 (COPY) |
 | ML / analytics API | `services/ml/` | FastAPI, Uvicorn, scikit-learn, NetworkX, (optional) PyTorch / TabFM / TimesFM |
 | Web front end | `web/` | Vite, React 18, TypeScript, Tailwind, deck.gl, MapLibre |
 | Deployed serving | `infra/catalyst/` | Zoho Catalyst: Slate, Auth, API Gateway, AppSail, Data Store, Stratus |
@@ -65,7 +65,9 @@ connection; it is server-side only and is never shipped to the browser.
 
 ```
 DRISHTI/
-├─ generate.py                    # synthetic data generator (CLI entry point)
+├─ scripts/                       # operational + data-generation CLIs
+│  ├─ generate.py                 # synthetic data generator (CLI entry point)
+│  └─ generate_v2.py              # scenario-driven generator + safe loader
 ├─ datagen/                       # data-generation engine
 ├─ requirements.txt               # deps for the data generator
 ├─ services/ml/                   # FastAPI ML/analytics service
@@ -175,13 +177,13 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Validate the generator with NO database writes:
-python generate.py --dry-run 5000
+python scripts/generate.py --dry-run 5000
 
 # Load a reproducible sample (wipes target tables first):
-python generate.py --firs 20000 --workers 4 --seed 7 --truncate
+python scripts/generate.py --firs 20000 --workers 4 --seed 7 --truncate
 
 # Or a full state-wide load:
-python generate.py --truncate
+python scripts/generate.py --truncate
 ```
 
 Useful flags: `--firs N`, `--workers N`, `--seed N`, `--start/--end YYYY-MM-DD`,
@@ -238,7 +240,7 @@ npm run preview    # serve the build at http://localhost:4173
 
 1. Create root `.env` with `DATABASE_URL` (step 1).
 2. Run the SQL files in order (step 2).
-3. `pip install -r requirements.txt` then `python generate.py --firs 20000 --truncate` (step 3).
+3. `pip install -r requirements.txt` then `python scripts/generate.py --firs 20000 --truncate` (step 3).
 4. `cd services/ml && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000` (step 4).
 5. `cp web/.env.example web/.env`, then `cd web && npm install && npm run dev` (step 5).
 6. Open http://localhost:5173.

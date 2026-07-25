@@ -8,20 +8,20 @@ repair identities -> DB-side integrity checks -> record run.
 Examples
 --------
 Read-only preflight only (no build, no writes):
-    python generate_v2.py --preflight-only
+    python scripts/generate_v2.py --preflight-only
 
 Offline dry-run + full validation of the golden fixture (NO database writes):
-    python generate_v2.py --mode golden --validate-only
+    python scripts/generate_v2.py --mode golden --validate-only
 
 Apply migrations 005-009 to the dev Supabase (additive, safe):
-    python generate_v2.py --migrate --no-build
+    python scripts/generate_v2.py --migrate --no-build
 
 Load + validate the golden fixture (destructive synthetic reload, gated):
-    python generate_v2.py --mode golden --migrate --truncate \
+    python scripts/generate_v2.py --mode golden --migrate --truncate \
         --confirm-synthetic-dev-target --write-fixture-files --run-id golden-001
 
 Load the 100k statistical/performance fixture (after golden passes):
-    python generate_v2.py --mode performance --firs 100000 --truncate \
+    python scripts/generate_v2.py --mode performance --firs 100000 --truncate \
         --confirm-synthetic-dev-target --run-id perf-001
 """
 from __future__ import annotations
@@ -31,9 +31,11 @@ import os
 import sys
 import time
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+# This CLI entry point lives in scripts/; the repo root is its parent directory.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SQL_DIR = os.path.join(REPO_ROOT, "services", "ml", "sql")
 FIXTURE_ROOT = os.path.join(REPO_ROOT, "datagen", "fixtures")
+sys.path.insert(0, REPO_ROOT)  # make the `datagen` package importable
 
 MODE_DEFAULT_FIRS = {"golden": 2000, "statistical": 60000, "performance": 100000}
 

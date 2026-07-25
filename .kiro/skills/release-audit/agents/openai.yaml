@@ -1,4 +1,0 @@
-interface:
-  display_name: "DRISHTI Release Audit"
-  short_description: "Fail closed on incomplete mandatory release evidence"
-  default_prompt: "Use $release-audit to validate the DRISHTI strict release manifest and report every incomplete mandatory gate."

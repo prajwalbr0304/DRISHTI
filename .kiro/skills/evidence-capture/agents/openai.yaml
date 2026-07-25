@@ -1,4 +1,0 @@
-interface:
-  display_name: "DRISHTI Evidence Capture"
-  short_description: "Record redacted machine-readable release evidence"
-  default_prompt: "Use $evidence-capture to record redacted evidence for the current DRISHTI phase."

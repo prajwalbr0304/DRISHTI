@@ -187,7 +187,7 @@ def create_backup_marker(conn, run_key: str, location: str, log=print) -> None:
         json.dump({"backup_marker": True, "run_key": run_key,
                    "captured_at": dt.datetime.utcnow().isoformat() + "Z",
                    "pre_reload_counts": counts,
-                   "restore": "regenerate via generate_v2.py with recorded seed, "
+                   "restore": "regenerate via scripts/generate_v2.py with recorded seed, "
                               "or restore a pg_dump taken before reload"}, fh, indent=1)
     with conn.cursor() as cur:
         cur.execute(

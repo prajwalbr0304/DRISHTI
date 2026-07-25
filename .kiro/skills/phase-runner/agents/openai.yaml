@@ -1,4 +1,0 @@
-interface:
-  display_name: "DRISHTI Phase Runner"
-  short_description: "Run bounded DRISHTI phase preflight and handoff"
-  default_prompt: "Use $phase-runner to preflight the selected DRISHTI phase and create its execution handoff."
