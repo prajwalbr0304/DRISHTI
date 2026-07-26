@@ -35,7 +35,7 @@
 |---|---|---|
 | **Deployed Solution Link—Zoho Catalyst** | **[https://drishti-frvfpunc.onslate.in/](https://drishti-frvfpunc.onslate.in/)** | ✅ Official evaluation deployment; HTTP 200 verified on 26 July 2026 |
 | **GitHub Public Repository** | [https://github.com/prajwalbr0304/DRISHTI](https://github.com/prajwalbr0304/DRISHTI) | ✅ Public repository |
-| **Demo Video—3 minutes** | [https://youtu.be/cp27iqfYYyA](https://youtu.be/cp27iqfYYyA) | ✅ Public demo video |
+| **Demo Video** | [https://youtu.be/cp27iqfYYyA](https://youtu.be/cp27iqfYYyA) | ✅ Public demo video |
 
 > [!IMPORTANT]
 > The evaluation link above is the Zoho Catalyst Slate deployment. DRISHTI must be evaluated using that link. Do not substitute a deployment on another hosting platform.
@@ -1780,7 +1780,7 @@ The repository includes separate AppSail build/deploy and Data Store import runb
 - [x] Official Catalyst deployed solution link.
 - [x] Make the GitHub repository publicly accessible.
 - [x] Publish the three-minute demo video: [https://youtu.be/cp27iqfYYyA](https://youtu.be/cp27iqfYYyA).
-- [ ] Perform one final incognito walkthrough of the Catalyst URL.
+- [x] Perform one final incognito walkthrough of the Catalyst URL.
 
 ---
 
