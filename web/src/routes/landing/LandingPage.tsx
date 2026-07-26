@@ -15,6 +15,10 @@ import "@/routes/landing/landing.css";
 
 const HERO_VIDEO = "/landing/drishti-hero.mp4";
 const HERO_POSTER = "/landing/drishti-hero-poster.webp";
+const INCIDENT_VIDEO = "/landing/drishti-capability-02.mp4";
+const INCIDENT_POSTER = "/landing/drishti-capability-02-poster.webp";
+const CLOSING_VIDEO = "/landing/drishti-closing-film.mp4";
+const CLOSING_POSTER = "/landing/drishti-closing-poster.webp";
 
 const CAPABILITIES = [
   {
@@ -37,25 +41,68 @@ const CAPABILITIES = [
   },
 ] as const;
 
+const OPERATING_SEQUENCE = [
+  {
+    index: "01",
+    title: "Detect",
+    copy: "A location-aware incident enters the operational picture.",
+  },
+  {
+    index: "02",
+    title: "Connect",
+    copy: "People, cases, evidence and geography resolve into one graph.",
+  },
+  {
+    index: "03",
+    title: "Explain",
+    copy: "Models surface patterns with provenance, confidence and limits.",
+  },
+  {
+    index: "04",
+    title: "Review",
+    copy: "An authorised officer decides the next operational action.",
+  },
+] as const;
+
+const PLATFORM_FACTS = [
+  { value: "100,003", label: "case records indexed" },
+  { value: "206,026", label: "governed graph records" },
+  { value: "32", label: "districts represented" },
+  { value: "100%", label: "human-reviewed actions" },
+] as const;
+
 export function LandingPage() {
   const heroVideoRef = useRef<HTMLVideoElement>(null);
+  const incidentVideoRef = useRef<HTMLVideoElement>(null);
+  const closingVideoRef = useRef<HTMLVideoElement>(null);
   const [videoReady, setVideoReady] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(true);
+  const [incidentReady, setIncidentReady] = useState(false);
+  const [incidentPlaying, setIncidentPlaying] = useState(true);
+  const [closingReady, setClosingReady] = useState(false);
+  const [closingPlaying, setClosingPlaying] = useState(true);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const applyMotionPreference = () => {
-      const video = heroVideoRef.current;
-      if (!video) return;
+      const videos = [
+        { element: heroVideoRef.current, setPlaying: setVideoPlaying, stillFrame: 9 },
+        { element: incidentVideoRef.current, setPlaying: setIncidentPlaying, stillFrame: 9.2 },
+        { element: closingVideoRef.current, setPlaying: setClosingPlaying, stillFrame: 5 },
+      ];
 
-      if (query.matches) {
-        video.pause();
-        video.currentTime = Math.min(9, video.duration || 9);
-        setVideoPlaying(false);
-      } else {
-        void video.play().then(() => setVideoPlaying(true)).catch(() => setVideoPlaying(false));
-      }
+      videos.forEach(({ element, setPlaying, stillFrame }) => {
+        if (!element) return;
+
+        if (query.matches) {
+          element.pause();
+          element.currentTime = Math.min(stillFrame, element.duration || stillFrame);
+          setPlaying(false);
+        } else {
+          void element.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+        }
+      });
     };
 
     applyMotionPreference();
@@ -63,15 +110,17 @@ export function LandingPage() {
     return () => query.removeEventListener("change", applyMotionPreference);
   }, []);
 
-  const toggleHeroVideo = () => {
-    const video = heroVideoRef.current;
+  const toggleVideo = (
+    video: HTMLVideoElement | null,
+    setPlaying: (playing: boolean) => void,
+  ) => {
     if (!video) return;
 
     if (video.paused) {
-      void video.play().then(() => setVideoPlaying(true)).catch(() => setVideoPlaying(false));
+      void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
     } else {
       video.pause();
-      setVideoPlaying(false);
+      setPlaying(false);
     }
   };
 
@@ -88,6 +137,7 @@ export function LandingPage() {
 
         <nav className="landing-nav" aria-label="Landing page navigation">
           <a href="#platform">Platform</a>
+          <a href="#workflow">Workflow</a>
           <a href="#capabilities">Capabilities</a>
           <a href="#principles">Principles</a>
         </nav>
@@ -159,7 +209,7 @@ export function LandingPage() {
           <button
             className="landing-film-control"
             type="button"
-            onClick={toggleHeroVideo}
+            onClick={() => toggleVideo(heroVideoRef.current, setVideoPlaying)}
             aria-label={videoPlaying ? "Pause hero film" : "Play hero film"}
           >
             {videoPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
@@ -193,37 +243,89 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="landing-film-chapter" aria-labelledby="second-film-title">
+        <section className="landing-film-chapter" id="workflow" aria-labelledby="second-film-title">
           <div className="landing-film-chapter-copy">
-            <p className="landing-kicker">02 / Product film</p>
-            <h2 id="second-film-title">The next operational story lives here.</h2>
+            <p className="landing-kicker">02 / Signal to decision</p>
+            <h2 id="second-film-title">One incident. Every relevant connection.</h2>
             <p>
-              This full-bleed stage is prepared for the next DRISHTI film. It keeps the same cinematic
-              proportions, overlay system and responsive behavior as the opening experience.
+              A single incident becomes a shared, explainable picture: location, people, related cases,
+              evidence and forecast signals are connected before an authorised officer reviews the
+              recommended response.
             </p>
+
+            <ol className="landing-operating-sequence" aria-label="DRISHTI operational sequence">
+              {OPERATING_SEQUENCE.map((step) => (
+                <li key={step.index}>
+                  <span>{step.index}</span>
+                  <div>
+                    <strong>{step.title}</strong>
+                    <small>{step.copy}</small>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
 
-          {/*
-            SECOND FILM SLOT
-            Replace this reserved-media block with:
-            <video autoPlay muted loop playsInline poster="/landing/your-poster.webp">
-              <source src="/landing/drishti-capability-02.mp4" type="video/mp4" />
+          <div className="landing-chapter-media">
+            <video
+              ref={incidentVideoRef}
+              className={incidentReady ? "landing-chapter-video is-ready" : "landing-chapter-video"}
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              poster={INCIDENT_POSTER}
+              aria-label="Animated DRISHTI incident analysis across Karnataka"
+              onCanPlay={() => setIncidentReady(true)}
+              onPlay={() => setIncidentPlaying(true)}
+              onPause={() => setIncidentPlaying(false)}
+            >
+              <source src={INCIDENT_VIDEO} type="video/mp4" />
             </video>
-          */}
-          <div className="landing-reserved-media" aria-label="Reserved stage for a future DRISHTI product film">
-            <div className="landing-reserved-grid" aria-hidden="true" />
-            <div className="landing-reserved-orbit landing-reserved-orbit--one" aria-hidden="true" />
-            <div className="landing-reserved-orbit landing-reserved-orbit--two" aria-hidden="true" />
-            <div className="landing-reserved-core" aria-hidden="true">
-              <MapPinned />
+
+            <div className="landing-chapter-scrim" aria-hidden="true" />
+            <div className="landing-chapter-grid" aria-hidden="true" />
+            <div className="landing-film-noise" aria-hidden="true" />
+
+            <div className={incidentReady ? "landing-chapter-loader is-hidden" : "landing-chapter-loader"} role="status">
+              <span />
+              Resolving incident graph
             </div>
-            <div className="landing-reserved-label">
-              <span>FILM MODULE 02</span>
-              <strong>Reserved for the next visual sequence</strong>
+
+            <div className="landing-chapter-index">
+              <span>OPERATIONAL SEQUENCE 02</span>
+              <strong>Karnataka incident intelligence</strong>
             </div>
-            <div className="landing-reserved-status">
-              <i />
-              Stage prepared
+
+            <dl className="landing-chapter-meta">
+              <div>
+                <dt>Area</dt>
+                <dd>Karnataka</dd>
+              </div>
+              <div>
+                <dt>Signal</dt>
+                <dd>Incident detected</dd>
+              </div>
+              <div>
+                <dt>Control</dt>
+                <dd>Human review required</dd>
+              </div>
+            </dl>
+
+            <strong className="landing-chapter-word" aria-hidden="true">CONNECTED</strong>
+
+            <div className="landing-chapter-footer">
+              <p>From incident to coordinated understanding.</p>
+              <button
+                className="landing-chapter-control"
+                type="button"
+                onClick={() => toggleVideo(incidentVideoRef.current, setIncidentPlaying)}
+                aria-label={incidentPlaying ? "Pause incident film" : "Play incident film"}
+              >
+                {incidentPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                <span>{incidentPlaying ? "Pause sequence" : "Play sequence"}</span>
+              </button>
             </div>
           </div>
         </section>
@@ -255,6 +357,25 @@ export function LandingPage() {
           </div>
         </section>
 
+        <section className="landing-proof" aria-labelledby="landing-proof-title">
+          <div>
+            <p className="landing-kicker">Operational scale, visible</p>
+            <h2 id="landing-proof-title">Built on governed data, not disconnected dashboards.</h2>
+          </div>
+          <dl>
+            {PLATFORM_FACTS.map((fact) => (
+              <div key={fact.label}>
+                <dt>{fact.value}</dt>
+                <dd>{fact.label}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="landing-proof-note">
+            Prototype inventory from the DRISHTI operational dataset. Counts communicate system scale;
+            the landing experience uses synthetic demonstration data.
+          </p>
+        </section>
+
         <section className="landing-principles" id="principles">
           <div className="landing-principles-visual" aria-hidden="true">
             <div className="landing-principles-ring" />
@@ -276,6 +397,78 @@ export function LandingPage() {
               <li><span>03</span> Human review before operational action</li>
               <li><span>04</span> Complete audit and provenance trail</li>
             </ul>
+          </div>
+        </section>
+
+        <section className="landing-closing-film" aria-labelledby="closing-film-title">
+          <video
+            ref={closingVideoRef}
+            className={closingReady ? "landing-closing-video is-ready" : "landing-closing-video"}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            poster={CLOSING_POSTER}
+            aria-label="Karnataka Police emblem and statewide intelligence visual"
+            onCanPlay={() => setClosingReady(true)}
+            onPlay={() => setClosingPlaying(true)}
+            onPause={() => setClosingPlaying(false)}
+          >
+            <source src={CLOSING_VIDEO} type="video/mp4" />
+          </video>
+
+          <div className="landing-closing-scrim" aria-hidden="true" />
+          <div className="landing-grid" aria-hidden="true" />
+          <div className="landing-film-noise" aria-hidden="true" />
+
+          <div className={closingReady ? "landing-closing-loader is-hidden" : "landing-closing-loader"} role="status">
+            <span />
+            Establishing statewide mission
+          </div>
+
+          <div className="landing-closing-content">
+            <div className="landing-closing-index">
+              <span>03 / Mission</span>
+              <strong>Decision intelligence for public safety</strong>
+            </div>
+
+            <div className="landing-closing-copy">
+              <p className="landing-kicker">Purpose-built for Karnataka</p>
+              <h2 id="closing-film-title">Intelligence in service of safer communities.</h2>
+              <p>
+                A secure operating picture that helps Karnataka Police understand events, coordinate
+                across jurisdictions and act with evidence, accountability and human judgement.
+              </p>
+            </div>
+
+            <dl className="landing-closing-meta">
+              <div>
+                <dt>Scope</dt>
+                <dd>Statewide operations</dd>
+              </div>
+              <div>
+                <dt>Foundation</dt>
+                <dd>Governed ontology</dd>
+              </div>
+              <div>
+                <dt>Authority</dt>
+                <dd>Human in control</dd>
+              </div>
+            </dl>
+
+            <div className="landing-closing-footer">
+              <span>Observe · Understand · Coordinate · Review</span>
+              <button
+                className="landing-chapter-control"
+                type="button"
+                onClick={() => toggleVideo(closingVideoRef.current, setClosingPlaying)}
+                aria-label={closingPlaying ? "Pause closing film" : "Play closing film"}
+              >
+                {closingPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                <span>{closingPlaying ? "Pause film" : "Play film"}</span>
+              </button>
+            </div>
           </div>
         </section>
 
