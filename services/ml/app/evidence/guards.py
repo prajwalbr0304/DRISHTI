@@ -21,23 +21,23 @@ from fastapi import Header, HTTPException, Request
 
 from .. import db
 from ..config import get_settings
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 
 # Local demo callers (Starlette TestClient reports host "testclient").
 _LOCALHOST = {"127.0.0.1", "::1", "localhost", "testclient"}
 
-# Roles denied individual-case evidence (aggregate-only, PII risk).
-EVIDENCE_READ_DENY = {"policymaker"}
-# Roles that may create/upload/edit evidence (IO / supervisor / admin register
-# and manage evidence). EvidenceOfficer is a future role (post-hackathon auth).
-EVIDENCE_WRITE_ROLES = {"investigator", "supervisor", "super_admin"}
-# The synthetic-demo reset is destructive of synthetic objects -> admin only.
-EVIDENCE_RESET_ROLES = {"super_admin"}
+# INTERIM ("all roles have access to everything"): no role is denied evidence,
+# and every command role may register/manage it — including the synthetic-demo
+# reset. Re-narrow EVIDENCE_RESET_ROLES to the admin seat when RBAC lands.
+EVIDENCE_READ_DENY: set[str] = set()
+EVIDENCE_WRITE_ROLES = set(ALL_ROLES)
+EVIDENCE_RESET_ROLES = set(ALL_ROLES)
 
 _synthetic_ok: Optional[bool] = None  # cached positive marker check
 
 
 def _resolve_role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 # --- role gates -------------------------------------------------------------

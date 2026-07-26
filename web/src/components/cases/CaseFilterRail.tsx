@@ -37,7 +37,7 @@ export function CaseFilterRail({
 }) {
   const num = (v: string) => (v ? Number(v) : undefined);
   return (
-    <aside className="w-56 shrink-0 space-y-3">
+    <aside className="w-full shrink-0 space-y-3 min-[1680px]:w-56">
       <div className="flex items-center justify-between">
         <span className="text-13 font-semibold text-content">Filters</span>
         {activeCount > 0 && (
@@ -47,56 +47,55 @@ export function CaseFilterRail({
         )}
       </div>
 
-      <Field label="District">
-        <NativeSelect
-          aria-label="District"
-          value={filters.district_id?.toString() ?? ""}
-          onChange={(v) => onChange({ district_id: num(v) })}
-          options={opts(options?.districts)}
-        />
-      </Field>
-      <Field label="Station">
-        <NativeSelect
-          aria-label="Station"
-          value={filters.station_id?.toString() ?? ""}
-          onChange={(v) => onChange({ station_id: num(v) })}
-          options={opts(options?.stations)}
-        />
-      </Field>
-      <Field label="Crime head">
-        <NativeSelect
-          aria-label="Crime head"
-          value={filters.major_head_id?.toString() ?? ""}
-          onChange={(v) => onChange({ major_head_id: num(v) })}
-          options={opts(options?.crime_heads)}
-        />
-      </Field>
-      <Field label="Sub-head">
-        <NativeSelect
-          aria-label="Sub-head"
-          value={filters.minor_head_id?.toString() ?? ""}
-          onChange={(v) => onChange({ minor_head_id: num(v) })}
-          options={opts(options?.sub_heads)}
-        />
-      </Field>
-      <Field label="Status">
-        <NativeSelect
-          aria-label="Status"
-          value={filters.status_id?.toString() ?? ""}
-          onChange={(v) => onChange({ status_id: num(v) })}
-          options={opts(options?.statuses)}
-        />
-      </Field>
-      <Field label="Gravity">
-        <NativeSelect
-          aria-label="Gravity"
-          value={filters.gravity_id?.toString() ?? ""}
-          onChange={(v) => onChange({ gravity_id: num(v) })}
-          options={opts(options?.gravities)}
-        />
-      </Field>
-
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 min-[1680px]:grid-cols-1">
+        <Field label="District">
+          <NativeSelect
+            aria-label="District"
+            value={filters.district_id?.toString() ?? ""}
+            onChange={(v) => onChange({ district_id: num(v) })}
+            options={opts(options?.districts)}
+          />
+        </Field>
+        <Field label="Station">
+          <NativeSelect
+            aria-label="Station"
+            value={filters.station_id?.toString() ?? ""}
+            onChange={(v) => onChange({ station_id: num(v) })}
+            options={opts(options?.stations)}
+          />
+        </Field>
+        <Field label="Crime head">
+          <NativeSelect
+            aria-label="Crime head"
+            value={filters.major_head_id?.toString() ?? ""}
+            onChange={(v) => onChange({ major_head_id: num(v) })}
+            options={opts(options?.crime_heads)}
+          />
+        </Field>
+        <Field label="Sub-head">
+          <NativeSelect
+            aria-label="Sub-head"
+            value={filters.minor_head_id?.toString() ?? ""}
+            onChange={(v) => onChange({ minor_head_id: num(v) })}
+            options={opts(options?.sub_heads)}
+          />
+        </Field>
+        <Field label="Status">
+          <NativeSelect
+            aria-label="Status"
+            value={filters.status_id?.toString() ?? ""}
+            onChange={(v) => onChange({ status_id: num(v) })}
+            options={opts(options?.statuses)}
+          />
+        </Field>
+        <Field label="Gravity">
+          <NativeSelect
+            aria-label="Gravity"
+            value={filters.gravity_id?.toString() ?? ""}
+            onChange={(v) => onChange({ gravity_id: num(v) })}
+            options={opts(options?.gravities)}
+          />
+        </Field>
         <Field label="From">
           <Input
             type="date"
@@ -113,19 +112,18 @@ export function CaseFilterRail({
             className="h-8 text-12"
           />
         </Field>
-      </div>
-
-      <div className="space-y-1.5 pt-1">
-        <Check
-          label="Has arrest"
-          checked={!!filters.has_arrest}
-          onChange={(v) => onChange({ has_arrest: v || undefined })}
-        />
-        <Check
-          label="Has chargesheet"
-          checked={!!filters.has_chargesheet}
-          onChange={(v) => onChange({ has_chargesheet: v || undefined })}
-        />
+        <div className="flex flex-wrap content-end gap-x-4 gap-y-2 pb-1 min-[1680px]:space-y-1.5 min-[1680px]:pt-1">
+          <Check
+            label="Has arrest"
+            checked={!!filters.has_arrest}
+            onChange={(v) => onChange({ has_arrest: v || undefined })}
+          />
+          <Check
+            label="Has chargesheet"
+            checked={!!filters.has_chargesheet}
+            onChange={(v) => onChange({ has_chargesheet: v || undefined })}
+          />
+        </div>
       </div>
     </aside>
   );

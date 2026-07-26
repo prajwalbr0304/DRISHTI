@@ -17,7 +17,7 @@ import * as fx from "./fixtures";
 
 test.describe("(d) Ask DRISHTI", () => {
   test("submits a question and renders a grounded, cited answer with a typed visualization", async ({ page }) => {
-    await authenticate(page, "analyst");
+    await authenticate(page, "crime_analyst");
     // Delay the answer so the loading (thinking) state is observable.
     await overrideDelayedJson(page, pathIs("/chat/ask"), fx.askGrounded, 600);
     await page.goto("/ask");
@@ -50,7 +50,7 @@ test.describe("(d) Ask DRISHTI", () => {
   });
 
   test("a11y: Enter submits from the composer", async ({ page }) => {
-    await authenticate(page, "analyst");
+    await authenticate(page, "crime_analyst");
     await page.goto("/ask");
 
     const box = page.getByRole("textbox");

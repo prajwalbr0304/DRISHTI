@@ -25,22 +25,22 @@ from fastapi import Header, HTTPException, Request
 
 from .. import db
 from ..config import get_settings
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 
 # Local demo callers (Starlette TestClient reports host "testclient").
 _LOCALHOST = {"127.0.0.1", "::1", "localhost", "testclient"}
 
-# Roles denied individual-case intake (aggregate-only, PII risk) — as in cases.
-INTAKE_READ_DENY = {"policymaker"}
-# Roles that may create/edit an intake draft (SHO/IO/admin register FIRs).
-INTAKE_WRITE_ROLES = {"investigator", "supervisor", "super_admin"}
-# Roles that may approve/reject/return a submitted draft (supervisory review).
-INTAKE_REVIEW_ROLES = {"supervisor", "super_admin"}
+# INTERIM ("all roles have access to everything"): no role is denied intake, and
+# every command role may register a draft and review a submission.
+INTAKE_READ_DENY: set[str] = set()
+INTAKE_WRITE_ROLES = set(ALL_ROLES)
+INTAKE_REVIEW_ROLES = set(ALL_ROLES)
 
 _synthetic_ok: Optional[bool] = None  # cached marker check
 
 
 def _resolve_role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 # --- role gates -------------------------------------------------------------

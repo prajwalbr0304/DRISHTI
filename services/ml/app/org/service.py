@@ -17,29 +17,22 @@ from contextlib import contextmanager
 from typing import Optional
 
 from .. import audit, db
+from ..roles import FUNCTIONAL_ROLES, ROLE_DESCRIPTIONS
 from . import hierarchy
 from .scope import ScopeContext
 
-# Functional roles that SUPERADMIN may provision, and the DB seed for each. The
-# five system roles already exist; disaster_coordinator is seeded idempotently.
-_SEED_ROLES = {
-    "super_admin": "Full platform administration and governance.",
-    "investigator": "Case registration and investigation of assigned FIRs.",
-    "analyst": "Aggregate analytics, patterns and network analysis.",
-    "supervisor": "Unit/district oversight, review queue and approvals.",
-    "policymaker": "Aggregate-only strategic view (no individual case/PII access).",
-    "disaster_coordinator": "Emergency-response coordination for an assigned district.",
-}
+# Functional roles that SUPERADMIN may provision, and the DB seed description
+# for each — the canonical command seats in app/roles.py.
+_SEED_ROLES = {role: ROLE_DESCRIPTIONS.get(role, role) for role in FUNCTIONAL_ROLES}
 
-# role_permissions grants for the disaster_coordinator role (resource -> action).
-# Mirrors the read-only situational posture enforced in disaster/guards.py; the
-# disaster-specific write permissions are enforced there, not in this table.
-_DISASTER_COORD_GRANTS = {
-    "command_center": "read", "map": "read", "analytics": "read",
-    "ask_drishti": "read", "people_entities": "read",
-    "cases": "none", "pii": "none", "money_trail": "none",
-    "network_analysis": "none", "admin_governance": "none",
-}
+# role_permissions resources the seed grants. INTERIM ("all roles have access to
+# everything"): every seeded role receives WRITE on every resource.
+_GRANT_RESOURCES = (
+    "command_center", "cases", "people_entities", "network_analysis",
+    "money_trail", "map", "analytics", "ask_drishti", "admin_governance", "pii",
+)
+_ROLE_GRANTS = {role: {resource: "write" for resource in _GRANT_RESOURCES}
+                for role in FUNCTIONAL_ROLES}
 
 
 class OrgError(ValueError):
@@ -74,23 +67,25 @@ def _role_id(cur, role_name: str, *, create: bool = False) -> Optional[int]:
 
 
 def ensure_roles(conn=None) -> dict:
-    """Idempotently ensure all six functional roles exist and the
-    disaster_coordinator has its read-only permission grants. Returns a summary."""
+    """Idempotently ensure every functional role exists with its permission
+    grants (interim: full access for all). Returns a summary."""
     with _writer(conn) as (c, _owns):
         with c.cursor() as cur:
             created = []
+            role_ids: dict[str, int] = {}
             for name in _SEED_ROLES:
                 cur.execute('SELECT "role_id" FROM "roles" WHERE "role_name"=%s', (name,))
                 if cur.fetchone() is None:
-                    _role_id(cur, name, create=True)
                     created.append(name)
-            dc_id = _role_id(cur, "disaster_coordinator", create=True)
-            for resource, action in _DISASTER_COORD_GRANTS.items():
-                cur.execute(
-                    'INSERT INTO "role_permissions" ("role_id","resource","action") '
-                    'VALUES (%s,%s,%s) ON CONFLICT ("role_id","resource","action") '
-                    'DO NOTHING', (dc_id, resource, action))
-    return {"roles_created": created, "disaster_coordinator_role_id": dc_id}
+                role_ids[name] = _role_id(cur, name, create=True)
+            for name, grants in _ROLE_GRANTS.items():
+                rid = role_ids.get(name) or _role_id(cur, name, create=True)
+                for resource, action in grants.items():
+                    cur.execute(
+                        'INSERT INTO "role_permissions" ("role_id","resource","action") '
+                        'VALUES (%s,%s,%s) ON CONFLICT ("role_id","resource","action") '
+                        'DO NOTHING', (rid, resource, action))
+    return {"roles_created": created, "role_ids": role_ids}
 
 
 # ---------------------------------------------------------------------------

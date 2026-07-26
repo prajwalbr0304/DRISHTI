@@ -13,7 +13,7 @@
  * Security posture:
  *   - Authenticated: relies on API Gateway auth + a user-scope Catalyst identity.
  *     If no identity is resolvable, returns 401 — UNLESS the synthetic-demo mode
- *     (DRISHTI_DEMO_AUTH=true) is on, in which case a full-access super_admin
+ *     (DRISHTI_DEMO_AUTH=true) is on, in which case a full-access system_admin
  *     context is minted so the offline role-card demo shows live synthetic data.
  *   - Role is resolved SERVER-SIDE (never read from the request).
  *   - Signed context = base64url(JSON {user_id,email,role,scope,aud,ts,nonce,
@@ -29,7 +29,7 @@
  *   DRISHTI_GATEWAY_TIMEOUT_MS   - upstream timeout (default 25000; aio cap 30s)
  *   DRISHTI_GATEWAY_PATH_PREFIX  - public path prefix to strip (default /api)
  *   DRISHTI_DEMO_AUTH            - "true" enables synthetic-demo auth: no Catalyst
- *                                  session required; a full-access super_admin
+ *                                  session required; a full-access system_admin
  *                                  context is minted for the offline role-card
  *                                  demo. Synthetic hackathon demo ONLY.
  */
@@ -65,40 +65,56 @@ function b64url(buf) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/* Canonical six functional roles — MUST mirror
- * services/ml/app/org/hierarchy.py FUNCTIONAL_ROLES. AppSail re-validates the
- * role against the same set (defence in depth), so the two cannot drift silently. */
+/* Canonical functional roles (the ten command seats) — MUST mirror
+ * services/ml/app/roles.py FUNCTIONAL_ROLES (re-exported by org/hierarchy.py).
+ * AppSail re-validates the role against the same set (defence in depth), so the
+ * two cannot drift silently. */
 const FUNCTIONAL_ROLES = new Set([
-  'investigator', 'analyst', 'supervisor', 'policymaker',
-  'disaster_coordinator', 'super_admin',
+  'dgp_state_command', 'adgp_igp_range', 'sp_district_command', 'dysp_acp',
+  'sho', 'investigating_officer', 'crime_analyst', 'cyber_cell',
+  'traffic_command', 'system_admin',
 ]);
+
+/* Least-privilege default seat when no DRISHTI role is asserted. */
+const DEFAULT_ROLE = 'investigating_officer';
 
 /* Rank / assignment label -> [functional_role, scope_level]. Mirrors the
  * synthetic establishment catalogue in org/hierarchy.py (_CATALOG). Keys are
  * normalized (lowercase, single-spaced). */
 const RANK_MAP = {
-  'dgp': ['supervisor', 'state'], 'director general of police': ['supervisor', 'state'],
-  'adgp': ['supervisor', 'state'], 'igp': ['supervisor', 'range'],
-  'dig': ['supervisor', 'range'], 'sp': ['supervisor', 'district'],
-  'superintendent of police': ['supervisor', 'district'], 'dcp': ['supervisor', 'district'],
-  'addl sp': ['supervisor', 'district'], 'dy sp': ['supervisor', 'subdivision'],
-  'asp': ['supervisor', 'subdivision'], 'acp': ['supervisor', 'subdivision'],
-  'ci': ['supervisor', 'subdivision'], 'circle inspector': ['supervisor', 'subdivision'],
-  'sho': ['supervisor', 'station'], 'station house officer': ['supervisor', 'station'],
-  'station chief': ['supervisor', 'station'], 'pi': ['supervisor', 'station'],
-  'police inspector': ['supervisor', 'station'], 'inspector': ['supervisor', 'station'],
-  'io': ['investigator', 'assigned_case'], 'investigating officer': ['investigator', 'assigned_case'],
-  'psi': ['investigator', 'assigned_case'], 'asi': ['investigator', 'assigned_case'],
-  'head constable': ['investigator', 'assigned_case'], 'police constable': ['investigator', 'assigned_case'],
-  'crime analyst': ['analyst', 'district'], 'analyst': ['analyst', 'district'],
-  'scrb': ['policymaker', 'state'], 'policy': ['policymaker', 'state'],
-  'ddma': ['disaster_coordinator', 'district'], 'disaster coordinator': ['disaster_coordinator', 'district'],
-  'system administrator': ['super_admin', 'state'], 'admin': ['super_admin', 'state'],
+  'dgp': ['dgp_state_command', 'state'],
+  'director general of police': ['dgp_state_command', 'state'],
+  'adgp': ['adgp_igp_range', 'state'], 'igp': ['adgp_igp_range', 'range'],
+  'dig': ['adgp_igp_range', 'range'], 'sp': ['sp_district_command', 'district'],
+  'superintendent of police': ['sp_district_command', 'district'],
+  'dcp': ['sp_district_command', 'district'],
+  'addl sp': ['sp_district_command', 'district'],
+  'dy sp': ['dysp_acp', 'subdivision'], 'asp': ['dysp_acp', 'subdivision'],
+  'acp': ['dysp_acp', 'subdivision'], 'ci': ['dysp_acp', 'subdivision'],
+  'circle inspector': ['dysp_acp', 'subdivision'],
+  'sho': ['sho', 'station'], 'station house officer': ['sho', 'station'],
+  'station chief': ['sho', 'station'], 'pi': ['sho', 'station'],
+  'police inspector': ['sho', 'station'], 'inspector': ['sho', 'station'],
+  'io': ['investigating_officer', 'assigned_case'],
+  'investigating officer': ['investigating_officer', 'assigned_case'],
+  'psi': ['investigating_officer', 'assigned_case'],
+  'asi': ['investigating_officer', 'assigned_case'],
+  'head constable': ['investigating_officer', 'assigned_case'],
+  'police constable': ['investigating_officer', 'assigned_case'],
+  'crime analyst': ['crime_analyst', 'district'], 'analyst': ['crime_analyst', 'district'],
+  'scrb': ['crime_analyst', 'state'], 'policy': ['crime_analyst', 'state'],
+  'cyber cell': ['cyber_cell', 'state'], 'cen': ['cyber_cell', 'state'],
+  'cyber crime': ['cyber_cell', 'state'],
+  'traffic': ['traffic_command', 'district'],
+  'traffic police': ['traffic_command', 'district'],
+  'system administrator': ['system_admin', 'state'], 'admin': ['system_admin', 'state'],
 };
 
 const ROLE_DEFAULT_SCOPE = {
-  super_admin: 'state', policymaker: 'state', supervisor: 'district',
-  analyst: 'district', disaster_coordinator: 'district', investigator: 'assigned_case',
+  dgp_state_command: 'state', adgp_igp_range: 'range',
+  sp_district_command: 'district', dysp_acp: 'subdivision', sho: 'station',
+  investigating_officer: 'assigned_case', crime_analyst: 'state',
+  cyber_cell: 'state', traffic_command: 'district', system_admin: 'state',
 };
 
 function normLabel(s) {
@@ -121,8 +137,9 @@ function scopeInt(raw) {
  *   1. explicit DRISHTI role assignment (custom attribute `drishti_role`) — an
  *      unrecognized value here is REJECTED (unknown/ambiguous role);
  *   2. the Catalyst role_name mapped through RANK_MAP;
- *   3. least-privilege default (investigator / assigned_case) when no DRISHTI
- *      role is asserted — a documented safe default, not an ambiguous coercion.
+ *   3. least-privilege default (investigating_officer / assigned_case) when no
+ *      DRISHTI role is asserted — a documented safe default, not an ambiguous
+ *      coercion.
  * district_id / unit_id come only from trusted custom attributes; a present-but-
  * malformed scope value is REJECTED. Returns {role,scope_level,district_id,
  * unit_id} or {rejected:<reason>}. */
@@ -145,7 +162,7 @@ function resolveIdentity(user) {
     else if (rn && RANK_MAP[rn]) [role, scopeLevel] = RANK_MAP[rn];
     // an unrecognized built-in role_name is NOT a DRISHTI assertion -> default below
   }
-  if (!role) { role = 'investigator'; scopeLevel = 'assigned_case'; }
+  if (!role) { role = DEFAULT_ROLE; scopeLevel = ROLE_DEFAULT_SCOPE[DEFAULT_ROLE]; }
   if (!scopeLevel) scopeLevel = ROLE_DEFAULT_SCOPE[role] || 'assigned_case';
 
   const district = scopeInt(user && (user.district_id !== undefined ? user.district_id : attrs.district_id));
@@ -259,8 +276,8 @@ module.exports = async (req, res) => {
     // synthetic and every write stays behind the AppSail synthetic-DB guard. The
     // role card selects the presentation workspace CLIENT-SIDE; the server serves
     // the full demo dataset. Never enable outside the synthetic demo.
-    identity = { role: 'super_admin', scope_level: 'state', district_id: null, unit_id: null };
-    user = { user_id: 'demo-super-admin', email_id: 'demo.super_admin@drishti.local' };
+    identity = { role: 'system_admin', scope_level: 'state', district_id: null, unit_id: null };
+    user = { user_id: 'demo-system-admin', email_id: 'demo.system_admin@drishti.local' };
   } else {
     return sendJson(res, 401, { error: 'authentication_required', request_id: requestId });
   }

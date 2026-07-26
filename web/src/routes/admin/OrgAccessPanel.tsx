@@ -3,15 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ShieldCheck, UserPlus, XCircle } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
+import { DEFAULT_ROLE, ROLE_LIST } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/routes/intake/components";
 
-const ROLE_CHOICES = [
-  "investigator", "analyst", "supervisor", "policymaker",
-  "disaster_coordinator", "super_admin",
-] as const;
+/** Assignable functional roles + their labels (single source: config/roles.ts). */
+const ROLE_CHOICES = ROLE_LIST.map((r) => ({ id: r.id, label: r.label }));
 
 function Err({ e }: { e: unknown }) {
   return (
@@ -34,8 +33,10 @@ function Tick({ v }: { v: boolean }) {
    matrix, roles + permission grants, and (SUPERADMIN only) create-credential +
    assign-role + activate controls. Scope is derived server-side. */
 export function OrgAccessPanel() {
-  const { role } = useRole();
-  const isSuper = role === "super_admin";
+  const { isAdmin } = useRole();
+  // INTERIM: every role holds the admin capability, so credential provisioning
+  // is available from any seat (see config/roles.ts).
+  const isSuper = isAdmin;
   const qc = useQueryClient();
 
   const hierarchyQ = useQuery({ queryKey: ["org", "hierarchy"], queryFn: ({ signal }) => api.org.hierarchy(signal) });
@@ -45,7 +46,7 @@ export function OrgAccessPanel() {
 
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [newRole, setNewRole] = useState<string>("investigator");
+  const [newRole, setNewRole] = useState<string>(DEFAULT_ROLE);
 
   const createMut = useMutation({
     mutationFn: () => api.org.createUser({ username: username.trim(), display_name: displayName.trim() || undefined, role: newRole }),
@@ -69,7 +70,7 @@ export function OrgAccessPanel() {
       {/* Rank -> role/scope mapping */}
       <SectionCard
         title="Police rank → functional role + scope"
-        description="Synthetic mapping of the DGP → IGP → DIG → SP → Station Chief → Officer hierarchy to DRISHTI's six functional roles and an organizational scope. Real directory/SSO sync is post-hackathon.">
+        description="Synthetic mapping of the DGP → IGP → DIG → SP → Station Chief → Officer hierarchy to DRISHTI's ten command roles and an organizational scope. Real directory/SSO sync is post-hackathon.">
         {hierarchyQ.isLoading ? <p className="text-12 text-content-dim">Loading…</p>
           : hierarchyQ.error ? <Err e={hierarchyQ.error} />
           : hierarchyQ.data ? (
@@ -135,7 +136,7 @@ export function OrgAccessPanel() {
         {!isSuper ? (
           <div className="flex items-center gap-2 text-12 text-content-dim">
             <ShieldCheck className="size-3.5" />
-            Credential provisioning is a super-admin action. Switch to the Super Admin demo view to manage users.
+            Credential provisioning is an administration action. Switch to the System Admin demo view to manage users.
           </div>
         ) : (
           <form
@@ -161,7 +162,7 @@ export function OrgAccessPanel() {
               <select
                 className="mt-0.5 rounded border border-hairline bg-surface-1 px-2 py-1 text-13 text-content"
                 value={newRole} onChange={(e) => setNewRole(e.target.value)} aria-label="role">
-                {ROLE_CHOICES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {ROLE_CHOICES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
             </label>
             <Button type="submit" disabled={!username.trim() || createMut.isPending}>
@@ -204,7 +205,7 @@ export function OrgAccessPanel() {
                               className="rounded border border-hairline bg-surface-1 px-1 py-0.5 text-11 text-content"
                               value={u.role} aria-label={`role for ${u.username}`}
                               onChange={(e) => assignMut.mutate({ userId: u.user_id, r: e.target.value })}>
-                              {ROLE_CHOICES.map((r) => <option key={r} value={r}>{r}</option>)}
+                              {ROLE_CHOICES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
                             </select>
                             <Button variant="ghost" size="sm"
                               onClick={() => activeMut.mutate({ userId: u.user_id, v: !u.is_active })}>

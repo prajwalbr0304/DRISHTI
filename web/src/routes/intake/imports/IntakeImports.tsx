@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, FileUp, Loader2, Lock, PlayCircle, UploadCloud } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,11 +63,11 @@ export function IntakeImports() {
   const checks: RowCheck[] = useMemo(() => rows.map((r) => ({ row: r, errors: checkRow(r) })), [rows]);
   const validCount = checks.filter((c) => c.errors.length === 0).length;
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "intake_write")) {
     return (
       <div><PageHeader title="Bulk import" />
         <EmptyState icon={Lock} title="Not available for this role"
-          description="Case intake is not accessible to the policymaker role." /></div>
+          description="Case intake is not accessible to this role." /></div>
     );
   }
 

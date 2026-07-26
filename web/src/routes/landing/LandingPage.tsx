@@ -1,400 +1,79 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronDown, ShieldCheck } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowRight,
+  Database,
+  MapPinned,
+  Network,
+  Pause,
+  Play,
+  Radar,
+  ShieldCheck,
+} from "lucide-react";
 import "@/routes/landing/landing.css";
 
-const FRAME_COUNT = 96;
-const CHAPTER_HEIGHT_VH = 145;
-const MAX_CACHED_FRAMES = 56;
-const MAX_PRELOAD_QUEUE = 40;
-const MAX_PRELOAD_LOADS = 2;
-const MAX_CRITICAL_LOADS = 2;
-const ANCHOR_INTERVAL = 8;
+const HERO_VIDEO = "/landing/drishti-hero.mp4";
+const HERO_POSTER = "/landing/drishti-hero-poster.webp";
 
-type FrameTarget = {
-  sequence: number;
-  frame: number;
-  key: string;
-};
-
-const CHAPTERS = [
+const CAPABILITIES = [
   {
-    step: "01 / Observe",
-    title: "Intelligence begins with sight.",
-    copy: "Bring cases, signals and operational context into one coherent view without replacing human judgement.",
-    align: "left",
+    index: "01",
+    icon: Database,
+    title: "Unify the operational picture",
+    copy: "Bring cases, evidence, entities and jurisdiction context into one governed view without losing the source behind the record.",
   },
   {
-    step: "02 / Understand",
-    title: "Turn fragmented data into explainable insight.",
-    copy: "Connect evidence, entities, timelines and analytical models while preserving the source behind every conclusion.",
-    align: "right",
+    index: "02",
+    icon: Network,
+    title: "Connect what matters",
+    copy: "Move from an isolated event to explainable relationships, timelines and leads while keeping every conclusion open to human review.",
   },
   {
-    step: "03 / Connect",
-    title: "One connected picture of Karnataka.",
-    copy: "Explore patterns across districts and jurisdictions with a shared, map-led operational context.",
-    align: "left",
-  },
-  {
-    step: "04 / Anticipate",
-    title: "See emerging risk. Verify before action.",
-    copy: "Surface hotspots and unusual patterns as decision support, with confidence, provenance and review built in.",
-    align: "right",
-  },
-  {
-    step: "05 / Respond",
-    title: "Move from insight to coordinated response.",
-    copy: "Give field teams and supervisors a common picture for prioritisation, dispatch and accountable follow-through.",
-    align: "left",
-  },
-  {
-    step: "06 / Command",
-    title: "Built for the operational command room.",
-    copy: "A calm interface for cases, networks, geospatial intelligence, forecasting and governed analytical workflows.",
-    align: "right",
-  },
-  {
-    step: "07 / Govern",
-    title: "Human judgement. Amplified.",
-    copy: "DRISHTI is an evidence-backed intelligence and response platform for faster, more accountable decisions.",
-    align: "center",
+    index: "03",
+    icon: Radar,
+    title: "See change before it becomes noise",
+    copy: "Surface emerging patterns and operational pressure with confidence, provenance and clear limits on what the analysis can claim.",
   },
 ] as const;
 
-function clamp(value: number, minimum = 0, maximum = 1) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function frameUrl(sequence: number, frame: number) {
-  return `/landing/sequence-${String(sequence + 1).padStart(2, "0")}/frame-${String(frame + 1).padStart(3, "0")}.webp`;
-}
-
-function drawCover(canvas: HTMLCanvasElement, image: HTMLImageElement) {
-  const bounds = canvas.getBoundingClientRect();
-  if (!bounds.width || !bounds.height || !image.naturalWidth || !image.naturalHeight) return;
-
-  const ratio = Math.min(window.devicePixelRatio || 1, 1.75);
-  const width = Math.round(bounds.width * ratio);
-  const height = Math.round(bounds.height * ratio);
-
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) return;
-
-  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
-  const drawnWidth = image.naturalWidth * scale;
-  const drawnHeight = image.naturalHeight * scale;
-  const x = (width - drawnWidth) / 2;
-  const y = (height - drawnHeight) / 2;
-
-  context.fillStyle = "#050912";
-  context.fillRect(0, 0, width, height);
-  context.drawImage(image, x, y, drawnWidth, drawnHeight);
-}
-
 export function LandingPage() {
-  const sequenceRef = useRef<HTMLElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const progressRef = useRef<HTMLDivElement>(null);
-  const imageCache = useRef(new Map<string, HTMLImageElement>());
-  const promiseCache = useRef(new Map<string, Promise<HTMLImageElement>>());
-  const preloadQueue = useRef<FrameTarget[]>([]);
-  const queuedPreloads = useRef(new Set<string>());
-  const activePreloads = useRef(0);
-  const activeCriticalLoads = useRef(0);
-  const deferredFrame = useRef<FrameTarget>();
-  const latestFrame = useRef({ sequence: 0, frame: 0, key: "0:0" });
-  const drawnFrame = useRef({ sequence: -1, frame: -1, key: "" });
-  const animationFrame = useRef<number>();
-  const [activeChapter, setActiveChapter] = useState(0);
-  const [ready, setReady] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  const trimImageCache = useCallback(() => {
-    const protectedKeys = new Set([latestFrame.current.key, drawnFrame.current.key]);
-
-    while (imageCache.current.size > MAX_CACHED_FRAMES) {
-      let removed = false;
-
-      for (const [key, image] of imageCache.current) {
-        if (protectedKeys.has(key)) continue;
-
-        imageCache.current.delete(key);
-        image.onload = null;
-        image.onerror = null;
-        image.src = "";
-        removed = true;
-        break;
-      }
-
-      if (!removed) break;
-    }
-  }, []);
-
-  const ensureFrame = useCallback((sequence: number, frame: number) => {
-    const boundedFrame = Math.max(0, Math.min(FRAME_COUNT - 1, frame));
-    const key = `${sequence}:${boundedFrame}`;
-    const cached = imageCache.current.get(key);
-
-    if (cached?.complete && cached.naturalWidth) {
-      imageCache.current.delete(key);
-      imageCache.current.set(key, cached);
-      return Promise.resolve(cached);
-    }
-
-    const pending = promiseCache.current.get(key);
-    if (pending) return pending;
-
-    const promise = new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.decoding = "async";
-      image.onload = () => {
-        image.onload = null;
-        image.onerror = null;
-        imageCache.current.set(key, image);
-        trimImageCache();
-        resolve(image);
-      };
-      image.onerror = () => {
-        image.onload = null;
-        image.onerror = null;
-        reject(new Error(`Unable to load landing frame ${key}`));
-      };
-      image.src = frameUrl(sequence, boundedFrame);
-    });
-
-    promiseCache.current.set(key, promise);
-    void promise.then(
-      () => promiseCache.current.delete(key),
-      () => promiseCache.current.delete(key),
-    );
-    return promise;
-  }, [trimImageCache]);
-
-  const displayFrame = useCallback((target: FrameTarget, image: HTMLImageElement) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    drawCover(canvas, image);
-    drawnFrame.current = target;
-    canvas.dataset.renderedSequence = String(target.sequence + 1);
-    canvas.dataset.renderedFrame = String(target.frame + 1);
-
-    if (imageCache.current.has(target.key)) {
-      imageCache.current.delete(target.key);
-      imageCache.current.set(target.key, image);
-    }
-
-    setReady(true);
-  }, []);
-
-  const findNearestCachedFrame = useCallback((sequence: number, frame: number, direction: number) => {
-    for (let distance = 0; distance < FRAME_COUNT; distance += 1) {
-      const candidates = distance === 0
-        ? [frame]
-        : direction >= 0
-          ? [frame - distance, frame + distance]
-          : [frame + distance, frame - distance];
-
-      for (const candidate of candidates) {
-        if (candidate < 0 || candidate >= FRAME_COUNT) continue;
-        const key = `${sequence}:${candidate}`;
-        const image = imageCache.current.get(key);
-
-        if (image?.complete && image.naturalWidth) {
-          return { target: { sequence, frame: candidate, key }, image };
-        }
-      }
-    }
-
-    return undefined;
-  }, []);
-
-  const loadCriticalFrame = useCallback(function runCriticalLoad(target: FrameTarget) {
-    const cached = imageCache.current.get(target.key);
-    if (cached?.complete && cached.naturalWidth) {
-      if (latestFrame.current.key === target.key) displayFrame(target, cached);
-      return;
-    }
-
-    const wasPending = promiseCache.current.has(target.key);
-    if (!wasPending && activeCriticalLoads.current >= MAX_CRITICAL_LOADS) {
-      deferredFrame.current = target;
-      return;
-    }
-
-    if (!wasPending) activeCriticalLoads.current += 1;
-
-    void ensureFrame(target.sequence, target.frame)
-      .then((image) => {
-        if (latestFrame.current.key === target.key) displayFrame(target, image);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!wasPending) activeCriticalLoads.current = Math.max(0, activeCriticalLoads.current - 1);
-
-        const deferred = deferredFrame.current;
-        if (deferred && activeCriticalLoads.current < MAX_CRITICAL_LOADS) {
-          deferredFrame.current = undefined;
-          runCriticalLoad(deferred);
-        }
-      });
-  }, [displayFrame, ensureFrame]);
-
-  const pumpPreloads = useCallback(function runPreloads() {
-    while (activePreloads.current < MAX_PRELOAD_LOADS && preloadQueue.current.length) {
-      const target = preloadQueue.current.shift();
-      if (!target) break;
-      queuedPreloads.current.delete(target.key);
-
-      if (imageCache.current.has(target.key) || promiseCache.current.has(target.key)) continue;
-
-      activePreloads.current += 1;
-      void ensureFrame(target.sequence, target.frame)
-        .catch(() => undefined)
-        .finally(() => {
-          activePreloads.current = Math.max(0, activePreloads.current - 1);
-          runPreloads();
-        });
-    }
-  }, [ensureFrame]);
-
-  const queuePreload = useCallback((sequence: number, frame: number, priority = false) => {
-    const boundedFrame = Math.max(0, Math.min(FRAME_COUNT - 1, frame));
-    const key = `${sequence}:${boundedFrame}`;
-
-    if (
-      imageCache.current.has(key)
-      || promiseCache.current.has(key)
-      || queuedPreloads.current.has(key)
-    ) return;
-
-    if (!priority && preloadQueue.current.length >= MAX_PRELOAD_QUEUE) return;
-
-    const target = { sequence, frame: boundedFrame, key };
-    if (priority) preloadQueue.current.unshift(target);
-    else preloadQueue.current.push(target);
-    queuedPreloads.current.add(key);
-
-    if (preloadQueue.current.length > MAX_PRELOAD_QUEUE) {
-      const removed = preloadQueue.current.pop();
-      if (removed) queuedPreloads.current.delete(removed.key);
-    }
-
-    pumpPreloads();
-  }, [pumpPreloads]);
-
-  const requestFrame = useCallback(
-    (sequence: number, frame: number) => {
-      const key = `${sequence}:${frame}`;
-      const previous = latestFrame.current;
-      const direction = sequence > previous.sequence || (sequence === previous.sequence && frame >= previous.frame) ? 1 : -1;
-
-      if (sequence !== previous.sequence) {
-        preloadQueue.current = preloadQueue.current.filter((target) => (
-          target.sequence >= sequence && target.sequence <= sequence + 1
-        ));
-        queuedPreloads.current = new Set(preloadQueue.current.map((target) => target.key));
-      }
-
-      latestFrame.current = { sequence, frame, key };
-
-      const nearest = findNearestCachedFrame(sequence, frame, direction);
-      if (nearest) displayFrame(nearest.target, nearest.image);
-      if (nearest?.target.key !== key) loadCriticalFrame({ sequence, frame, key });
-
-      const nearbyOffsets = direction >= 0 ? [-2, -1, 4, 3, 2, 1] : [2, 1, -4, -3, -2, -1];
-      for (const offset of nearbyOffsets) {
-        queuePreload(sequence, frame + offset, true);
-      }
-
-      if (frame > FRAME_COUNT * 0.34 && sequence < CHAPTERS.length - 1) {
-        for (let anchor = 0; anchor < FRAME_COUNT; anchor += ANCHOR_INTERVAL) {
-          queuePreload(sequence + 1, anchor);
-        }
-        queuePreload(sequence + 1, FRAME_COUNT - 1);
-      }
-
-      if (frame > FRAME_COUNT * 0.7 && sequence < CHAPTERS.length - 1) {
-        for (let first = 0; first <= 20; first += 2) {
-          queuePreload(sequence + 1, first, true);
-        }
-      }
-    },
-    [displayFrame, findNearestCachedFrame, loadCriticalFrame, queuePreload],
-  );
+  const heroVideoRef = useRef<HTMLVideoElement>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(true);
 
   useEffect(() => {
-    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotion = () => setReducedMotion(motionQuery.matches);
-    updateMotion();
-    motionQuery.addEventListener("change", updateMotion);
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    void ensureFrame(0, 0).then((image) => displayFrame({ sequence: 0, frame: 0, key: "0:0" }, image));
+    const applyMotionPreference = () => {
+      const video = heroVideoRef.current;
+      if (!video) return;
 
-    for (let sequence = 1; sequence < CHAPTERS.length; sequence += 1) {
-      queuePreload(sequence, 0);
-    }
-    for (let anchor = ANCHOR_INTERVAL; anchor < FRAME_COUNT; anchor += ANCHOR_INTERVAL) {
-      queuePreload(0, anchor);
-    }
+      if (query.matches) {
+        video.pause();
+        video.currentTime = Math.min(9, video.duration || 9);
+        setVideoPlaying(false);
+      } else {
+        void video.play().then(() => setVideoPlaying(true)).catch(() => setVideoPlaying(false));
+      }
+    };
 
-    return () => motionQuery.removeEventListener("change", updateMotion);
-  }, [displayFrame, ensureFrame, queuePreload]);
-
-  useEffect(() => () => {
-    preloadQueue.current = [];
-    queuedPreloads.current.clear();
-
-    for (const image of imageCache.current.values()) {
-      image.onload = null;
-      image.onerror = null;
-      image.src = "";
-    }
-    imageCache.current.clear();
+    applyMotionPreference();
+    query.addEventListener("change", applyMotionPreference);
+    return () => query.removeEventListener("change", applyMotionPreference);
   }, []);
 
-  useEffect(() => {
-    const renderFromScroll = () => {
-      animationFrame.current = undefined;
-      const section = sequenceRef.current;
-      if (!section) return;
+  const toggleHeroVideo = () => {
+    const video = heroVideoRef.current;
+    if (!video) return;
 
-      const bounds = section.getBoundingClientRect();
-      const available = Math.max(1, bounds.height - window.innerHeight);
-      const progress = clamp(-bounds.top / available);
-      const chapterPosition = progress * CHAPTERS.length;
-      const chapter = Math.min(CHAPTERS.length - 1, Math.floor(chapterPosition));
-      const localProgress = chapter === CHAPTERS.length - 1 && progress === 1
-        ? 1
-        : clamp(chapterPosition - chapter);
-      const frame = reducedMotion ? Math.round((FRAME_COUNT - 1) * 0.48) : Math.round(localProgress * (FRAME_COUNT - 1));
-
-      setActiveChapter((current) => (current === chapter ? current : chapter));
-      if (progressRef.current) progressRef.current.style.transform = `scaleX(${progress})`;
-      requestFrame(chapter, frame);
-    };
-
-    const scheduleRender = () => {
-      if (animationFrame.current !== undefined) return;
-      animationFrame.current = window.requestAnimationFrame(renderFromScroll);
-    };
-
-    renderFromScroll();
-    window.addEventListener("scroll", scheduleRender, { passive: true });
-    window.addEventListener("resize", scheduleRender);
-
-    return () => {
-      window.removeEventListener("scroll", scheduleRender);
-      window.removeEventListener("resize", scheduleRender);
-      if (animationFrame.current !== undefined) window.cancelAnimationFrame(animationFrame.current);
-    };
-  }, [reducedMotion, requestFrame]);
+    if (video.paused) {
+      void video.play().then(() => setVideoPlaying(true)).catch(() => setVideoPlaying(false));
+    } else {
+      video.pause();
+      setVideoPlaying(false);
+    }
+  };
 
   return (
     <div className="landing-page">
@@ -406,82 +85,217 @@ export function LandingPage() {
             <small>Decision intelligence for public safety</small>
           </span>
         </Link>
-        <Link className="landing-enter landing-enter--compact" to="/command">
+
+        <nav className="landing-nav" aria-label="Landing page navigation">
+          <a href="#platform">Platform</a>
+          <a href="#capabilities">Capabilities</a>
+          <a href="#principles">Principles</a>
+        </nav>
+
+        <Link className="landing-enter landing-enter--compact" to="/login">
           Enter platform <ArrowRight aria-hidden="true" />
         </Link>
       </header>
 
       <main>
-        <section
-          ref={sequenceRef}
-          className="landing-sequence"
-          style={{ height: `${100 + CHAPTERS.length * CHAPTER_HEIGHT_VH}vh` }}
-          aria-label="DRISHTI platform story"
-        >
-          <div className="landing-stage">
-            <canvas ref={canvasRef} className={ready ? "landing-canvas is-ready" : "landing-canvas"} aria-hidden="true" />
-            <div className="landing-vignette" aria-hidden="true" />
-            <div className="landing-grid" aria-hidden="true" />
+        <section className="landing-hero" aria-labelledby="landing-hero-title">
+          <video
+            ref={heroVideoRef}
+            className={videoReady ? "landing-hero-film is-ready" : "landing-hero-film"}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            poster={HERO_POSTER}
+            onCanPlay={() => setVideoReady(true)}
+            onPlay={() => setVideoPlaying(true)}
+            onPause={() => setVideoPlaying(false)}
+          >
+            <source src={HERO_VIDEO} type="video/mp4" />
+          </video>
 
-            <div className={ready ? "landing-loader is-hidden" : "landing-loader"} role="status">
-              <span />
-              Preparing visual sequence
+          <div className="landing-hero-scrim" aria-hidden="true" />
+          <div className="landing-grid" aria-hidden="true" />
+          <div className="landing-film-noise" aria-hidden="true" />
+
+          <div className={videoReady ? "landing-loader is-hidden" : "landing-loader"} role="status">
+            <span />
+            Establishing operational picture
+          </div>
+
+          <div className="landing-hero-content">
+            <div className="landing-hero-intro">
+              <p>You are now entering</p>
+              <span>Evidence-backed intelligence</span>
+              <span>Human-controlled decisions</span>
             </div>
 
-            <div className="landing-chapter-rail" aria-label={`Chapter ${activeChapter + 1} of ${CHAPTERS.length}`}>
-              {CHAPTERS.map((chapter, index) => (
-                <span key={chapter.step} className={index === activeChapter ? "is-active" : ""} />
-              ))}
-            </div>
-
-            {activeChapter === 0 && (
-              <div className="landing-scroll-cue" aria-hidden="true">
-                <ChevronDown />
-                Scroll to explore
+            <div className="landing-hero-meta" aria-label="Platform context">
+              <div>
+                <span>Area of operations</span>
+                <strong>Karnataka, India</strong>
               </div>
-            )}
-
-            <div className="landing-copy-layer">
-              {CHAPTERS.map((chapter, index) => (
-                <section
-                  key={chapter.step}
-                  className={`landing-chapter landing-chapter--${chapter.align} ${index === activeChapter ? "is-active" : ""}`}
-                  aria-label={chapter.step}
-                  aria-hidden={index !== activeChapter}
-                >
-                  <div className="landing-chapter-copy">
-                    <p>{chapter.step}</p>
-                    <h1>{chapter.title}</h1>
-                    <span>{chapter.copy}</span>
-                    {index === CHAPTERS.length - 1 && (
-                      <Link className="landing-enter" to="/command">
-                        Open command center <ArrowRight aria-hidden="true" />
-                      </Link>
-                    )}
-                  </div>
-                </section>
-              ))}
+              <div>
+                <span>Operational posture</span>
+                <strong>Observe · Understand · Respond</strong>
+              </div>
+              <div>
+                <span>Demonstration</span>
+                <strong>Synthetic geospatial events</strong>
+              </div>
             </div>
 
-            <div className="landing-progress" aria-hidden="true">
-              <div ref={progressRef} />
+            <h1 id="landing-hero-title">DRISHTI</h1>
+
+            <div className="landing-hero-footer">
+              <p>One governed operating picture for cases, patterns, jurisdictions and coordinated response.</p>
+              <Link className="landing-enter landing-enter--hero" to="/login">
+                Open command center <ArrowRight aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+
+          <button
+            className="landing-film-control"
+            type="button"
+            onClick={toggleHeroVideo}
+            aria-label={videoPlaying ? "Pause hero film" : "Play hero film"}
+          >
+            {videoPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+            <span>{videoPlaying ? "Pause film" : "Play film"}</span>
+          </button>
+
+          <a className="landing-scroll-cue" href="#platform">
+            <span>Scroll to explore</span>
+            <ArrowDown aria-hidden="true" />
+          </a>
+        </section>
+
+        <section className="landing-manifesto" id="platform">
+          <div className="landing-section-index" aria-hidden="true">
+            <span>[ A ]</span>
+            <span>THE PLATFORM</span>
+          </div>
+          <div className="landing-manifesto-copy">
+            <p className="landing-kicker">A shared operational language</p>
+            <h2>From statewide signal to reviewed action.</h2>
+            <p>
+              DRISHTI connects geospatial context, investigative records, evidence and analytical models
+              so teams can move from an emerging event to an accountable response without surrendering
+              judgement to automation.
+            </p>
+          </div>
+          <div className="landing-manifesto-aside">
+            <MapPinned aria-hidden="true" />
+            <span>Built around Karnataka’s operational context</span>
+            <small>Every analytical output retains its source, confidence and review status.</small>
+          </div>
+        </section>
+
+        <section className="landing-film-chapter" aria-labelledby="second-film-title">
+          <div className="landing-film-chapter-copy">
+            <p className="landing-kicker">02 / Product film</p>
+            <h2 id="second-film-title">The next operational story lives here.</h2>
+            <p>
+              This full-bleed stage is prepared for the next DRISHTI film. It keeps the same cinematic
+              proportions, overlay system and responsive behavior as the opening experience.
+            </p>
+          </div>
+
+          {/*
+            SECOND FILM SLOT
+            Replace this reserved-media block with:
+            <video autoPlay muted loop playsInline poster="/landing/your-poster.webp">
+              <source src="/landing/drishti-capability-02.mp4" type="video/mp4" />
+            </video>
+          */}
+          <div className="landing-reserved-media" aria-label="Reserved stage for a future DRISHTI product film">
+            <div className="landing-reserved-grid" aria-hidden="true" />
+            <div className="landing-reserved-orbit landing-reserved-orbit--one" aria-hidden="true" />
+            <div className="landing-reserved-orbit landing-reserved-orbit--two" aria-hidden="true" />
+            <div className="landing-reserved-core" aria-hidden="true">
+              <MapPinned />
+            </div>
+            <div className="landing-reserved-label">
+              <span>FILM MODULE 02</span>
+              <strong>Reserved for the next visual sequence</strong>
+            </div>
+            <div className="landing-reserved-status">
+              <i />
+              Stage prepared
             </div>
           </div>
         </section>
 
-        <section className="landing-handoff">
-          <div>
-            <p className="landing-kicker"><ShieldCheck aria-hidden="true" /> Evidence-backed. Human-controlled. Auditable.</p>
-            <h2>A common operating picture, from first signal to reviewed action.</h2>
-            <p>
-              Explore cases, networks, hotspots, forecasts and response workflows inside a platform designed to keep people accountable for every decision.
-            </p>
+        <section className="landing-capabilities" id="capabilities">
+          <div className="landing-section-index" aria-hidden="true">
+            <span>[ B ]</span>
+            <span>CORE CAPABILITIES</span>
           </div>
-          <Link className="landing-enter landing-enter--light" to="/command">
+
+          <div className="landing-capabilities-heading">
+            <p className="landing-kicker">The operating system for accountable decisions</p>
+            <h2>See the whole picture. Keep every decision explainable.</h2>
+          </div>
+
+          <div className="landing-capability-list">
+            {CAPABILITIES.map((capability) => {
+              const Icon = capability.icon;
+              return (
+                <article key={capability.index} className="landing-capability">
+                  <div className="landing-capability-number">{capability.index}</div>
+                  <Icon aria-hidden="true" />
+                  <h3>{capability.title}</h3>
+                  <p>{capability.copy}</p>
+                  <span className="landing-capability-line" aria-hidden="true" />
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="landing-principles" id="principles">
+          <div className="landing-principles-visual" aria-hidden="true">
+            <div className="landing-principles-ring" />
+            <div className="landing-principles-pulse" />
+            <span>HUMAN</span>
+            <small>IN CONTROL</small>
+          </div>
+          <div className="landing-principles-copy">
+            <p className="landing-kicker"><ShieldCheck aria-hidden="true" /> Governed by design</p>
+            <h2>Software informs. People decide.</h2>
+            <p>
+              Predictions are labelled, uncertainty remains visible and sensitive records stay within
+              role and jurisdiction boundaries. DRISHTI is designed to strengthen professional judgement,
+              not replace it.
+            </p>
+            <ul>
+              <li><span>01</span> Source-aware analytical outputs</li>
+              <li><span>02</span> Role and jurisdiction controls</li>
+              <li><span>03</span> Human review before operational action</li>
+              <li><span>04</span> Complete audit and provenance trail</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="landing-final-cta">
+          <p className="landing-kicker">Ready for the common operating picture?</p>
+          <h2>Turn fragmented signals into coordinated understanding.</h2>
+          <Link className="landing-enter landing-enter--final" to="/login">
             Enter DRISHTI <ArrowRight aria-hidden="true" />
           </Link>
         </section>
       </main>
+
+      <footer className="landing-footer">
+        <Link className="landing-brand" to="/" aria-label="DRISHTI home">
+          <span className="landing-brand-mark" aria-hidden="true">D</span>
+          <span><strong>DRISHTI</strong></span>
+        </Link>
+        <p>Decision intelligence for public safety.</p>
+        <span>Evidence-backed · Human-controlled · Auditable</span>
+      </footer>
     </div>
   );
 }

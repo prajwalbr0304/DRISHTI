@@ -22,8 +22,12 @@ import type { UserRole } from "@/config/roles";
 export type WorkspaceContext = "crime" | "emergency";
 
 /* ============================================================================
-   The eight sidebar destinations (doc 01 §3). Super-admins see all eight;
-   everyone else sees seven (Admin is hidden). Each maps to a Wave-B capability.
+   The sidebar destinations (doc 01 §3). Each maps to a Wave-B capability.
+
+   INTERIM ACCESS MODEL: every command role reaches every destination, so no
+   destination carries a `roles` allow-list today (and `adminOnly` passes for all
+   roles because each RoleDef has `admin: true`). Re-add allow-lists here — with
+   ids from config/roles.ts — when per-role narrowing returns.
    ========================================================================== */
 
 export interface Destination {
@@ -70,7 +74,6 @@ export const DESTINATIONS: Destination[] = [
     short: "Intake",
     icon: FilePlus2,
     description: "Register FIRs/cases: guided intake, bulk import and supervisory review.",
-    roles: ["investigator", "supervisor", "super_admin"],
     keywords: ["fir", "intake", "new case", "register", "draft", "import", "review", "inbox"],
   },
   {
@@ -98,8 +101,6 @@ export const DESTINATIONS: Destination[] = [
     short: "Board",
     icon: Workflow,
     description: "Assemble live objects on a shared canvas; separate evidence from hypotheses.",
-    // Boards model sensitive investigative material — policymaker is excluded.
-    roles: ["investigator", "analyst", "supervisor", "super_admin"],
     keywords: ["board", "canvas", "link", "hypothesis", "evidence", "palantir", "corkboard", "investigation"],
   },
   {
@@ -167,8 +168,6 @@ export const DESTINATIONS: Destination[] = [
     label: "Forecast & Risk",
     short: "Forecast",
     icon: Gauge,
-    // Running/reviewing forecasts is a coordinator action (crime roles read-only).
-    roles: ["disaster_coordinator", "super_admin"],
     description: "Per-hazard risk surface, confidence, factors and model evidence.",
     context: "emergency",
     keywords: ["forecast", "risk", "confidence", "model", "flood", "landslide"],
@@ -179,7 +178,6 @@ export const DESTINATIONS: Destination[] = [
     label: "Resources",
     short: "Resources",
     icon: Truck,
-    roles: ["disaster_coordinator", "super_admin"],
     description: "Inventory, readiness, allocation planner and dispatch lifecycle.",
     context: "emergency",
     keywords: ["resource", "allocation", "dispatch", "shelter", "readiness"],
@@ -190,7 +188,6 @@ export const DESTINATIONS: Destination[] = [
     label: "Response Plans",
     short: "Plans",
     icon: ListChecks,
-    roles: ["disaster_coordinator", "super_admin"],
     description: "Per-hazard SOP checklists, task assignment and after-action.",
     context: "emergency",
     keywords: ["sop", "plan", "task", "checklist", "response"],

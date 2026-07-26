@@ -23,6 +23,7 @@ from psycopg2.extras import Json
 from .. import audit, db
 from ..intake import service as intake_service
 from ..intake import workflow as wf
+from ..roles import ALL_ROLES
 from . import schemas as S
 
 
@@ -63,9 +64,9 @@ LAB_TEST_TYPES = ("chemical", "dna", "ballistic", "fingerprint", "toxicology",
                   "handwriting", "digital_forensic", "other")
 LAB_STATUSES = ("requested", "in_progress", "completed", "inconclusive", "cancelled")
 
-# Roles allowed to read restricted statement/lab text (policymaker is already
-# denied all case files at the router; analyst is the reduced case-reader).
-SENSITIVE_ROLES = {"investigator", "supervisor", "super_admin"}
+# Roles allowed to read restricted statement/lab text.
+# INTERIM ("all roles have access to everything"): every command role may read it.
+SENSITIVE_ROLES = set(ALL_ROLES)
 REDACTED_TEXT = "[Restricted — limited to assigned investigators / supervisors]"
 
 FINAL_DISPOSITION_TYPES = {"convicted", "acquitted", "closed_b_report",

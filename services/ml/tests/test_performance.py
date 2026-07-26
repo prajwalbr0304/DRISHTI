@@ -22,7 +22,7 @@ def _hdr(role: str, actor: str | None = None) -> dict:
 
 # ============================ scope enforcement (pure) =====================
 def test_station_seat_forced_to_its_unit():
-    sc = scope_mod.ScopeContext(role="supervisor", scope_level="station",
+    sc = scope_mod.ScopeContext(role="sho", scope_level="station",
                                 district_ids=frozenset({3}), unit_ids=frozenset({90}))
     # no filter requested -> forced to the assigned unit (district implied by it).
     assert scope_mod.enforce_geo_request(sc) == (90, None)
@@ -34,7 +34,7 @@ def test_station_seat_forced_to_its_unit():
 
 
 def test_out_of_scope_request_denied():
-    sc = scope_mod.ScopeContext(role="supervisor", scope_level="district",
+    sc = scope_mod.ScopeContext(role="sho", scope_level="district",
                                 district_ids=frozenset({3}))
     with pytest.raises(scope_mod.ScopeDenied):
         scope_mod.enforce_geo_request(sc, district_id=9)
@@ -43,23 +43,24 @@ def test_out_of_scope_request_denied():
 
 
 def test_unrestricted_seat_passes_any_filter():
-    sc = scope_mod.derive_scope("super_admin")
+    sc = scope_mod.derive_scope("system_admin")
     assert scope_mod.enforce_geo_request(sc, unit_id=5, district_id=2) == (5, 2)
-    sc2 = scope_mod.derive_scope("supervisor")  # role-default, unrestricted
+    sc2 = scope_mod.derive_scope("sho")  # role-default, unrestricted
     assert scope_mod.enforce_geo_request(sc2, district_id=7) == (None, 7)
 
 
 # ============================ API role gate ================================
-def test_performance_denied_for_non_supervisor():
-    assert client.get("/performance/overview", headers=_hdr("investigator")).status_code == 403
-    assert client.get("/performance/overview", headers=_hdr("policymaker")).status_code == 403
+def test_performance_role_gate_refuses_a_non_canonical_role():
+    # INTERIM ("all roles have access to everything"): station/officer
+    # performance is open to every command seat; a stale/forged role is refused.
+    assert client.get("/performance/overview", headers=_hdr("wizard")).status_code == 403
 
 
 # ============================ real metrics (DB) ============================
 @requires_db
 def test_performance_overview_shape_and_denominators():
     r = client.get("/performance/overview", params={"district_id": 1, "window_days": 90},
-                   headers=_hdr("supervisor"))
+                   headers=_hdr("sho"))
     assert r.status_code == 200
     body = r.json()
     assert body["empty"] is False
@@ -84,7 +85,7 @@ def test_performance_overview_shape_and_denominators():
 def test_performance_empty_state_for_unknown_scope():
     # district id far outside the seeded range -> honest empty state, not an error.
     r = client.get("/performance/overview", params={"district_id": 999999},
-                   headers=_hdr("super_admin"))
+                   headers=_hdr("system_admin"))
     assert r.status_code == 200
     body = r.json()
     assert body["empty"] is True
@@ -95,6 +96,6 @@ def test_performance_empty_state_for_unknown_scope():
 @requires_db
 def test_performance_super_admin_can_request_any_district():
     r = client.get("/performance/overview", params={"district_id": 2},
-                   headers=_hdr("super_admin"))
+                   headers=_hdr("system_admin"))
     assert r.status_code == 200
     assert r.json()["scope"]["district_id"] == 2

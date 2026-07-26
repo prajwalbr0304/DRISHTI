@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { Banknote, Compass, EyeOff, Lock, Route as RouteIcon, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -34,14 +35,14 @@ export function NetworkAnalysis() {
     setSp(next, { replace: true });
   };
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "network_analysis")) {
     return (
       <div>
         <PageHeader title="Network Analysis" />
         <EmptyState
           icon={Lock}
           title="Not available for this role"
-          description="Link analysis operates on individual entities and is not accessible to the policymaker role, which sees aggregate views only."
+          description="Link analysis operates on individual entities and is not accessible to this role, which sees aggregate views only."
         />
       </div>
     );

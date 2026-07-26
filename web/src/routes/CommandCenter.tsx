@@ -59,14 +59,23 @@ export function CommandCenter() {
 
 function RoleHome({ role }: { role: ReturnType<typeof useRole>["role"] }) {
   switch (role) {
-    case "investigator":
+    // Field + station seats open on the case-work dashboard.
+    case "investigating_officer":
+    case "cyber_cell":
       return <InvestigatorHome />;
-    case "supervisor":
+    // Station / sub-division oversight: review queue + workload.
+    case "sho":
+    case "dysp_acp":
       return <SupervisorHome />;
-    case "policymaker":
+    // Command chain: strategic aggregate briefing.
+    case "dgp_state_command":
+    case "adgp_igp_range":
+    case "sp_district_command":
       return <PolicymakerHome />;
-    case "analyst":
-    case "super_admin": // full analytical overview
+    // Analytical overview (crime analyst, traffic command, platform admin).
+    case "crime_analyst":
+    case "traffic_command":
+    case "system_admin":
     default:
       return <AnalystHome />;
   }

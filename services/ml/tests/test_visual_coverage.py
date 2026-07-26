@@ -50,7 +50,7 @@ def test_validate_spec_accepts_each_required_family_with_accessible_table():
 
 def _viz(cols, rows, intent):
     return viz.build_visualization(cols, rows, intent=intent, language="en",
-                                   citations=[], confidence=0.7, role="analyst",
+                                   citations=[], confidence=0.7, role="crime_analyst",
                                    row_total=len(rows))
 
 

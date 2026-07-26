@@ -13,14 +13,16 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.board import guards
 from app.board import repo as board_repo_mod
+from app.board import references as board_references
+from app.board import searcharound as board_searcharound
 from conftest import requires_db
 
 client = TestClient(app)
 
-IO = {"X-Role": "investigator", "X-Demo-Actor": "demo.io"}
-ANALYST = {"X-Role": "analyst", "X-Demo-Actor": "demo.analyst"}
-SUP = {"X-Role": "supervisor", "X-Demo-Actor": "demo.sup"}
-POLICY = {"X-Role": "policymaker", "X-Demo-Actor": "demo.pol"}
+IO = {"X-Role": "investigating_officer", "X-Demo-Actor": "demo.io"}
+ANALYST = {"X-Role": "crime_analyst", "X-Demo-Actor": "demo.crime_analyst"}
+SUP = {"X-Role": "sho", "X-Demo-Actor": "demo.sup"}
+POLICY = {"X-Role": "dgp_state_command", "X-Demo-Actor": "demo.pol"}
 
 
 @pytest.fixture(autouse=True)
@@ -47,10 +49,15 @@ def _content_node(bid, label, headers=IO):
     return int(r.json()["target_id"])
 
 
-# --- RBAC / policymaker ------------------------------------------------------
-def test_policymaker_denied_everywhere():
-    assert client.get("/boards", headers=POLICY).status_code == 403
-    assert client.post("/boards", headers=POLICY, json={"title": "x"}).status_code == 403
+# --- RBAC / coarse role gate -------------------------------------------------
+def test_every_command_role_passes_the_coarse_board_gate():
+    # INTERIM ("all roles have access to everything"): no command seat is denied
+    # the board; per-BOARD authorization (owner/editor/viewer) still applies.
+    assert client.get("/boards", headers=POLICY).status_code == 200
+    assert client.post("/boards", headers=POLICY, json={"title": "x"}).status_code == 201
+    # A role outside the canonical set is still refused.
+    bogus = {"X-Role": "wizard", "X-Demo-Actor": "demo.wizard"}
+    assert client.post("/boards", headers=bogus, json={"title": "x"}).status_code == 403
 
 
 def test_io_creates_and_reads_own_board():
@@ -65,7 +72,7 @@ def test_analyst_cannot_read_unshared_board_but_can_when_shared():
     assert client.get(f"/boards/{bid}", headers=ANALYST).status_code == 403
     # supervisor shares with the analyst (board_share)
     r = client.post(f"/boards/{bid}/collaborators", headers=SUP,
-                    json={"actor": "demo.analyst", "role": "editor"})
+                    json={"actor": "demo.crime_analyst", "role": "editor"})
     assert r.status_code == 201, r.text
     assert client.get(f"/boards/{bid}", headers=ANALYST).status_code == 200
 
@@ -118,16 +125,17 @@ def test_evidence_edge_immutable_but_hypothesis_editable():
 
 
 # --- promotion ---------------------------------------------------------------
-def test_promote_requires_supervisor_and_confirmation_and_rationale():
+def test_promote_requires_confirmation_and_rationale():
     bid = _new_board()
     a, b = _content_node(bid, "A"), _content_node(bid, "B")
     hid = int(client.post(f"/boards/{bid}/edges", headers=IO,
                           json={"source_node_id": a, "target_node_id": b,
                                 "rationale": "same device"}).json()["target_id"])
-    # IO cannot promote
+    # INTERIM: the IO seat also holds board_promote, but a FRESH CONFIRMATION is
+    # still required (the human-in-the-loop step, not a role check).
     assert client.post(f"/boards/{bid}/promote-edge/{hid}", headers=IO,
-                       json={"confirm": True}).status_code == 403
-    # supervisor without confirm -> 428
+                       json={"confirm": False}).status_code == 428
+    # a command seat without confirm -> 428
     assert client.post(f"/boards/{bid}/promote-edge/{hid}", headers=SUP,
                        json={"confirm": False}).status_code == 428
     # supervisor with confirm -> ok
@@ -345,6 +353,89 @@ def test_import_rejects_arbitrary_table_in_document():
     # the arbitrary-table node was dropped (never trusted)
     labels = [n["label"] for n in r.json()["nodes"]]
     assert "evil" not in labels
+
+
+def test_case_seed_imports_complete_related_record_set_without_duplicates(monkeypatch):
+    """A rich case must not collapse to only the FIR + canonical party nodes."""
+    bid = _new_board()
+    monkeypatch.setattr(
+        board_searcharound, "entities_for_case",
+        lambda case_id, limit=12: [{
+            "entity_id": 9001, "label": "Rohan Kumar",
+            "entity_type": "person", "role": "victim",
+        }],
+    )
+    monkeypatch.setattr(
+        board_searcharound, "related_records_for_case",
+        lambda case_id: [
+            {
+                "ref_table": "Victim", "ref_id": "71", "relationship": "victim",
+                "group": "people", "node_kind": "victim", "snapshot": None,
+                "label": None,
+            },
+            {
+                "ref_table": "EvidenceItem", "ref_id": "81",
+                "relationship": "evidence", "group": "evidence",
+                "node_kind": "document", "snapshot": None, "label": None,
+            },
+            {
+                "ref_table": "ActSectionAssociation", "ref_id": "100239:IPC:379",
+                "relationship": "act_and_section", "group": "legal",
+                "node_kind": "note",
+                "snapshot": {
+                    "CaseMasterID": 100239, "ActID": "IPC", "SectionID": "379",
+                    "SourceRef": "ActSectionAssociation:100239:IPC:379",
+                },
+                "label": "IPC 379",
+            },
+        ],
+    )
+
+    def fake_hydrate(ref_table, ref_id, *, requested_kind=None):
+        labels = {
+            "CaseMaster": "100010033202600001",
+            "EntityGraph": "Rohan Kumar",
+            "Victim": "Rohan Kumar",
+            "EvidenceItem": "CCTV footage",
+        }
+        return board_references.HydratedRef(
+            ref_table=ref_table, ref_id=str(ref_id),
+            node_kind=requested_kind or "note", exists=True,
+            label=labels.get(ref_table, f"{ref_table} {ref_id}"),
+            canonical_entity_id=(9001 if ref_table == "EntityGraph" else None),
+            snapshot={"CaseMasterID": 100239},
+            source_hash="synthetic-hash",
+        )
+
+    monkeypatch.setattr(board_references, "hydrate", fake_hydrate)
+    payload = {
+        "ref_table": "CaseMaster", "ref_id": "100239",
+        "node_kind": "case", "expand": False,
+    }
+    first = client.post(f"/boards/{bid}/seed", headers=IO, json=payload)
+    assert first.status_code == 201, first.text
+    assert first.json()["nodes_added"] == 4
+    assert first.json()["edges_added"] == 4
+    assert "3 related records" in first.json()["detail"]
+
+    detail = client.get(f"/boards/{bid}", headers=IO).json()
+    assert len(detail["nodes"]) == 5
+    assert len(detail["edges"]) == 4
+    assert {n["node_kind"] for n in detail["nodes"]} >= {
+        "case", "entity", "victim", "document", "note",
+    }
+    assert {e["source_record_id"] for e in detail["edges"]} >= {
+        "Victim:71", "EvidenceItem:81",
+        "ActSectionAssociation:100239:IPC:379",
+    }
+
+    # Re-sending enriches/reuses the existing source references and evidence
+    # links rather than creating a duplicate FIR or duplicate child graph.
+    again = client.post(f"/boards/{bid}/seed", headers=IO, json=payload)
+    assert again.status_code == 201, again.text
+    detail_again = client.get(f"/boards/{bid}", headers=IO).json()
+    assert len(detail_again["nodes"]) == 5
+    assert len(detail_again["edges"]) == 4
 
 
 # --- Search Around (needs the operational graph) -----------------------------

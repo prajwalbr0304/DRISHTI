@@ -1,7 +1,7 @@
 """FastAPI router for the Phase-6 graph-analysis engine + Phase-15d entity explorer.
 
 Graph endpoints return the AiResult contract embedded in a typed envelope.
-Entity explorer endpoints are plain reads (not AI-derived) with policymaker gating.
+Entity explorer endpoints are plain reads (not AI-derived) with a role gate.
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from ..intake.guards import require_write_allowed
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import explorer, service
 from .schemas import (ArchiveStatusResponse, CentralityResponse, CommunitiesResponse,
                       HiddenFeedResponse, PathResponse, ProofPathResponse, RebuildResponse,
@@ -17,8 +18,8 @@ from .schemas import (ArchiveStatusResponse, CentralityResponse, CommunitiesResp
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
-# Graph rebuild / archival / edge review are analyst+ governance actions.
-_GRAPH_WRITE_ROLES = {"analyst", "investigator", "supervisor", "super_admin"}
+# Graph rebuild / archival / edge review — INTERIM: every command role.
+_GRAPH_WRITE_ROLES = set(ALL_ROLES)
 
 
 def require_graph_write(x_role: Optional[str] = Header(default=None)) -> str:
@@ -29,13 +30,13 @@ def require_graph_write(x_role: Optional[str] = Header(default=None)) -> str:
     return role
 
 
-# --- Policymaker gate (individual profiles = de-anonymisation risk) ----------
-_DENY_INDIVIDUAL = {"policymaker"}
+# Individual-profile gate (de-anonymisation risk). INTERIM: no role is denied.
+_DENY_INDIVIDUAL: set[str] = set()
 
 
 def _resolve_role(x_role: Optional[str] = Header(default=None)) -> str:
     from ..config import get_settings
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_entity_read(x_role: Optional[str] = Header(default=None)) -> str:
@@ -43,7 +44,7 @@ def require_entity_read(x_role: Optional[str] = Header(default=None)) -> str:
     if role in _DENY_INDIVIDUAL:
         raise HTTPException(
             status_code=403,
-            detail="Individual entity profiles are not available to the policymaker role (aggregate-only).")
+            detail=f"Individual entity profiles are not available to the '{role}' role.")
     return role
 
 

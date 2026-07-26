@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "@/providers/RoleProvider";
 import { RequireAuth } from "@/auth";
 import { useAuth } from "@/auth/AuthProvider";
-import { ROLES } from "@/config/roles";
+import { ROLES, roleCan } from "@/config/roles";
 import { AppShell } from "@/components/shell/AppShell";
 import { CommandCenter } from "@/routes/CommandCenter";
 import { CaseExplorer } from "@/routes/cases/CaseExplorer";
@@ -35,7 +35,8 @@ import { ResponsePlans } from "@/routes/emergency/ResponsePlans";
 import { NotFound } from "@/routes/NotFound";
 import { LandingPage } from "@/routes/landing/LandingPage";
 
-/** Guards the Admin destination — only super_admin may enter, even by URL. */
+/** Guards the Admin destination — requires the admin capability, even by URL.
+    INTERIM: every role holds it (see config/roles.ts). */
 function AdminOnly({ children }: { children: React.ReactNode }) {
   const { isAdmin } = useRole();
   return isAdmin ? <>{children}</> : <Navigate to="/command" replace />;
@@ -53,11 +54,12 @@ function PublicLanding() {
   return <LandingPage />;
 }
 
-/** Boards hold sensitive investigative material — the policymaker role is
-    denied even by direct URL (matches the Catalyst-authenticated API gate). */
+/** Boards hold sensitive investigative material, so entry is capability-gated
+    even by direct URL (matches the Catalyst-authenticated API gate). INTERIM:
+    every role holds `board_use`. */
 function BoardGate({ children }: { children: React.ReactNode }) {
   const { role } = useRole();
-  return role === "policymaker" ? <Navigate to="/analytics" replace /> : <>{children}</>;
+  return roleCan(role, "board_use") ? <>{children}</> : <Navigate to="/analytics" replace />;
 }
 
 export default function App() {

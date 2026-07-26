@@ -42,18 +42,19 @@ _MAX_SKEW_MS = 60_000
 _NONCE_TTL_S = 180
 _VALID_SCOPES = ("gateway", "service")
 
-# Canonical six functional roles — MUST mirror
-# services/ml/app/org/hierarchy.py FUNCTIONAL_ROLES and the Node gateway_api
-# role mapper. AppSail re-validates the signed role against this set (defence in
+# Canonical functional roles — MUST mirror services/ml/app/roles.py
+# FUNCTIONAL_ROLES (re-exported by org/hierarchy.py) and the Node gateway_api
+# role mapper. The set is repeated here as a LITERAL on purpose (defence in
 # depth): a signed context carrying any other non-empty role is rejected as
 # forged/misconfigured. (test_gateway_authz asserts this stays in sync.)
 FUNCTIONAL_ROLES = frozenset({
-    "investigator", "analyst", "supervisor", "policymaker",
-    "disaster_coordinator", "super_admin",
+    "dgp_state_command", "adgp_igp_range", "sp_district_command", "dysp_acp",
+    "sho", "investigating_officer", "crime_analyst", "cyber_cell",
+    "traffic_command", "system_admin",
 })
 # A service-scope context (event/cron/job) is not a user seat; it carries the
 # default role only and is authorised by its service scope, not a functional role.
-_SERVICE_DEFAULT_ROLE = "investigator"
+_SERVICE_DEFAULT_ROLE = "investigating_officer"
 
 # Audience the signed context is minted for. Every Node signer (gateway_api +
 # event/cron functions) and the smoke test embed this exact ``aud`` claim, and
@@ -79,7 +80,7 @@ class GatewayContext:
     ts: int
     exp: int
     nonce: str
-    role: str = "investigator"
+    role: str = "investigating_officer"
     user_id: Optional[str] = None
     email: Optional[str] = None
     source: Optional[str] = None      # event/cron function name for service scope
@@ -219,13 +220,13 @@ def verify_signed_context(
         if aud != expected_audience:
             raise ContextError("audience mismatch")
 
-    # Validate the server-resolved functional role against the canonical six
-    # (defence in depth). A user-scope context MUST carry one of the six roles;
+    # Validate the server-resolved functional role against the canonical set
+    # (defence in depth). A user-scope context MUST carry one of those roles;
     # any other non-empty value is a forged/misconfigured context. A service-
     # scope context is authorised by its scope, not a functional role.
     raw_role = str(data.get("role", "") or "").strip()
     if scope == "gateway":
-        role = raw_role or "investigator"
+        role = raw_role or _SERVICE_DEFAULT_ROLE
         if role not in FUNCTIONAL_ROLES:
             raise ContextError("unknown role")
     else:

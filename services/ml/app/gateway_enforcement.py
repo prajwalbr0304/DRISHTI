@@ -36,6 +36,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .gateway_context import (ContextError, GatewayContext, configured_audience,
                               verify_signed_context)
+from .roles import DEFAULT_ROLE
 
 # Liveness/readiness probes are hit directly by Catalyst infrastructure (not
 # through the gateway), so they must never require a signed context.
@@ -73,7 +74,7 @@ def _inject_trusted_identity(request: Request, ctx: GatewayContext) -> None:
     """Strip client identity + scope headers and inject the server-trusted role,
     actor and organizational scope so the existing X-Role-based role gates and
     the scope resolver operate on the verified identity, never a client value."""
-    trusted_role = (ctx.role or "investigator").strip() or "investigator"
+    trusted_role = (ctx.role or DEFAULT_ROLE).strip() or DEFAULT_ROLE
     actor = (ctx.user_id or ctx.email or ctx.source
              or ("service" if ctx.is_service else "gateway"))
     headers = [(k, v) for (k, v) in request.scope["headers"]

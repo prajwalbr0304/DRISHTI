@@ -327,10 +327,10 @@ def test_request_context_echoes_request_id_and_actor():
         return {"actor": c.actor if c else None, "rid": c.request_id if c else None}
 
     c = TestClient(mini)
-    r = c.get("/ctx", headers={"X-Request-ID": "corr-abc-123", "X-Demo-Actor": "demo.analyst"})
+    r = c.get("/ctx", headers={"X-Request-ID": "corr-abc-123", "X-Demo-Actor": "demo.crime_analyst"})
     assert r.headers.get("X-Request-ID") == "corr-abc-123"
     body = r.json()
-    assert body["actor"] == "demo.analyst"
+    assert body["actor"] == "demo.crime_analyst"
     assert body["rid"] == "corr-abc-123"
 
 

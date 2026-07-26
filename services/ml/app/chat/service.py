@@ -99,14 +99,15 @@ from ..config import get_settings          # noqa: E402
 from ..contracts import AiResult            # noqa: E402
 from ..nlsql import engine as _engine       # noqa: E402
 from ..nlsql.schema import ROLES            # noqa: E402
+from ..roles import normalize_role          # noqa: E402
 from .schemas import AskResponse, TranslateResponse  # noqa: E402
 
 
 def _resolve_role(x_role: Optional[str]) -> str:
     """Trust the X-Role signal (pre-Phase-14, same as the rest of the app), but
     clamp anything unrecognised to the configured default so scope stays defined."""
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    return role if role in ROLES else (get_settings().default_role or "investigator")
+    role = (x_role or get_settings().default_role or "").strip()
+    return role if role in ROLES else normalize_role(get_settings().default_role)
 
 
 def _outcome_to_response(o: "_engine.AskOutcome") -> AskResponse:

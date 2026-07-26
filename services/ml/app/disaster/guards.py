@@ -3,12 +3,9 @@
 AWS PostgreSQL RLS/FORCE RLS remain DISABLED (as requested), so the access
 boundary is the Catalyst-authenticated API enforced server-side in AppSail:
 
-  * a synthetic ``disaster_coordinator`` role (mapped through Catalyst
-    Authentication + the server-side role middleware) may review warnings and
-    approve/dispatch allocations + evacuation plans — but only inside the
-    assigned synthetic district/unit;
-  * ordinary crime roles (investigator/analyst/supervisor/policymaker) receive
-    at most the explicitly-allowed READ-ONLY situational view;
+  * INTERIM: every command role (app/roles.py) may review warnings and
+    approve/dispatch allocations + evacuation plans — a seat with an ASSIGNED
+    synthetic district stays confined to it;
   * ``disaster_forecast``, ``resource_allocation`` and ``evacuation_plan`` are
     the enforced permissions on every mutating API action;
   * warning approval, dispatch and evacuation-plan approval require a fresh
@@ -28,19 +25,21 @@ from fastapi import Header, HTTPException, Request
 
 from ..config import get_settings
 from ..intake.guards import require_localhost, synthetic_db_ok
+from ..roles import ALL_ROLES, DEFAULT_ROLE, ROLE_SCOPE_LEVEL
 
 # --- role sets --------------------------------------------------------------
-# Full disaster operator: the synthetic DDMA/district coordinator + super admin.
-DISASTER_WRITE_ROLES = {"disaster_coordinator", "super_admin"}
-# Everyone authenticated may read the situational view (crime roles read-only).
-DISASTER_READ_ROLES = {"disaster_coordinator", "super_admin", "investigator",
-                       "analyst", "supervisor", "policymaker"}
-# Permission -> allowed roles (Prompt 17 authorization section).
-DISASTER_FORECAST_ROLES = {"disaster_coordinator", "super_admin"}
-RESOURCE_ALLOCATION_ROLES = {"disaster_coordinator", "super_admin"}
-EVACUATION_PLAN_ROLES = {"disaster_coordinator", "super_admin"}
-# Roles that are scoped to a single assigned district (cannot act state-wide).
-DISTRICT_SCOPED_ROLES = {"disaster_coordinator"}
+# INTERIM ("all roles have access to everything"): every command role may read
+# the situational view AND run forecasts, allocate resources and approve
+# evacuation plans. District containment below still applies.
+DISASTER_WRITE_ROLES = set(ALL_ROLES)
+DISASTER_READ_ROLES = set(ALL_ROLES)
+DISASTER_FORECAST_ROLES = set(ALL_ROLES)
+RESOURCE_ALLOCATION_ROLES = set(ALL_ROLES)
+EVACUATION_PLAN_ROLES = set(ALL_ROLES)
+# Roles confined to a single assigned district/station (cannot act state-wide):
+# every seat whose default scope level is narrower than a range.
+DISTRICT_SCOPED_ROLES = {r for r, lvl in ROLE_SCOPE_LEVEL.items()
+                         if lvl in ("district", "subdivision", "station", "assigned_case")}
 
 
 class DisasterScope:
@@ -52,17 +51,18 @@ class DisasterScope:
         self.actor = actor
         self.district_id = district_id
         self.unit_id = unit_id
-        self.is_super = role in {"super_admin"}
+        self.is_super = role in {"system_admin"}
 
     def covers_district(self, district_id: Optional[int]) -> bool:
-        """A super_admin covers everywhere. A district-scoped coordinator covers
-        only its assigned district. Other roles never write (read-only)."""
+        """The platform admin covers everywhere. A district-scoped seat that has
+        an ASSIGNED district covers only that district; a seat with no assignment
+        asserted is not geographically narrowed (interim demo posture)."""
         if self.is_super:
             return True
-        if self.role not in DISTRICT_SCOPED_ROLES:
-            return self.role in DISASTER_WRITE_ROLES
-        if self.district_id is None:
+        if self.role not in DISASTER_WRITE_ROLES:
             return False
+        if self.role not in DISTRICT_SCOPED_ROLES or self.district_id is None:
+            return True
         return district_id is None or int(district_id) == int(self.district_id)
 
     def as_dict(self) -> dict:
@@ -72,7 +72,7 @@ class DisasterScope:
 
 
 def _resolve_role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def resolve_actor(request: Request) -> str:
@@ -121,9 +121,8 @@ def _require_permission(role: str, allowed: set, permission: str) -> str:
         _record_denied(permission, role)
         raise HTTPException(
             status_code=403,
-            detail=(f"Role '{role}' lacks the '{permission}' permission. "
-                    "Emergency Response actions are limited to the synthetic "
-                    "disaster_coordinator (crime roles are read-only)."))
+            detail=(f"Role '{role}' lacks the '{permission}' permission for "
+                    "Emergency Response actions."))
     return role
 
 
@@ -184,8 +183,8 @@ def enforce_district_scope(scope: DisasterScope, district_id: Optional[int],
         raise HTTPException(
             status_code=403,
             detail=(f"'{action}' is outside your assigned district "
-                    f"({scope.district_id}). A coordinator may only act within "
-                    "their assigned synthetic district/unit."))
+                    f"({scope.district_id}). A district-scoped seat may only act "
+                    "within its assigned synthetic district/unit."))
 
 
 # --- audit of allow/deny decisions ------------------------------------------

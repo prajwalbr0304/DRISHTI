@@ -203,6 +203,17 @@ class FallbackPlanner:
 
         if re.search(r"how many|count|number of|total|how much|ಎಷ್ಟು|ಸಂಖ್ಯೆ|"
                      r"\beshtu\b|\bestu\b|sankhye", ql):
+            # --- reference-entity counts (stations, districts, officers) -----
+            if re.search(r"station|ಠಾಣೆ|thane|unit|ಘಟಕ", ql):
+                place_cond = (f' WHERE d."DistrictName" ILIKE {_lit("%" + f["place"] + "%")}'
+                              if f.get("place") else "")
+                sql = (f'SELECT COUNT(*) AS station_count FROM "Unit" u '
+                       f'JOIN "District" d ON d."DistrictID"=u."DistrictID"{place_cond}')
+                return Plan(sql=sql, intent="count_stations", confidence=0.78, language=language, filters=f)
+            if re.search(r"\bdistrict|ಜಿಲ್ಲೆ|jille\b", ql) and not re.search(r"by district|per district|each district|across district", ql):
+                sql = 'SELECT COUNT(*) AS district_count FROM "District"'
+                return Plan(sql=sql, intent="count_districts", confidence=0.78, language=language, filters=f)
+            # --- end reference-entity counts ---------------------------------
             if re.search(r"by district|per district|each district|across districts", ql) or (
                 not f.get("place") and re.search(r"district", ql)
             ):
@@ -228,7 +239,7 @@ class FallbackPlanner:
                         "ಸ್ಪಷ್ಟಪಡಿಸಿ — ಉದಾ: “ಮೈಸೂರಿನಲ್ಲಿ ಕಳೆದ ತಿಂಗಳ ದರೋಡೆ ಪ್ರಕರಣಗಳು”."),
                     intent="clarify", confidence=0.3, language=language, filters=f)
             if agg_role:
-                # policymaker: no case list -> aggregate by district instead
+                # aggregate-only role: no case list -> aggregate by district instead
                 sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{where} '
                        f'GROUP BY d."DistrictName" ORDER BY case_count DESC')
                 return Plan(sql=sql, intent="count_by_district", confidence=0.6, language=language, filters=f)
@@ -262,6 +273,32 @@ def build_system_prompt(role: str) -> str:
         "Quote identifiers exactly as shown (double quotes, PascalCase).",
         "Match names/values case-insensitively with ILIKE and % wildcards.",
         "NEVER write INSERT/UPDATE/DELETE/DDL or multiple statements.",
+        # --- grounding rules that stop common mis-mappings -------------------
+        'PLACES: a named place (e.g. "Bengaluru City", "Mysuru", "Belagavi") is a '
+        'DISTRICT — filter on "District"."DistrictName" ILIKE \'%name%\', joining '
+        '"CaseMaster" -> "Unit" -> "District". "Unit"."UnitName" is an individual '
+        'POLICE STATION name; never use it to match a district.',
+        'SCOPE OF DATA: the database covers exactly ONE state (Karnataka). '
+        '"in Karnataka" / "in the state" / "overall" therefore means NO place '
+        'filter at all — do not ask for clarification about which state.',
+        'WHAT TO COUNT: count police stations/units with COUNT(*) on "Unit"; '
+        'count districts with COUNT(*) on "District"; count FIRs/cases/crimes '
+        'with COUNT(*) on "CaseMaster". Never answer a station/district count '
+        'from "CaseMaster".',
+        'CRIME TYPE: "CrimeHead"."CrimeGroupName" is the broad group (e.g. Cyber, '
+        'Property); "CrimeSubHead"."CrimeHeadName" is the specific offence (e.g. '
+        'Theft, Murder, Robbery). Pick whichever matches the question.',
+        'TIME SERIES / TREND: build the period with '
+        'to_char(date_trunc(\'month\', "CrimeRegisteredDate"), \'YYYY-MM\') AS month '
+        'and ORDER BY month. Never use EXTRACT(MONTH ...) alone — that merges '
+        'different years into the same bucket and destroys the trend.',
+        'RANKING: for "top"/"most"/"highest"/"which ... most" questions, SELECT the '
+        'label AND the aggregate, then ORDER BY the aggregate DESC (add LIMIT n when '
+        'a number is given). ALWAYS add ORDER BY for any grouped/ranked result so the '
+        'ordering is real and not accidental.',
+        'ALIASES: PostgreSQL cannot reference a SELECT alias inside WHERE/GROUP BY/'
+        'HAVING — repeat the full expression there, or wrap the query in a CTE/'
+        'sub-select and filter outside.',
         "If the question is ambiguous or cannot be mapped to the schema, DO NOT guess — "
         "set needs_clarification=true and give a short clarifying_question.",
     ]

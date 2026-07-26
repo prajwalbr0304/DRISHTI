@@ -163,19 +163,19 @@ def test_prediction_flow_and_idempotent_request(rw_rollback):
     snap = builder.build_snapshot(conn, feature_schema_version_id=fsv, subject_kind="area_district",
                                   subject_ref_id=str(did), actor="t")
 
-    r1 = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-req", "analyst")
-    r2 = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-req", "analyst")
+    r1 = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-req", "crime_analyst")
+    r2 = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-req", "crime_analyst")
     assert r1["status"] == "queued"
     assert r1["prediction_request_id"] == r2["prediction_request_id"]   # idempotent
     assert r2["reused"] is True
 
-    run = service._run_request(conn, r1["prediction_request_id"], "analyst")
+    run = service._run_request(conn, r1["prediction_request_id"], "crime_analyst")
     assert run["request"]["status"] == "completed"
     assert run["result"]["output"].get("band") in ("low", "medium", "high")
     assert run["result"]["limitations"]                       # decision-support disclaimer present
 
     # idempotent replay: running again does not recompute.
-    again = service._run_request(conn, r1["prediction_request_id"], "analyst")
+    again = service._run_request(conn, r1["prediction_request_id"], "crime_analyst")
     assert again["reran"] is False
 
 
@@ -198,7 +198,7 @@ def test_schema_mismatch_rejected(rw_rollback):
                     (other_fsv, str(did), json.dumps({}), json.dumps({}), "deadbeef01"))
         other_snap = int(cur.fetchone()[0])
     with pytest.raises(service.SchemaMismatch):
-        service._create_request(conn, mv, other_snap, "batch", "t-mismatch", "analyst")
+        service._create_request(conn, mv, other_snap, "batch", "t-mismatch", "crime_analyst")
 
 
 @requires_db
@@ -214,7 +214,7 @@ def test_unapproved_model_rejected(rw_rollback):
                     ("test_draft_model", "forecasting", "d1", "draft", fsv))
         draft_mv = int(cur.fetchone()[0])
     with pytest.raises(service.ModelNotApproved):
-        service._create_request(conn, draft_mv, snap["feature_snapshot_id"], "batch", "t-draftmv", "analyst")
+        service._create_request(conn, draft_mv, snap["feature_snapshot_id"], "batch", "t-draftmv", "crime_analyst")
 
 
 @requires_db
@@ -228,9 +228,9 @@ def test_stale_after_correction_blocks_run(rw_rollback):
     # an accepted canonical edit invalidates the subject's live snapshots
     inv = service._invalidate_for_subject(conn, "area_district", str(did), "canonical correction", "sup")
     assert inv["snapshots_marked_stale"] >= 1
-    r = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-stale", "analyst")
+    r = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-stale", "crime_analyst")
     with pytest.raises(service.StaleSnapshot):
-        service._run_request(conn, r["prediction_request_id"], "analyst")
+        service._run_request(conn, r["prediction_request_id"], "crime_analyst")
 
 
 @requires_db
@@ -241,8 +241,8 @@ def test_review_writes_review_and_audit(rw_rollback):
     did = _a_district(conn)
     snap = builder.build_snapshot(conn, feature_schema_version_id=fsv, subject_kind="area_district",
                                   subject_ref_id=str(did), actor="t")
-    r = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-review", "analyst")
-    run = service._run_request(conn, r["prediction_request_id"], "analyst")
+    r = service._create_request(conn, mv, snap["feature_snapshot_id"], "batch", "t-review", "crime_analyst")
+    run = service._run_request(conn, r["prediction_request_id"], "crime_analyst")
     result_id = run["result"]["prediction_result_id"]
 
     rev = service._review_result(conn, result_id, "accept", None, "supervisor_demo")
@@ -259,7 +259,7 @@ def test_review_writes_review_and_audit(rw_rollback):
         assert int(cur.fetchone()[0]) == 1
 
     # override requires a reason
-    run2 = service._run_request(conn, r["prediction_request_id"], "analyst")  # idempotent replay
+    run2 = service._run_request(conn, r["prediction_request_id"], "crime_analyst")  # idempotent replay
     with pytest.raises(service.InvalidState):
         service._review_result(conn, run2["result"]["prediction_result_id"], "override", "  ", "sup")
 

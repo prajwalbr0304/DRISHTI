@@ -398,41 +398,47 @@ client = TestClient(app)
 
 @requires_db
 def test_api_status_submit_enabled_in_phase3():
-    r = client.get("/intake/status", headers={"X-Role": "investigator"})
+    r = client.get("/intake/status", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200
     # Phase 3 turned submit on (synthetic DB confirmed + intake_submit_enabled).
     assert r.json()["submit_enabled"] is True
 
 
 def test_api_workflow_and_lookups_ok():
-    r = client.get("/intake/workflow", headers={"X-Role": "investigator"})
+    r = client.get("/intake/workflow", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200 and len(r.json()["kinds"]) == 6
-    r = client.get("/intake/lookups", headers={"X-Role": "investigator"})
+    r = client.get("/intake/lookups", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200 and len(r.json()["categories"]) == 5
 
 
-def test_api_policymaker_blocked():
-    assert client.get("/intake/lookups", headers={"X-Role": "policymaker"}).status_code == 403
+def test_api_intake_open_to_every_command_role():
+    # INTERIM ("all roles have access to everything"): the intake read gate no
+    # longer denies any command seat.
+    from app.intake.guards import require_intake_read, require_intake_write
+    from app.roles import FUNCTIONAL_ROLES
+    for role in FUNCTIONAL_ROLES:
+        assert require_intake_read(role) == role
+        assert require_intake_write(role) == role
 
 
 @requires_db
 def test_api_submit_gate_returns_409_when_explicitly_disabled(monkeypatch):
     # Re-gate submit via config -> the gate blocks with 409 before the handler.
     monkeypatch.setattr(get_settings(), "intake_submit_enabled", False)
-    r = client.post("/intake/drafts/DR-NONEXISTENT/submit", headers={"X-Role": "investigator"}, json={})
+    r = client.post("/intake/drafts/DR-NONEXISTENT/submit", headers={"X-Role": "investigating_officer"}, json={})
     assert r.status_code == 409
 
 
 @requires_db
 def test_api_submit_gate_open_then_404_for_missing():
     # Default (Phase 3) has submit enabled -> gate passes; draft genuinely absent.
-    r = client.post("/intake/drafts/DR-NONEXISTENT/submit", headers={"X-Role": "investigator"}, json={})
+    r = client.post("/intake/drafts/DR-NONEXISTENT/submit", headers={"X-Role": "investigating_officer"}, json={})
     assert r.status_code == 404
 
 
 @requires_db
 def test_api_quality_issues_read():
-    r = client.get("/intake/quality/issues", headers={"X-Role": "investigator"})
+    r = client.get("/intake/quality/issues", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200
     body = r.json()
     assert "total" in body and isinstance(body["by_severity"], dict)
@@ -449,7 +455,7 @@ def test_api_case_parties_uses_canonical_identity():
             row = cur.fetchone()
     if row is None:
         pytest.skip("no canonical case parties present")
-    r = client.get(f"/intake/cases/{int(row[0])}/parties", headers={"X-Role": "investigator"})
+    r = client.get(f"/intake/cases/{int(row[0])}/parties", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200
     body = r.json()
     assert body["count"] >= 1

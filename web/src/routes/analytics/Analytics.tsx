@@ -1,6 +1,7 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { Cpu, Fingerprint, Gauge, LineChart, Lock, Radar, Scale, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -17,8 +18,8 @@ import { ExplainabilityMode } from "@/routes/analytics/modes/ExplainabilityMode"
    chasing a single case. Sub-nav switches the intent over shared, cited widgets:
      Trends · Crime Patterns · Socio-Economic · Forecasts · Model Explainability
    Every panel carries provenance and an "Explain this" route into Ask DRISHTI.
-   Policymakers get the aggregate turf; Crime Patterns (individual cases) is
-   gated out for them, as link-level views are elsewhere.
+   An aggregate-only seat gets the aggregate turf; Crime Patterns (individual
+   cases) is gated out for it, as link-level views are elsewhere.
    ========================================================================== */
 
 type Mode = "trends" | "patterns" | "socio" | "forecasts" | "workload" | "explain";
@@ -35,9 +36,10 @@ const MODES: { key: Mode; label: string; icon: React.ElementType; aggregate: boo
 export function Analytics() {
   const { role } = useRole();
   const [sp, setSp] = useSearchParams();
-  const isPolicymaker = role === "policymaker";
+  // Aggregate-only seats see only the aggregate modes. INTERIM: none are.
+  const aggregateOnly = !roleCan(role, "case_read");
 
-  const allowed = MODES.filter((m) => !isPolicymaker || m.aggregate);
+  const allowed = MODES.filter((m) => !aggregateOnly || m.aggregate);
   const requested = (sp.get("mode") as Mode) ?? "trends";
   const mode: Mode = allowed.some((m) => m.key === requested) ? requested : "trends";
 
@@ -47,7 +49,7 @@ export function Analytics() {
     setSp(next, { replace: true });
   };
 
-  const gatedForPolicymaker = isPolicymaker && requested === "patterns";
+  const gatedAggregateOnly = aggregateOnly && requested === "patterns";
 
   return (
     <div>
@@ -90,11 +92,11 @@ export function Analytics() {
         })}
       </div>
 
-      {gatedForPolicymaker ? (
+      {gatedAggregateOnly ? (
         <EmptyState
           icon={Lock}
           title="Not available for this role"
-          description="Crime-pattern detections resolve to individual FIRs. The policymaker role works with aggregate views only — see Trends, Socio-Economic and Forecasts."
+          description="Crime-pattern detections resolve to individual FIRs. This role works with aggregate views only — see Trends, Socio-Economic and Forecasts."
         />
       ) : (
         <>

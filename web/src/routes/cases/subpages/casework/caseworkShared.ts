@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import type { BadgeProps } from "@/components/ui/badge";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 
 /* Shared helpers/hooks for the Phase 7 casework sub-pages. */
@@ -8,13 +9,13 @@ import { useRole } from "@/providers/RoleProvider";
 /** Roles that may add/manage casework records (server-enforced too). */
 export function useCanWriteCasework(): boolean {
   const { role } = useRole();
-  return role === "investigator" || role === "supervisor" || role === "super_admin";
+  return roleCan(role, "case_write");
 }
 
 /** Roles that may see restricted statement/lab text (server redacts otherwise). */
 export function useCanSeeRestricted(): boolean {
   const { role } = useRole();
-  return role === "investigator" || role === "supervisor" || role === "super_admin";
+  return roleCan(role, "case_read");
 }
 
 export function pretty(v?: string | null): string {

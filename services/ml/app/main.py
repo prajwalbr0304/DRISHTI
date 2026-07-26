@@ -156,7 +156,7 @@ app.include_router(notifications_router)
 app.include_router(reports_router)
 app.include_router(rag_router)
 # Phase 16 — Investigation Board (object-backed analytical canvas). Data Store-
-# native persistence; Catalyst-authenticated authorization (policymaker denied).
+# native persistence; Catalyst-authenticated authorization (role-gated).
 app.include_router(board_router)
 # Phase 17 — Emergency Response (disaster forecasting/readiness/allocation/
 # evacuation). Data Store-native; synthetic disaster_coordinator role + district

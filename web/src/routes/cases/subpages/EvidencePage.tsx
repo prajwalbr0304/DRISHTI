@@ -4,6 +4,7 @@ import { FileText, Info, Paperclip, Plus } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { EvListItem } from "@/api/types";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ const STATE_TABS = ["all", "available", "draft", "uploading", "failed", "archive
 
 export function EvidencePage({ caseId }: { caseId: number }) {
   const { role } = useRole();
-  const canWrite = role === "investigator" || role === "supervisor" || role === "super_admin";
+  const canWrite = roleCan(role, "case_write");
 
   const status = useEvidenceStatus();
   const [stateFilter, setStateFilter] = useState<string>("all");

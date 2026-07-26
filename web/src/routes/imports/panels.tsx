@@ -19,6 +19,7 @@ import {
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import { cn, formatNumber } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,6 @@ import type {
   ImpStagingRow,
 } from "@/api/types";
 
-const REVIEW_ROLES = new Set(["supervisor", "super_admin"]);
 
 /** Trigger a client-side download of text content (error/row export). */
 function downloadText(name: string, text: string, mime = "text/csv") {
@@ -75,7 +75,7 @@ function Pill({ status }: { status: string }) {
 export function ImportInboxPanel() {
   const { role } = useRole();
   const qc = useQueryClient();
-  const canReview = REVIEW_ROLES.has(role);
+  const canReview = roleCan(role, "imports_review");
 
   const [tvId, setTvId] = useState<string>("");
   const [fileName, setFileName] = useState<string>("");
@@ -341,7 +341,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "lo
 export function EntityLinksPanel() {
   const { role } = useRole();
   const qc = useQueryClient();
-  const canReview = REVIEW_ROLES.has(role);
+  const canReview = roleCan(role, "imports_review");
   const [status, setStatus] = useState<string>("candidate");
 
   const q = useQuery({
@@ -510,7 +510,7 @@ export function AccountsPanel() {
 export function MoneyAlertsPanel({ caseId }: { caseId?: number }) {
   const { role } = useRole();
   const qc = useQueryClient();
-  const canReview = REVIEW_ROLES.has(role) || role === "analyst";
+  const canReview = roleCan(role, "imports_review");
 
   const alertsQ = useQuery({
     queryKey: ["imports", "money-alerts", caseId ?? "all"],

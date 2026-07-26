@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ClipboardCheck, Lock } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,19 +22,19 @@ export function QualityReview() {
   const draftsQ = useQuery({
     queryKey: ["intake", "drafts", "returned_for_correction"],
     queryFn: ({ signal }) => api.intake.listDrafts({ status: "returned_for_correction", page_size: 50 }, signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "entity_review"),
   });
   const issuesQ = useQuery({
     queryKey: ["intake", "quality", "open"],
     queryFn: ({ signal }) => api.intake.qualityIssues({ status: "open", page_size: 100 }, signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "entity_review"),
   });
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "entity_review")) {
     return (
       <div><PageHeader title="Data quality review" />
         <EmptyState icon={Lock} title="Not available for this role"
-          description="The data-quality queue is not accessible to the policymaker role." /></div>
+          description="The data-quality queue is not accessible to this role." /></div>
     );
   }
 

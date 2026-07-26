@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from ..admin.permissions import require_admin_read, require_admin_write
 from ..intake.guards import require_write_allowed
+from ..roles import normalize_role
 from . import hierarchy, scope as scope_mod, service
 from .schemas import (AssignRoleRequest, CreateUserRequest, HierarchyResponse,
                       MyScopeResponse, RolesResponse, ScopeMatrixResponse,
@@ -84,14 +85,11 @@ def my_scope(x_demo_actor: Optional[str] = Header(default=None),
         if username:
             sc = service.resolve_scope_for_user(username=username)
         else:
-            sc = scope_mod.derive_scope((x_role or "investigator").strip(),
-                                        source="role-default", )
+            sc = scope_mod.derive_scope(normalize_role(x_role), source="role-default")
     except service.OrgError:
-        sc = scope_mod.derive_scope((x_role or "investigator").strip(),
-                                    source="role-default")
+        sc = scope_mod.derive_scope(normalize_role(x_role), source="role-default")
     except Exception:  # noqa: BLE001 — DB unavailable: fall back to role default
-        sc = scope_mod.derive_scope((x_role or "investigator").strip(),
-                                    source="role-default-offline")
+        sc = scope_mod.derive_scope(normalize_role(x_role), source="role-default-offline")
     out = sc.as_dict()
     out["note"] = _SCOPE_NOTE
     return out

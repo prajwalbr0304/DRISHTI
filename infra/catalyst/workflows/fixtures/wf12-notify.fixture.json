@@ -3,7 +3,7 @@
   "fixture_status": "representative",
   "idempotency_key": "notify:report:rep-500:v1",
   "input": { "signal": "notify.requested", "data": { "template": "report.ready", "subject_ref": "Report:rep-500",
-             "recipients_role": "supervisor", "idempotency_key": "notify:report:rep-500:v1" } },
+             "recipients_role": "sho", "idempotency_key": "notify:report:rep-500:v1" } },
   "expected_output": {
     "email": { "subject": "DRISHTI: a report is ready", "body_contains": "Synthetic Hackathon Demo", "body_excludes": ["evidence bytes", "full narrative", "PII"] },
     "delivery_status": { "sent": true, "recorded": true }

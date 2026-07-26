@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, Lock, Map as MapIcon, Search,
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import { cn, formatNumber } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,17 +37,21 @@ export function CaseExplorer() {
   }, [qInput]);
   useEffect(() => setPage(1), [filters]);
 
+  // Individual case files are PII-bearing, so entry is capability-gated (the
+  // server enforces the same decision). INTERIM: every role holds `case_read`.
+  const canReadCases = roleCan(role, "case_read");
+
   const optionsQ = useQuery({
     queryKey: ["cases", "filters"],
     queryFn: ({ signal }) => api.cases.filters(signal),
-    enabled: role !== "policymaker",
+    enabled: canReadCases,
     staleTime: 10 * 60_000,
   });
 
   const listQ = useQuery({
     queryKey: ["cases", "list", filters, page],
     queryFn: ({ signal }) => api.cases.list({ ...filters, page, page_size: PAGE_SIZE }, signal),
-    enabled: role !== "policymaker",
+    enabled: canReadCases,
     placeholderData: keepPreviousData,
   });
 
@@ -55,14 +60,14 @@ export function CaseExplorer() {
     [filters],
   );
 
-  if (role === "policymaker") {
+  if (!canReadCases) {
     return (
       <div>
         <PageHeader title="Cases" />
         <EmptyState
           icon={Lock}
           title="Not available for this role"
-          description="Individual case files contain personal data and are not accessible to the policymaker role, which works with aggregate views only. See the Command Center and Analytics."
+          description="Individual case files contain personal data and are not accessible to this role, which works with aggregate views only. See the Command Center and Analytics."
         />
       </div>
     );
@@ -73,13 +78,13 @@ export function CaseExplorer() {
   const items = listQ.data?.items ?? [];
 
   return (
-    <div>
+    <div className="min-w-0 overflow-x-hidden">
       <PageHeader
         title="Case Explorer"
         description="A filterable index of FIRs — search by attributes or by modus operandi."
       />
 
-      <div className="flex gap-4">
+      <div className="flex min-w-0 flex-col gap-4 min-[1680px]:flex-row">
         <CaseFilterRail
           filters={filters}
           options={optionsQ.data}
@@ -91,12 +96,12 @@ export function CaseExplorer() {
           activeCount={activeCount}
         />
 
-        <div className="min-w-0 flex-1 space-y-3">
+        <div className="w-full min-w-0 flex-1 space-y-3">
           <MoSearchBar />
 
           {/* toolbar */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[220px] flex-1">
+            <div className="relative min-w-0 basis-full sm:min-w-[220px] sm:flex-1 sm:basis-auto">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-content-dim" />
               <Input
                 value={qInput}
@@ -143,7 +148,7 @@ export function CaseExplorer() {
           )}
 
           {/* pagination */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="tnum text-12 text-content-dim">
               Page {page} of {formatNumber(totalPages)}
             </span>

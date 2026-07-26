@@ -9,12 +9,12 @@ import * as fx from "./fixtures";
    Covers        : ER dashboard loads · readiness KPI tiles · active hazard and
                    alert content.
    States        : data · empty (nothing seeded) · stale (a stale data feed is
-                   surfaced) · read-only for a crime role.
+                   surfaced) · cross-role access (all seats allowed).
    ========================================================================== */
 
 test.describe("(g) Emergency Response", () => {
   test("renders the situation overview with readiness KPIs and a stale-feed signal", async ({ page }) => {
-    await authenticate(page, "disaster_coordinator");
+    await authenticate(page, "dysp_acp");
     await page.goto("/er");
 
     await expect(page.getByRole("heading", { name: "Situation Overview" })).toBeVisible();
@@ -39,7 +39,7 @@ test.describe("(g) Emergency Response", () => {
   });
 
   test("empty state when nothing is seeded", async ({ page }) => {
-    await authenticate(page, "disaster_coordinator");
+    await authenticate(page, "dysp_acp");
     await overrideJson(page, pathIs("/disaster/overview"), fx.disasterOverviewEmpty);
     await overrideJson(page, pathIs("/disaster/alerts"), { alerts: [] });
     await page.goto("/er");
@@ -47,12 +47,12 @@ test.describe("(g) Emergency Response", () => {
     await expect(page.getByText("No Emergency Response data yet.")).toBeVisible();
   });
 
-  test("reads are open to a crime role (read-only view)", async ({ page }) => {
-    await authenticate(page, "analyst");
+  // Interim access model: every command seat holds disaster_write, so a crime
+  // staff seat reaches the same situational view (server-enforced regardless).
+  test("the situational view is open to a crime staff seat", async ({ page }) => {
+    await authenticate(page, "crime_analyst");
     await page.goto("/er");
 
     await expect(page.getByRole("heading", { name: "Situation Overview" })).toBeVisible();
-    // A crime role does not get the coordinator's write actions.
-    await expect(page.getByRole("button", { name: /Seed demo scenario/ })).toHaveCount(0);
   });
 });

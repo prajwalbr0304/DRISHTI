@@ -1,7 +1,7 @@
 """Investigation Board service (Prompt 16 §C).
 
 Business logic over the Data Store board repo. Every mutating operation:
-  * checks per-board authorization (owner/editor/viewer + policymaker denial);
+  * checks per-board authorization (owner/editor/viewer);
   * rejects edits to a locked board (branch instead);
   * supports an idempotency key (safe retry) and optimistic concurrency
     (board Version / expected_version) for semantic edits;
@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional
 from ..cache import SEG_IDEMPOTENCY
 from ..contracts import AiResult
 from ..request_context import current_context
+from ..roles import SUPERVISORY_ROLES
 from ..signals import EVENT_BOARD_ACTIVITY, get_signals
 from ..datastore import board_schema
 from . import references, searcharound
@@ -131,12 +132,12 @@ def _load_board(repo: BoardRepo, board_id: int) -> dict:
 
 def _effective_role(repo: BoardRepo, board: dict, actor: str, role: str) -> Optional[str]:
     """owner|editor|viewer|None for this actor on this board."""
-    if role == "super_admin":
+    if role == "system_admin":
         return "owner"
     if actor and actor == board.get("OwnerActor"):
         return "owner"
-    if role == "supervisor":
-        return "editor"     # supervisory oversight within demo scope
+    if role in SUPERVISORY_ROLES:
+        return "editor"     # command oversight within demo scope
     for c in repo.list_by_board("BoardCollaborator", int(board["BoardID"])):
         if c.get("Actor") == actor:
             return c.get("Role")
@@ -1094,14 +1095,91 @@ def _create_case_party_edge(repo: BoardRepo, board_id: int, case_node: int,
                             entity_node: int, role: Optional[str],
                             case_master_id: Optional[int], actor: str) -> int:
     rel = (role or "party").strip().lower().replace(" ", "_") or "party"
+    source_record_id = (
+        f"CaseParty:{case_master_id}:{rel}:{entity_node}"
+        if case_master_id is not None else f"CaseParty:{rel}:{entity_node}"
+    )
     row = {
         "BoardID": board_id, "SourceNodeID": case_node, "TargetNodeID": entity_node,
         "EdgeClass": "evidence",                     # structural fact from the FIR
         "Label": (role or "party"), "RelationshipType": rel, "Directed": True,
         "Confidence": None, "Rationale": None,
-        "EvidenceCaseID": case_master_id, "SourceRecordID": f"CaseParty:{case_master_id}",
+        "EvidenceCaseID": case_master_id, "SourceRecordID": source_record_id,
         "StyleJSON": {"verified": True, "case_seed": True}, "PromotedStatus": None,
         "PromotedRef": None, "CreatedBy": actor,
+    }
+    return int(repo.create("BoardEdge", row)["BoardEdgeID"])
+
+
+def _create_case_related_node(repo: BoardRepo, board_id: int, item: dict,
+                              pos_x: float, pos_y: float, actor: str) -> int:
+    """Create one safely hydrated case-child node inside the seed mutation."""
+    supplied_snapshot = item.get("snapshot")
+    source_table = str(item.get("ref_table") or "")
+    source_id = str(item.get("ref_id") or "")
+    requested_kind = (
+        str(item.get("node_kind")) if item.get("node_kind") else None
+    )
+    style = {
+        "imported": True,
+        "case_seed": True,
+        "case_group": item.get("group") or "related",
+    }
+
+    if supplied_snapshot is not None:
+        # Composite-key records (currently ActSectionAssociation) cannot use the
+        # single RefID hydration contract, but still retain explicit governed
+        # provenance in style + snapshot.
+        snapshot = references.sanitise_snapshot(dict(supplied_snapshot))
+        label = str(item.get("label") or f"{source_table} {source_id}")
+        style.update({
+            "source_ref_table": source_table,
+            "source_ref_id": source_id,
+            "source_ref_key": f"{source_table}:{source_id}",
+            "composite_reference": True,
+        })
+        ref_table = ref_id = None
+        canonical_entity_id = source_version = None
+        source_hash = references.snapshot_hash(snapshot)
+        node_kind = requested_kind if requested_kind in references.NODE_KINDS else "note"
+    else:
+        hy = references.hydrate(source_table, source_id,
+                                requested_kind=requested_kind)
+        snapshot = hy.snapshot
+        label = str(item.get("label") or hy.label or f"{source_table} {source_id}")
+        ref_table, ref_id = source_table, source_id
+        canonical_entity_id = hy.canonical_entity_id
+        source_version, source_hash = hy.source_version, hy.source_hash
+        node_kind = hy.node_kind
+
+    row = {
+        "BoardID": board_id, "NodeKind": node_kind,
+        "RefTable": ref_table, "RefID": ref_id,
+        "CanonicalEntityID": canonical_entity_id,
+        "Label": label[:board_schema.MAX_LABEL_LEN],
+        "PosX": float(pos_x), "PosY": float(pos_y),
+        "Width": None, "Height": None, "StyleJSON": style,
+        "SnapshotJSON": snapshot, "SourceVersion": source_version,
+        "SourceHash": source_hash, "CreatedBy": actor,
+    }
+    return int(repo.create("BoardNode", row)["BoardNodeID"])
+
+
+def _create_case_related_edge(repo: BoardRepo, board_id: int, case_node: int,
+                              related_node: int, relationship: str,
+                              case_master_id: int, source_key: str,
+                              group: str, actor: str) -> int:
+    rel = (relationship or "related_record").strip().lower().replace(" ", "_")
+    row = {
+        "BoardID": board_id, "SourceNodeID": case_node, "TargetNodeID": related_node,
+        "EdgeClass": "evidence", "Label": relationship.replace("_", " "),
+        "RelationshipType": rel, "Directed": True, "Confidence": None,
+        "Rationale": None, "EvidenceCaseID": case_master_id,
+        "SourceRecordID": source_key,
+        "StyleJSON": {
+            "verified": True, "case_seed": True, "case_group": group,
+        },
+        "PromotedStatus": None, "PromotedRef": None, "CreatedBy": actor,
     }
     return int(repo.create("BoardEdge", row)["BoardEdgeID"])
 
@@ -1110,8 +1188,8 @@ def seed_reference(board_id: int, req: SeedRequest, actor: str, role: str, *,
                    idem_key: Optional[str] = None) -> SeedResult:
     """Pin the primary object, then populate its immediate network.
 
-    * CaseMaster -> add the case node + an evidence node per involved party
-      (accused/victim/...) with an evidence edge, then expand the strongest party.
+    * CaseMaster -> add the case plus all governed operational child records,
+      then expand the strongest canonical party.
     * Entity/canonical-backed -> add the node + Search-Around its neighbourhood.
     * Anything else (or nothing resolvable) -> just the primary node (graceful).
     """
@@ -1122,59 +1200,159 @@ def seed_reference(board_id: int, req: SeedRequest, actor: str, role: str, *,
     _ensure_not_locked(board)
 
     center = (480.0, 320.0)
-    primary = add_node(board_id, NodeCreate(
-        node_kind=req.node_kind or "entity", ref_table=req.ref_table,
-        ref_id=req.ref_id, label=req.label, pos_x=center[0], pos_y=center[1]),
-        actor, role, idem_key=(f"{idem_key}:primary" if idem_key else None))
-    primary_node_id = int(primary.target_id) if primary.target_id else None
-    board = _load_board(repo, board_id)                 # refresh Version
+    # Sending the same object twice enriches the original card instead of
+    # duplicating it.
+    primary_node_id = next((
+        int(n["BoardNodeID"]) for n in repo.list_by_board("BoardNode", board_id)
+        if n.get("RefTable") == req.ref_table
+        and str(n.get("RefID")) == str(req.ref_id)
+    ), None)
+    if primary_node_id is None:
+        spec = references.spec_for(req.ref_table)
+        primary_kind = req.node_kind or (spec.node_kind if spec else "entity")
+        primary = add_node(board_id, NodeCreate(
+            node_kind=primary_kind, ref_table=req.ref_table,
+            ref_id=req.ref_id, label=req.label, pos_x=center[0], pos_y=center[1]),
+            actor, role, idem_key=(f"{idem_key}:primary" if idem_key else None))
+        primary_node_id = int(primary.target_id) if primary.target_id else None
+        board = _load_board(repo, board_id)             # refresh Version
 
     nodes_added = edges_added = 0
     focal_entity: Optional[int] = None
     detail = "Pinned reference."
 
     if req.ref_table == "CaseMaster" and primary_node_id is not None:
+        case_master_id = _int(req.ref_id) or 0
         try:
-            parties = searcharound.entities_for_case(_int(req.ref_id) or 0,
+            parties = searcharound.entities_for_case(case_master_id,
                                                       limit=req.max_neighbors)
         except Exception:  # noqa: BLE001 — party lookup is best-effort
             parties = []
-        if parties:
-            existing = {_int(n.get("RefID")): int(n["BoardNodeID"])
-                        for n in repo.list_by_board("BoardNode", board_id)
-                        if n.get("RefTable") == "EntityGraph" and n.get("RefID")}
+        try:
+            related = searcharound.related_records_for_case(case_master_id)
+        except Exception:  # noqa: BLE001 — complete-record lookup is best-effort
+            related = []
+        if parties or related:
+            all_nodes = repo.list_by_board("BoardNode", board_id)
+            existing_entities = {
+                _int(n.get("RefID")): int(n["BoardNodeID"])
+                for n in all_nodes
+                if n.get("RefTable") == "EntityGraph" and n.get("RefID")
+            }
+            existing_refs = {
+                (str(n.get("RefTable")), str(n.get("RefID"))): int(n["BoardNodeID"])
+                for n in all_nodes if n.get("RefTable") and n.get("RefID") is not None
+            }
+            existing_composite: dict[str, int] = {}
+            for n in all_nodes:
+                source_key = _json(n.get("StyleJSON")).get("source_ref_key")
+                if source_key:
+                    existing_composite[str(source_key)] = int(n["BoardNodeID"])
+            existing_source_edges = {
+                str(e.get("SourceRecordID"))
+                for e in repo.list_by_board("BoardEdge", board_id)
+                if e.get("SourceRecordID")
+            }
+            group_counts: dict[str, int] = {}
+            per_group_seen: dict[str, int] = {}
+            group_angle = {
+                "people": math.pi, "legal": -2.15, "evidence": -1.20,
+                "digital": -0.25, "financial": 0.15, "assets": 0.72,
+                "court": 1.35, "timeline": 1.85,
+            }
+
+            def grouped_position(group: str) -> tuple[float, float]:
+                idx = per_group_seen.get(group, 0)
+                per_group_seen[group] = idx + 1
+                ring, slot = divmod(idx, 5)
+                angle = group_angle.get(group, 2.4) + (slot - 2) * 0.15
+                radius = 330.0 + ring * 180.0
+                return (
+                    center[0] + radius * math.cos(angle),
+                    center[1] + radius * math.sin(angle),
+                )
 
             def apply(b: dict):
                 nonlocal nodes_added, edges_added, focal_entity
                 n_p = max(1, len(parties))
                 for i, pt in enumerate(parties):
                     eid = int(pt["entity_id"])
-                    if eid in existing:
-                        pnode = existing[eid]
+                    if eid in existing_entities:
+                        pnode = existing_entities[eid]
                     else:
-                        ang = (2 * math.pi * i) / n_p
-                        px = center[0] + 260.0 * math.cos(ang)
-                        py = center[1] + 260.0 * math.sin(ang)
-                        pnode = _create_evidence_node(repo, board_id, eid,
-                                                      pt.get("label"), pt.get("entity_type"),
-                                                      px, py, actor)
-                        existing[eid] = pnode
+                        ang = math.pi + ((i - (n_p - 1) / 2) * 0.18)
+                        px = center[0] + 270.0 * math.cos(ang)
+                        py = center[1] + 270.0 * math.sin(ang)
+                        pnode = _create_evidence_node(
+                            repo, board_id, eid, pt.get("label"),
+                            pt.get("entity_type"), px, py, actor)
+                        existing_entities[eid] = pnode
                         nodes_added += 1
-                    _create_case_party_edge(repo, board_id, primary_node_id, pnode,
-                                            pt.get("role"), _int(req.ref_id), actor)
-                    edges_added += 1
+                    role_name = str(pt.get("role") or "party")
+                    party_source = (
+                        f"CaseParty:{case_master_id}:"
+                        f"{role_name.strip().lower().replace(' ', '_')}:{pnode}"
+                    )
+                    if party_source not in existing_source_edges:
+                        _create_case_party_edge(
+                            repo, board_id, primary_node_id, pnode,
+                            role_name, case_master_id, actor)
+                        existing_source_edges.add(party_source)
+                        edges_added += 1
                     if focal_entity is None:
                         focal_entity = eid
-                return "subgraph", _int(req.ref_id), {
-                    "case_master_id": _int(req.ref_id), "parties_added": nodes_added,
-                    "party_edges": edges_added}
+
+                for item in related:
+                    group = str(item.get("group") or "related")
+                    source_table = str(item.get("ref_table") or "")
+                    source_id = str(item.get("ref_id") or "")
+                    source_key = f"{source_table}:{source_id}"
+                    if item.get("snapshot") is not None:
+                        rnode = existing_composite.get(source_key)
+                    else:
+                        rnode = existing_refs.get((source_table, source_id))
+                    if rnode is None:
+                        px, py = grouped_position(group)
+                        rnode = _create_case_related_node(
+                            repo, board_id, item, px, py, actor)
+                        if item.get("snapshot") is not None:
+                            existing_composite[source_key] = rnode
+                        else:
+                            existing_refs[(source_table, source_id)] = rnode
+                        nodes_added += 1
+                    if source_key not in existing_source_edges:
+                        _create_case_related_edge(
+                            repo, board_id, primary_node_id, rnode,
+                            str(item.get("relationship") or "related_record"),
+                            case_master_id, source_key, group, actor)
+                        existing_source_edges.add(source_key)
+                        edges_added += 1
+                    group_counts[group] = group_counts.get(group, 0) + 1
+
+                return "subgraph", case_master_id, {
+                    "case_master_id": case_master_id,
+                    "nodes_added": nodes_added,
+                    "edges_added": edges_added,
+                    "related_records": len(related),
+                    "canonical_parties": len(parties),
+                    "groups": dict(group_counts),
+                }
 
             try:
                 _mutate(repo, board, actor, role, action="subgraph.seed", apply=apply,
-                        idem_key=(f"{idem_key}:parties" if idem_key else None))
-                detail = f"Seeded {nodes_added} involved parties from the FIR."
-            except Exception:  # noqa: BLE001 — enrichment best-effort; the case node stands
-                detail = "Pinned the case (party enrichment unavailable)."
+                        idem_key=(f"{idem_key}:case-records" if idem_key else None))
+                breakdown = ", ".join(
+                    f"{count} {group}" for group, count in sorted(group_counts.items())
+                )
+                detail = (
+                    f"Seeded the complete case network: {len(parties)} canonical "
+                    f"parties and {len(related)} related records"
+                    f"{f' ({breakdown})' if breakdown else ''}."
+                )
+            except Exception:  # noqa: BLE001 — the primary case pin must survive
+                detail = "Pinned the case (related-record enrichment unavailable)."
+        else:
+            detail = "Pinned the case; no governed related records were available."
     elif primary_node_id is not None:
         try:
             focal_entity = _resolve_node_entity(repo, board_id, primary_node_id)

@@ -57,8 +57,8 @@ describe("LocationPicker jurisdiction mismatch", () => {
     expect(onUse).toHaveBeenCalledWith(9, "Mysuru");
   });
 
-  it("lets a supervisor record an override reason", async () => {
-    localStorage.setItem("drishti.role", "supervisor");
+  it("lets a supervisory seat record an override reason", async () => {
+    localStorage.setItem("drishti.role", "sho");
     geoResolve.mockResolvedValue(MISMATCH);
     wrap(
       <LocationPicker latitude={12.3} longitude={76.6} assignedDistrictId={5}

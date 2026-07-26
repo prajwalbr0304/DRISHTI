@@ -61,7 +61,7 @@ GLOSSARY: list[tuple[str, str, str]] = [
     ("risk", "ಅಪಾಯ", '"CrimeRiskScore"'),
     # --- query verbs (help the LLM map intent) ---
     ("how many / count", "ಎಷ್ಟು / ಸಂಖ್ಯೆ", 'COUNT(*)'),
-    ("list / show", "ತೋರಿಸಿ / ಪಟ್ಟಿ", 'SELECT rows (aggregate for policymaker)'),
+    ("list / show", "ತೋರಿಸಿ / ಪಟ್ಟಿ", 'SELECT rows (aggregate for aggregate-only roles)'),
     ("top / most", "ಅತಿ ಹೆಚ್ಚು / ಹೆಚ್ಚು", 'ORDER BY COUNT(*) DESC'),
     ("trend / over time", "ಪ್ರವೃತ್ತಿ", 'GROUP BY month'),
     ("recent / latest", "ಇತ್ತೀಚಿನ", 'ORDER BY date DESC'),

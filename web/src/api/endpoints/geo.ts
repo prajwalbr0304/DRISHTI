@@ -47,10 +47,10 @@ export const geoApi = {
     apiClient.get<TrendResponse>("/geo/trends", params, signal),
   alerts: (params: AlertParams = {}, signal?: AbortSignal) =>
     apiClient.get<AlertResponse>("/geo/alerts", params, signal),
-  /** GET /geo/points — raw incident coordinates for the Live Map (blocked for policymaker). */
+  /** GET /geo/points — raw incident coordinates for the Live Map (point-level cap). */
   points: (params: PointsParams = {}, signal?: AbortSignal) =>
     apiClient.get<import("@/api/types").PointsResponse>("/geo/points", params, signal),
-  /** GET /geo/stations — police stations at their case-centroid (blocked for policymaker). */
+  /** GET /geo/stations — police stations at their case-centroid (point-level cap). */
   stations: (params: { bbox?: string; limit?: number } = {}, signal?: AbortSignal) =>
     apiClient.get<import("@/api/types").StationsResponse>("/geo/stations", params, signal),
   /** GET /geo/case-links — geo-located cases linked to a case by shared accused. */

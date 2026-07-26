@@ -1,7 +1,7 @@
 """FastAPI router for Phase-15 notifications / work tasks.
 
 Reads are scoped to the calling demo actor; writes require a notification_manage
-role (all operational roles except policymaker) AND the hackathon write guard.
+role (every canonical command role) AND the hackathon write guard.
 Notification bodies are data-minimized synthetic summaries only.
 """
 from __future__ import annotations

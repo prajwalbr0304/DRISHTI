@@ -254,10 +254,11 @@ class SearchAroundRequest(BaseModel):
 class SeedRequest(BaseModel):
     """Pin an object AND auto-populate its immediate network on send.
 
-    A CaseMaster seeds its involved parties (read-only evidence edges); an
-    entity seeds its verified neighbourhood. Fully graceful: if nothing
-    resolves, only the primary reference node is created (never worse than a
-    plain pin)."""
+    A CaseMaster seeds its governed parties, legal records, evidence,
+    statements, property, digital/financial links and lifecycle/court records
+    (read-only evidence edges); an entity seeds its verified neighbourhood.
+    Fully graceful: if nothing resolves, only the primary reference node is
+    created (never worse than a plain pin)."""
     ref_table: str
     ref_id: str
     node_kind: Optional[str] = None

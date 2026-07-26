@@ -4,6 +4,7 @@ import { Gavel, Landmark, Plus, Scale, ShieldCheck } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { CwCourtEventInput } from "@/api/types";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import {
 export function CourtLifecyclePage({ caseId }: { caseId: number }) {
   const { role } = useRole();
   const canWrite = useCanWriteCasework();
-  const canReview = role === "supervisor" || role === "super_admin";
+  const canReview = roleCan(role, "case_write");
   const qc = useQueryClient();
   const lookups = useCaseworkLookups();
   const [addingCourt, setAddingCourt] = useState(false);

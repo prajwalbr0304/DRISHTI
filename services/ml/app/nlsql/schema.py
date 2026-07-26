@@ -12,6 +12,8 @@ Column names/casing mirror police_fir_schema.sql / *_extensions.sql /
 """
 from __future__ import annotations
 
+from ..roles import FUNCTIONAL_ROLES
+
 # --- Table catalogue: only these are ever exposed to NL->SQL -----------------
 # Each: (description, {column: note}, [join hints]).
 TABLES: dict[str, dict] = {
@@ -54,7 +56,7 @@ TABLES: dict[str, dict] = {
     "ChargesheetDetails": {"desc": "Chargesheets (cstype A/B/C).",
                            "columns": {"CSID": "PK", "CaseMasterID": "-> CaseMaster", "csdate": "",
                                        "cstype": "A=chargesheet,B=false,C=undetected"}, "joins": []},
-    # --- individual / PII (excluded for policymaker) ---
+    # --- individual / PII (excluded for aggregate-only roles) ---
     "Victim": {"desc": "Victims (PII).",
                "columns": {"VictimMasterID": "PK", "CaseMasterID": "-> CaseMaster",
                            "VictimName": "PII", "AgeYear": "", "GenderID": ""}, "joins": [], "pii": True},
@@ -115,7 +117,8 @@ GLOBAL_FORBIDDEN: frozenset[str] = frozenset({
     "ChatSession", "ChatMessage", "VoiceTranscript", "SavedQuery",
 })
 
-# Individual-level PII: withheld from the aggregate-only policymaker role.
+# Individual-level PII. INTERIM: every command role may query these; the set is
+# kept so an aggregate-only role can be re-introduced in AGGREGATE_ONLY_ROLES.
 PII_TABLES: frozenset[str] = frozenset({
     "Victim", "Accused", "ComplainantDetails", "Employee",
     "FinancialAccount", "FinancialTransaction", "TransactionLink",
@@ -125,20 +128,24 @@ PII_TABLES: frozenset[str] = frozenset({
 # the whole-SQL token scan so a forbidden table is caught wherever it appears.
 KNOWN_TABLES: frozenset[str] = frozenset(TABLES) | GLOBAL_FORBIDDEN | PII_TABLES
 
-ROLES = ("investigator", "analyst", "supervisor", "policymaker", "super_admin")
+ROLES = FUNCTIONAL_ROLES
+
+# Roles restricted to aggregate answers (no individual rows / PII tables).
+# INTERIM ("all roles have access to everything"): none.
+AGGREGATE_ONLY_ROLES: frozenset[str] = frozenset()
 
 
 def forbidden_tables(role: str) -> frozenset[str]:
     """Tables this role may NOT query via NL->SQL (enforced in scope.py)."""
     base = GLOBAL_FORBIDDEN
-    if role == "policymaker":
+    if role in AGGREGATE_ONLY_ROLES:
         return base | PII_TABLES
     return base
 
 
 def requires_aggregate(role: str) -> bool:
-    """Policymaker answers are aggregate-only (no individual rows / case lists)."""
-    return role == "policymaker"
+    """True for aggregate-only roles (no individual rows / case lists)."""
+    return role in AGGREGATE_ONLY_ROLES
 
 
 def allowed_tables(role: str) -> list[str]:
@@ -148,7 +155,7 @@ def allowed_tables(role: str) -> list[str]:
 
 def schema_text(role: str) -> str:
     """Compact, role-scoped schema shown to the LLM. PII tables are omitted for
-    policymakers so the model isn't even tempted; the executor enforces it too."""
+    aggregate-only roles so the model isn't even tempted; the executor enforces it too."""
     lines: list[str] = []
     for t in allowed_tables(role):
         meta = TABLES[t]

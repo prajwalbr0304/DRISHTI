@@ -1,5 +1,5 @@
 import { ApiError, type HealthReport } from "@/api/contracts";
-import type { UserRole } from "@/config/roles";
+import { DEFAULT_ROLE, type UserRole } from "@/config/roles";
 import { runtime } from "@/config/runtime";
 
 /* ============================================================================
@@ -49,9 +49,9 @@ function makeRequestId(): string {
 export class ApiClient {
   baseUrl: string;
   withCredentials: boolean;
-  private roleGetter: RoleGetter = () => "investigator";
+  private roleGetter: RoleGetter = () => DEFAULT_ROLE;
   // Demo actor is DISPLAY/AUDIT ONLY (UX simulation), never a security boundary.
-  private actorGetter: ActorGetter = () => "demo.investigator";
+  private actorGetter: ActorGetter = () => `demo.${DEFAULT_ROLE}`;
   // Cross-domain auth token from the auth layer (Catalyst generateAuthToken).
   // Undefined in dev/offline; then the session is cookie-based (credentials).
   private tokenGetter: TokenGetter = () => undefined;

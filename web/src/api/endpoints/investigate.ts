@@ -3,7 +3,7 @@ import { apiClient } from "@/api/client";
 /* Prompt 20 Part D — case-scoped investigation assistant (services/ml/app/investigate).
    Thin orchestration over existing case summary/similar/identity/leads/timeline;
    facts (evidence) are separated from hypotheses (suggestions). Case-scoped and
-   policymaker-denied server-side. Not a second free-form chatbot. */
+   case-read gated server-side. Not a second free-form chatbot. */
 
 export interface InvestigationItem {
   type: string;

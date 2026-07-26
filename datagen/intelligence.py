@@ -702,11 +702,16 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
         SELECT v.username, v.display_name, r."role_id", TRUE, TRUE
         FROM "roles" r
         JOIN (VALUES
-            ('admin',         'System Administrator', 'super_admin'),
-            ('io.ramesh',     'PSI Ramesh Gowda',     'investigator'),
-            ('analyst.kavya', 'Analyst Kavya Rao',    'analyst'),
-            ('sho.suresh',    'SHO Suresh Patil',     'supervisor'),
-            ('dcp.anand',     'DCP Anand Kumar',      'policymaker')
+            ('dgp.vikram',    'DGP Vikram Shetty',        'dgp_state_command'),
+            ('igp.meenakshi', 'IGP Meenakshi Rao',        'adgp_igp_range'),
+            ('sp.anand',      'SP Anand Kumar',           'sp_district_command'),
+            ('dysp.kavya',    'Dy.SP Kavya Hegde',        'dysp_acp'),
+            ('sho.suresh',    'SHO Suresh Patil',         'sho'),
+            ('io.ramesh',     'PSI Ramesh Gowda',         'investigating_officer'),
+            ('analyst.divya', 'Analyst Divya Naik',       'crime_analyst'),
+            ('cyber.arjun',   'Insp. Arjun Bhat (CEN)',   'cyber_cell'),
+            ('traffic.latha', 'Traffic ACP Latha Prasad', 'traffic_command'),
+            ('admin',         'Sysadmin Nikhil Jain',     'system_admin')
         ) AS v(username, display_name, role_name) ON r."role_name" = v.role_name
         ON CONFLICT ("username") DO NOTHING
     """)
@@ -715,7 +720,7 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
         FROM "users" u JOIN "roles" r ON r."role_id" = u."role_id"
         ORDER BY u."user_id" """)
     if not demo:
-        demo = [(None, "Officer", "investigator")]
+        demo = [(None, "Officer", "investigating_officer")]
 
     def cite(n):
         return [int(sample[i]["id"]) for i in
@@ -724,7 +729,7 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
     nlp, embed = models["nlp"], models["embedding"]
     # (role_name, lang, title, user_text, generated_sql, assistant_text)
     scripts = [
-        ("investigator", "en", "Cyber fraud in Bengaluru City",
+        ("cyber_cell", "en", "Cyber fraud in Bengaluru City",
          "Show cyber fraud FIRs registered in Bengaluru City this year",
          'SELECT cm."CrimeNo", cm."CrimeRegisteredDate" FROM "CaseMaster" cm '
          'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
@@ -734,14 +739,14 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
          'AND cm."CrimeRegisteredDate">=date_trunc(\'year\',CURRENT_DATE);',
          "Bengaluru City leads the state on cyber-fraud registrations this year. "
          "The matching FIRs are cited below."),
-        ("analyst", "en", "Active robbery gangs",
+        ("crime_analyst", "en", "Active robbery gangs",
          "Which gangs are most active in robbery cases?",
          'SELECT eg."Label", COUNT(*) AS cases FROM "GangMembership" gm '
          'JOIN "EntityGraph" eg ON eg."EntityID"=gm."GangEntityID" '
          'GROUP BY eg."Label" ORDER BY cases DESC LIMIT 10;',
          "Ranked the organised networks by linked robbery activity; the top "
          "groups and their supporting cases are listed."),
-        ("supervisor", "en", "Pending heinous cases in Kalaburagi",
+        ("sho", "en", "Pending heinous cases in Kalaburagi",
          "List heinous crimes still under investigation in Kalaburagi",
          'SELECT cm."CrimeNo" FROM "CaseMaster" cm '
          'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
@@ -751,7 +756,7 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
          'WHERE d."DistrictName"=\'Kalaburagi\' AND g."LookupValue"=\'Heinous\' '
          'AND s."CaseStatusName" ILIKE \'%investigation%\';',
          "These heinous FIRs in Kalaburagi are still open for investigation."),
-        ("investigator", "kn", "ಬೆಂಗಳೂರಿನಲ್ಲಿ ಕಳ್ಳತನ ಪ್ರಕರಣಗಳು",
+        ("investigating_officer", "kn", "ಬೆಂಗಳೂರಿನಲ್ಲಿ ಕಳ್ಳತನ ಪ್ರಕರಣಗಳು",
          "ಬೆಂಗಳೂರಿನಲ್ಲಿ ಇತ್ತೀಚಿನ ಕಳ್ಳತನ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ",
          'SELECT cm."CrimeNo", cm."CrimeRegisteredDate" FROM "CaseMaster" cm '
          'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
@@ -760,7 +765,7 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
          'WHERE d."DistrictName" ILIKE \'Bengaluru%\' AND csh."CrimeHeadName"=\'Theft\' '
          'ORDER BY cm."CrimeRegisteredDate" DESC LIMIT 50;',
          "ಬೆಂಗಳೂರಿನ ಇತ್ತೀಚಿನ ಕಳ್ಳತನ ಪ್ರಕರಣಗಳನ್ನು ಕೆಳಗೆ ಉಲ್ಲೇಖಿಸಲಾಗಿದೆ."),
-        ("policymaker", "en", "Vehicle theft hotspots",
+        ("dgp_state_command", "en", "Vehicle theft hotspots",
          "Top 5 districts by vehicle theft",
          'SELECT d."DistrictName", COUNT(*) n FROM "CaseMaster" cm '
          'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '

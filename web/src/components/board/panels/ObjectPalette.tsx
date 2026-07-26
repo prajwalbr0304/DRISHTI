@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { NODE_KIND_LEGEND, kindStyle } from "@/components/board/boardEncoding";
+import type { AnnotationKind } from "@/api/endpoints/board";
 import { cn } from "@/lib/utils";
 
 type BoardFilters = { evidence: boolean; hypothesis: boolean; search: string; hiddenKinds: string[] };
@@ -15,8 +16,7 @@ interface Props {
   kinds: string[];
   readOnly: boolean;
   hasSelectedNode: boolean;
-  onAddNote: () => void;
-  onAddFrame: () => void;
+  onAddAnnotation: (kind: Extract<AnnotationKind, "sticky" | "frame" | "text">) => void;
   onAddObject: (refTable: string, refId: string) => void;
   onSearchAround: () => void;
 }
@@ -117,9 +117,9 @@ export function ObjectPalette(props: Props) {
         <section>
           <SectionTitle>Add</SectionTitle>
           <div className="grid grid-cols-2 gap-1.5">
-            <Button variant="outline" size="sm" onClick={props.onAddNote}><StickyNote /> Sticky</Button>
-            <Button variant="outline" size="sm" onClick={props.onAddFrame}><Frame /> Frame</Button>
-            <Button variant="outline" size="sm" onClick={props.onAddNote}><Type /> Text</Button>
+            <Button variant="outline" size="sm" onClick={() => props.onAddAnnotation("sticky")}><StickyNote /> Sticky</Button>
+            <Button variant="outline" size="sm" onClick={() => props.onAddAnnotation("frame")}><Frame /> Frame</Button>
+            <Button variant="outline" size="sm" onClick={() => props.onAddAnnotation("text")}><Type /> Text</Button>
             <Button variant="outline" size="sm" disabled={!props.hasSelectedNode} onClick={props.onSearchAround}
                     title={props.hasSelectedNode ? "Expand verified neighbours" : "Select a graph-backed node first"}>
               <Waypoints /> Search around

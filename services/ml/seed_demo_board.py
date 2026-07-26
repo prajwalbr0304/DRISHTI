@@ -26,8 +26,8 @@ import urllib.error
 import urllib.request
 
 BASE = "http://127.0.0.1:8000"
-IO = {"X-Role": "investigator", "X-Demo-Actor": "demo.investigator@drishti.local"}
-SUP = {"X-Role": "supervisor", "X-Demo-Actor": "demo.supervisor@drishti.local"}
+IO = {"X-Role": "investigating_officer", "X-Demo-Actor": "demo.investigating_officer@drishti.local"}
+SUP = {"X-Role": "sho", "X-Demo-Actor": "demo.sho@drishti.local"}
 
 CX, CY, R = 460.0, 340.0, 300.0            # suspect network centre + radius
 
@@ -171,7 +171,7 @@ def main() -> int:
     ver = _req("GET", f"/boards/{bid}", IO)["board"]["version"]
     _req("PATCH", f"/boards/{bid}", SUP, {"visibility": "unit", "expected_version": ver})
     _req("POST", f"/boards/{bid}/collaborators", SUP,
-         {"actor": "demo.analyst@drishti.local", "role": "editor"})
+         {"actor": "demo.crime_analyst@drishti.local", "role": "editor"})
 
     final = _req("GET", f"/boards/{bid}", IO)
     b = final["board"]

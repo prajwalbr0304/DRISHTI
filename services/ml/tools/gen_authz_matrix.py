@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate + verify the Prompt 21 §E.4 allow/deny authorization matrix.
 
-Builds a deterministic policy (the six functional roles x cases across case
+Builds a deterministic policy (the ten command roles x cases across case
 detail, exports, admin, Investigation Board and Disaster actions, including
 negative CROSS-SCOPE cases), exercises the REAL backend decision model
 (app.org.scope) to record the actual ALLOW/DENY for each case, and drives the
@@ -39,49 +39,62 @@ from app.org import hierarchy, scope as scope_mod  # noqa: E402
 # resource, action, target district (for geo-scoped resources), expected.
 # Expected values are the APPROVED policy (org/scope.py docstrings + Prompt 16/17
 # rules), independent of the code path that computes 'actual'.
+# INTERIM AUTHORIZATION MODEL ("all roles have access to everything"): every
+# command role holds every capability, so the policy's remaining DENY rows are
+# the GEOGRAPHIC containment cases (a district-assigned seat may not reach
+# another district) plus roles outside the canonical set.
 _CASES = [
     # role, assign_district, resource, action, target_district, expected
-    ("investigator", None, "case", "read", None, "ALLOW"),
-    ("analyst", None, "case", "read", None, "ALLOW"),
-    ("supervisor", None, "case", "read", None, "ALLOW"),
-    ("policymaker", None, "case", "read", None, "DENY"),        # aggregate-only
-    ("disaster_coordinator", None, "case", "read", None, "DENY"),  # not a crime seat
-    ("super_admin", None, "case", "read", None, "ALLOW"),
-    # cross-scope negatives (geo)
-    ("investigator", 1, "case", "read", 1, "ALLOW"),
-    ("investigator", 1, "case", "read", 2, "DENY"),            # other district
-    ("supervisor", 3, "case", "read", 9, "DENY"),              # other district
-    # aggregate dashboard: every functional role for its own scope
-    ("investigator", None, "aggregate", "read", None, "ALLOW"),
-    ("policymaker", None, "aggregate", "read", None, "ALLOW"),
-    ("disaster_coordinator", None, "aggregate", "read", None, "ALLOW"),
-    # exports
-    ("investigator", None, "case", "export", None, "ALLOW"),
-    ("analyst", None, "case", "export", None, "ALLOW"),
-    ("policymaker", None, "case", "export", None, "DENY"),      # no PII export
-    ("disaster_coordinator", None, "case", "export", None, "DENY"),
-    ("policymaker", None, "aggregate", "export", None, "ALLOW"),
-    ("disaster_coordinator", None, "aggregate", "export", None, "DENY"),
-    ("super_admin", None, "case", "export", None, "ALLOW"),
-    # Investigation Board (Prompt 16): policymaker + disaster_coordinator denied
-    ("investigator", None, "board", "use", None, "ALLOW"),
-    ("analyst", None, "board", "use", None, "ALLOW"),
-    ("supervisor", None, "board", "use", None, "ALLOW"),
-    ("policymaker", None, "board", "use", None, "DENY"),
-    ("disaster_coordinator", None, "board", "use", None, "DENY"),
-    ("super_admin", None, "board", "use", None, "ALLOW"),
-    # Disaster approval (Prompt 17): disaster_coordinator (own district) + super_admin
-    ("disaster_coordinator", 5, "disaster", "approve", 5, "ALLOW"),
-    ("disaster_coordinator", 5, "disaster", "approve", 9, "DENY"),   # other district
-    ("investigator", None, "disaster", "approve", None, "DENY"),
-    ("supervisor", None, "disaster", "approve", None, "DENY"),
-    ("policymaker", None, "disaster", "approve", None, "DENY"),
-    ("super_admin", None, "disaster", "approve", 9, "ALLOW"),
-    # Admin/governance: super_admin only
-    ("super_admin", None, "admin", "manage", None, "ALLOW"),
-    ("supervisor", None, "admin", "manage", None, "DENY"),
-    ("investigator", None, "admin", "manage", None, "DENY"),
-    ("policymaker", None, "admin", "manage", None, "DENY"),
+    ("investigating_officer", None, "case", "read", None, "ALLOW"),
+    ("crime_analyst", None, "case", "read", None, "ALLOW"),
+    ("sho", None, "case", "read", None, "ALLOW"),
+    ("dgp_state_command", None, "case", "read", None, "ALLOW"),
+    ("adgp_igp_range", None, "case", "read", None, "ALLOW"),
+    ("sp_district_command", None, "case", "read", None, "ALLOW"),
+    ("dysp_acp", None, "case", "read", None, "ALLOW"),
+    ("cyber_cell", None, "case", "read", None, "ALLOW"),
+    ("traffic_command", None, "case", "read", None, "ALLOW"),
+    ("system_admin", None, "case", "read", None, "ALLOW"),
+    # cross-scope negatives (geo) — still enforced for an assigned seat
+    ("investigating_officer", 1, "case", "read", 1, "ALLOW"),
+    ("investigating_officer", 1, "case", "read", 2, "DENY"),            # other district
+    ("sho", 3, "case", "read", 9, "DENY"),                              # other district
+    ("sp_district_command", 4, "case", "read", 4, "ALLOW"),
+    ("sp_district_command", 4, "case", "read", 7, "DENY"),              # other district
+    # aggregate dashboard: every command role for its own scope
+    ("investigating_officer", None, "aggregate", "read", None, "ALLOW"),
+    ("dgp_state_command", None, "aggregate", "read", None, "ALLOW"),
+    ("dysp_acp", None, "aggregate", "read", None, "ALLOW"),
+    ("traffic_command", None, "aggregate", "read", None, "ALLOW"),
+    # exports (case-level extracts remain audited, not denied)
+    ("investigating_officer", None, "case", "export", None, "ALLOW"),
+    ("crime_analyst", None, "case", "export", None, "ALLOW"),
+    ("dgp_state_command", None, "case", "export", None, "ALLOW"),
+    ("dysp_acp", None, "case", "export", None, "ALLOW"),
+    ("dgp_state_command", None, "aggregate", "export", None, "ALLOW"),
+    ("dysp_acp", None, "aggregate", "export", None, "ALLOW"),
+    ("system_admin", None, "case", "export", None, "ALLOW"),
+    # Investigation Board (Prompt 16) — open to every command role
+    ("investigating_officer", None, "board", "use", None, "ALLOW"),
+    ("crime_analyst", None, "board", "use", None, "ALLOW"),
+    ("sho", None, "board", "use", None, "ALLOW"),
+    ("dgp_state_command", None, "board", "use", None, "ALLOW"),
+    ("dysp_acp", None, "board", "use", None, "ALLOW"),
+    ("cyber_cell", None, "board", "use", None, "ALLOW"),
+    ("system_admin", None, "board", "use", None, "ALLOW"),
+    # Disaster approval (Prompt 17) — every command role, confined to its district
+    ("dysp_acp", 5, "disaster", "approve", 5, "ALLOW"),
+    ("dysp_acp", 5, "disaster", "approve", 9, "DENY"),                  # other district
+    ("investigating_officer", None, "disaster", "approve", None, "ALLOW"),
+    ("sho", None, "disaster", "approve", None, "ALLOW"),
+    ("dgp_state_command", None, "disaster", "approve", None, "ALLOW"),
+    ("system_admin", None, "disaster", "approve", 9, "ALLOW"),
+    # Admin/governance — INTERIM: granted to every command role
+    ("system_admin", None, "admin", "manage", None, "ALLOW"),
+    ("sho", None, "admin", "manage", None, "ALLOW"),
+    ("investigating_officer", None, "admin", "manage", None, "ALLOW"),
+    ("dgp_state_command", None, "admin", "manage", None, "ALLOW"),
+    ("traffic_command", None, "admin", "manage", None, "ALLOW"),
 ]
 
 _ACTION_MAP = {
@@ -103,7 +116,9 @@ def _case_id(role, assign, resource, action, target):
 def _actual(role, assign, resource, action, target):
     sc = scope_mod.derive_scope(role, district_id=assign, source="matrix")
     if resource == "admin":
-        return "ALLOW" if sc.role == "super_admin" else "DENY"
+        # The real gate is the admin permission matrix (app/admin/permissions.py).
+        from app.admin.permissions import has_permission
+        return "ALLOW" if has_permission(sc.role, "admin_write") else "DENY"
     matrix_action = _ACTION_MAP[(resource, action)]
     allowed = scope_mod.decide(sc, matrix_action, district_id=target)
     return "ALLOW" if allowed else "DENY"

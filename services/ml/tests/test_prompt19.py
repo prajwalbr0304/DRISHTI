@@ -56,7 +56,7 @@ def test_get_planner_returns_an_object_with_a_name():
 # ==================== F: typed visualization selector =======================
 def _viz(cols, rows, intent, language="en"):
     return viz.build_visualization(cols, rows, intent=intent, language=language,
-                                   citations=[], confidence=0.7, role="analyst",
+                                   citations=[], confidence=0.7, role="crime_analyst",
                                    row_total=len(rows))
 
 

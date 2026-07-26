@@ -17,6 +17,7 @@ import { api } from "@/api";
 import { ApiError, errorMessage } from "@/api/contracts";
 import type { EntityDetailResponse, SubgraphResponse } from "@/api/types";
 import { cn, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { Badge } from "@/components/ui/badge";
@@ -63,22 +64,22 @@ export function EntityProfile() {
   const goTo = useCallback((k: string) => setSp({ tab: k }, { replace: true }), [setSp]);
 
   // Hooks must run unconditionally and in a stable order (React Rules of
-  // Hooks), so this query is declared BEFORE the policymaker early-return
-  // below; it is simply disabled for policymaker (who is blocked anyway).
+  // Hooks), so this query is declared BEFORE the no-access early-return
+  // below; it is simply disabled without the capability (who is blocked anyway).
   const detailQ = useQuery({
     queryKey: ["entity", "detail", entityId],
     queryFn: ({ signal }) => api.graph.entityDetail(entityId, signal),
-    enabled: role !== "policymaker" && Number.isFinite(entityId) && entityId > 0,
+    enabled: roleCan(role, "case_read") && Number.isFinite(entityId) && entityId > 0,
   });
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "case_read")) {
     return (
       <div>
         <PageHeader title="Entity profile" />
         <EmptyState
           icon={Lock}
           title="Not available for this role"
-          description="Individual entity profiles are not accessible to the policymaker role (aggregate-only)."
+          description="Individual entity profiles are not accessible to this role (aggregate-only)."
         />
       </div>
     );

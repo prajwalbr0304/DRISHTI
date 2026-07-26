@@ -8,6 +8,7 @@ import type { StationFeature } from "@/api/types";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import "@/components/map/map-detail-popup.css";
 
 /* ============================================================================
    Click-to-inspect popups for the Live Map. A case popup pulls the real case
@@ -34,8 +35,16 @@ export function CasePopup({
   const c = q.data?.core;
 
   return (
-    <Popup longitude={lon} latitude={lat} anchor="bottom" onClose={onClose} closeOnClick={false} maxWidth="300px" offset={12}>
-      <div className="w-64 p-3">
+    <Popup
+      longitude={lon}
+      latitude={lat}
+      onClose={onClose}
+      closeOnClick={false}
+      className="drishti-map-popup"
+      maxWidth="360px"
+      offset={14}
+    >
+      <div className="w-[320px] p-4 pr-8">
         {q.isLoading ? (
           <div className="flex items-center gap-2 py-2 text-12 text-content-dim">
             <Loader2 className="size-4 animate-spin" /> Loading case…
@@ -44,8 +53,8 @@ export function CasePopup({
           <p className="text-12 text-content-dim">{errorMessage(q.error)}</p>
         ) : c ? (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="tnum text-13 font-semibold text-content">{c.crime_no ?? `Case ${id}`}</span>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="tnum break-all text-14 font-semibold text-content">{c.crime_no ?? `Case ${id}`}</span>
               {c.gravity && <Badge variant="neutral" className="capitalize">{c.gravity}</Badge>}
             </div>
             <Row label="Crime" value={[c.crime_group, c.crime_subhead].filter(Boolean).join(" · ")} />
@@ -59,7 +68,7 @@ export function CasePopup({
                 ))}
               </div>
             )}
-            <Button size="sm" className="mt-1 w-full justify-center" onClick={() => navigate(`/cases/${id}`)}>
+            <Button size="sm" className="mt-2 w-full justify-center" onClick={() => navigate(`/cases/${id}`)}>
               Open case file <ArrowUpRight className="size-3.5" />
             </Button>
           </div>
@@ -73,8 +82,16 @@ export function CasePopup({
 
 export function StationPopup({ station, onClose }: { station: StationFeature; onClose: () => void }) {
   return (
-    <Popup longitude={station.lon} latitude={station.lat} anchor="bottom" onClose={onClose} closeOnClick={false} maxWidth="280px" offset={12}>
-      <div className="w-56 p-3">
+    <Popup
+      longitude={station.lon}
+      latitude={station.lat}
+      onClose={onClose}
+      closeOnClick={false}
+      className="drishti-map-popup"
+      maxWidth="340px"
+      offset={14}
+    >
+      <div className="w-[300px] p-4 pr-8">
         <div className="flex items-center gap-2">
           <Building2 className="size-4 text-primary" />
           <span className="text-13 font-semibold text-content">{station.name ?? `Station ${station.station_id}`}</span>
@@ -93,9 +110,9 @@ export function StationPopup({ station, onClose }: { station: StationFeature; on
 function Row({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <div className="flex items-baseline justify-between gap-3 text-12">
-      <span className="shrink-0 text-content-dim">{label}</span>
-      <span className="min-w-0 truncate text-right text-content">{value}</span>
+    <div className="grid grid-cols-[78px_minmax(0,1fr)] items-start gap-3 text-12 leading-relaxed">
+      <span className="text-content-dim">{label}</span>
+      <span className="min-w-0 break-words text-left text-content">{value}</span>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { AlertTriangle, GitMerge, Lock, Search, Sparkles, UserPlus, Users2, X } 
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { IdentityCandidate, IdentityCandidatePersonRef } from "@/api/types";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,25 +17,24 @@ import { SectionCard } from "@/routes/intake/components";
    one performs a reviewed, reversible merge. Nothing is ever auto-merged. The
    demo view/role is UX simulation, not authentication. */
 
-const REVIEW_ROLES = new Set(["supervisor", "super_admin"]);
 
 export function EntityResolution() {
   const { role } = useRole();
   const qc = useQueryClient();
   const actor = `demo.${role}`;
-  const canReview = REVIEW_ROLES.has(role);
+  const canReview = roleCan(role, "entity_review");
   const [banner, setBanner] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const candidatesQ = useQuery({
     queryKey: ["identity", "candidates", "pending"],
     queryFn: ({ signal }) => api.identity.candidates({ status: "pending", page_size: 50 }, signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "entity_review"),
   });
   const statsQ = useQuery({
     queryKey: ["identity", "stats"],
     queryFn: ({ signal }) => api.identity.stats(signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "entity_review"),
     retry: false,
   });
 
@@ -63,11 +63,11 @@ export function EntityResolution() {
     onError: (e) => setErr(errorMessage(e)),
   });
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "entity_review")) {
     return (
       <div><PageHeader title="Entity resolution" />
         <EmptyState icon={Lock} title="Not available for this role"
-          description="Entity resolution handles individual identity records and is not available to the policymaker role." /></div>
+          description="Entity resolution handles individual identity records and is not available to this role." /></div>
     );
   }
 

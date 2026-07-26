@@ -3,7 +3,7 @@
 Phase 3 (hackathon access mode). The browser sends:
   * ``X-Request-ID``  — a client-generated correlation id (we generate one if
                         absent) echoed back on the response.
-  * ``X-Demo-Actor``  — the UX-simulation demo actor key (e.g. ``demo.investigator``).
+  * ``X-Demo-Actor``  — the UX-simulation demo actor key (e.g. ``demo.investigating_officer``).
                         This is DISPLAY/AUDIT ONLY — it is NOT authentication or a
                         security boundary (real auth is deferred post-hackathon).
   * ``X-Role``        — the demo view/role (presentation state, also not security).

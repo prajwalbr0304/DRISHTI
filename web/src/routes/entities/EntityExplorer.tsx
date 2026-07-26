@@ -6,6 +6,7 @@ import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { EntityListItem } from "@/api/types";
 import { cn, formatNumber } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,8 +43,8 @@ export function EntityExplorer() {
   useEffect(() => setPage(1), [search, entityType, hasRisk, gangAffiliated]);
 
   // Hooks must run unconditionally and in a stable order (React Rules of
-  // Hooks), so this query is declared BEFORE the policymaker early-return
-  // below; it is simply disabled for policymaker (who is blocked anyway).
+  // Hooks), so this query is declared BEFORE the no-access early-return
+  // below; it is simply disabled without the capability (who is blocked anyway).
   const listQ = useQuery({
     queryKey: ["entities", "list", search, entityType, hasRisk, gangAffiliated, page],
     queryFn: ({ signal }) =>
@@ -58,18 +59,18 @@ export function EntityExplorer() {
         },
         signal,
       ),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "case_read"),
     placeholderData: keepPreviousData,
   });
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "case_read")) {
     return (
       <div>
         <PageHeader title="People & Entities" />
         <EmptyState
           icon={Lock}
           title="Not available for this role"
-          description="Individual entity profiles are not accessible to the policymaker role, which works with aggregate views only."
+          description="Individual entity profiles are not accessible to this role, which works with aggregate views only."
         />
       </div>
     );

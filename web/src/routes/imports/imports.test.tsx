@@ -76,7 +76,7 @@ describe("MoneyAlertsPanel (Phase 8)", () => {
     // provenance surfaced
     expect(screen.getByText(/3 txn/)).toBeInTheDocument();
     expect(screen.getByText(/2 source record/)).toBeInTheDocument();
-    // reviewer disposition available (analyst default role can review)
+    // reviewer disposition available (interim: every role may review)
     expect(screen.getByText("Acknowledge")).toBeInTheDocument();
   });
 });

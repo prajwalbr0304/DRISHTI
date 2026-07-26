@@ -27,11 +27,11 @@ if str(_REPO_ROOT) not in sys.path:
 
 client = TestClient(app)
 
-COORD = {"X-Role": "disaster_coordinator", "X-Demo-Actor": "demo.coord", "X-Disaster-District": "24"}
-COORD5 = {"X-Role": "disaster_coordinator", "X-Demo-Actor": "demo.coord", "X-Disaster-District": "5"}
-SUPER = {"X-Role": "super_admin", "X-Demo-Actor": "demo.sa"}
-CRIME = {"X-Role": "investigator", "X-Demo-Actor": "demo.io"}
-POLICY = {"X-Role": "policymaker", "X-Demo-Actor": "demo.pol"}
+COORD = {"X-Role": "dysp_acp", "X-Demo-Actor": "demo.coord", "X-Disaster-District": "24"}
+COORD5 = {"X-Role": "dysp_acp", "X-Demo-Actor": "demo.coord", "X-Disaster-District": "5"}
+SUPER = {"X-Role": "system_admin", "X-Demo-Actor": "demo.sa"}
+CRIME = {"X-Role": "investigating_officer", "X-Demo-Actor": "demo.io"}
+POLICY = {"X-Role": "dgp_state_command", "X-Demo-Actor": "demo.pol"}
 
 
 @pytest.fixture(autouse=True)
@@ -340,7 +340,7 @@ def test_allocation_capacity_and_unmet():
 def test_no_double_allocation_beyond_quantity():
     _seed()
     repo = drepo.disaster_repo()
-    scope = guards.DisasterScope("super_admin", "demo.sa", None, None)
+    scope = guards.DisasterScope("system_admin", "demo.sa", None, None)
     event = repo.find_one("HazardEvent", {"HazardCode": "flood", "DistrictID": 24})
     # pick a boat resource (quantity 3)
     boat = next(r for r in repo.list("Resource") if r["ResourceType"] == "boat"
@@ -421,30 +421,39 @@ def test_lifecycle_and_append_only_activity():
 # role allow/deny matrix + district scope
 # ===========================================================================
 def test_role_allow_deny_matrix():
+    """INTERIM ("all roles have access to everything"): every command seat reads
+    AND writes Emergency Response. What still holds is DISTRICT CONTAINMENT for a
+    seat with an assigned district, plus refusal of a non-canonical role."""
     _seed()
-    # crime + policymaker may READ the situational view
+    # every command seat may READ the situational view
     assert client.get("/disaster/overview", headers=CRIME).status_code == 200
     assert client.get("/disaster/overview", headers=POLICY).status_code == 200
-    # crime cannot run a forecast / create an event (write) -> 403
+    # ... and run a forecast / create an event
     assert client.post("/disaster/forecast/run", headers=CRIME,
-                       json={"hazard_code": "flood", "district_id": 24}).status_code == 403
+                       json={"hazard_code": "flood", "district_id": 24}).status_code == 200
     assert client.post("/disaster/events", headers=CRIME,
                        json={"hazard_code": "flood", "status": "watch", "district_id": 24,
-                             "geojson": {}}).status_code == 403
-    # coordinator assigned to district 24 cannot act on district 5 -> 403
+                             "geojson": {}}).status_code == 201
+    # a seat assigned to district 24 still cannot act on district 5 -> 403
     assert client.post("/disaster/events", headers=COORD,
                        json={"hazard_code": "urban_flood", "status": "watch", "district_id": 5,
                              "geojson": {}}).status_code == 403
-    # super_admin may act anywhere
+    # the platform admin may act anywhere
     assert client.post("/disaster/events", headers=SUPER,
                        json={"hazard_code": "flood", "status": "watch", "district_id": 5,
                              "geojson": {}}).status_code == 201
+    # a role outside the canonical set has no Emergency Response access
+    assert client.get("/disaster/overview",
+                      headers={"X-Role": "wizard"}).status_code == 403
 
 
 def test_denied_decisions_are_audited():
     _seed()
-    client.post("/disaster/forecast/run", headers=CRIME,
-                json={"hazard_code": "flood", "district_id": 24})
+    # An out-of-district write is the remaining DENY decision; it must be audited.
+    r = client.post("/disaster/events", headers=COORD,
+                    json={"hazard_code": "urban_flood", "status": "watch", "district_id": 5,
+                          "geojson": {}})
+    assert r.status_code == 403
     repo = drepo.disaster_repo()
     denials = [a for a in repo.recent_activity() if a["Action"] == "access.denied"]
     assert denials, "a denied decision should be audited"

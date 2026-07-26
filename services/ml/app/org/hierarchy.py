@@ -3,10 +3,10 @@
 
 The organizer session notes describe the command hierarchy
 DGP -> IGP -> DIG -> SP -> Station Chief -> Police Officers, and require that
-"each role sees only permitted data". DRISHTI keeps its SIX functional roles
-(what a seat can DO) and adds this declarative mapping from a police rank /
-assignment (who the seat IS in the establishment) to a functional role plus an
-organizational SCOPE LEVEL (how wide the seat can see).
+"each role sees only permitted data". DRISHTI's functional roles (what a seat
+can DO) are the command seats in ``app/roles.py``; this module maps a police
+rank / assignment (who the seat IS in the establishment) to one of those roles
+plus an organizational SCOPE LEVEL (how wide the seat can see).
 
 Everything here is pure data + pure functions (no DB, no I/O) so the mapping is
 unit-testable and is the single source the API + UI surface. It is a SYNTHETIC
@@ -17,12 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-# The six functional roles kept from the existing platform (admin/permissions.py
-# holds five; disaster_coordinator is the sixth, seeded idempotently in Part B).
-FUNCTIONAL_ROLES = (
-    "investigator", "analyst", "supervisor", "policymaker",
-    "disaster_coordinator", "super_admin",
-)
+from ..roles import FUNCTIONAL_ROLES  # noqa: F401 — re-exported (canonical set)
+from .. import roles as _roles
 
 # Organizational scope levels, ordered BROADEST (0) -> NARROWEST. A seat may see
 # its own level and everything nested below it. "assigned_case" is the tightest:
@@ -72,54 +68,58 @@ def _norm(text: Optional[str]) -> str:
 # as an AUTHORIZATION mapping the server enforces, not a staffing table.
 # ---------------------------------------------------------------------------
 _CATALOG: list[RankMapping] = [
-    RankMapping("dgp", "Director General of Police", "DGP", "supervisor", "state",
+    RankMapping("dgp", "Director General of Police", "DGP", "dgp_state_command", "state",
                 "State police head: state-wide operational oversight and approvals."),
-    RankMapping("adgp", "Additional Director General of Police", "ADGP", "supervisor", "state",
+    RankMapping("adgp", "Additional Director General of Police", "ADGP", "adgp_igp_range", "state",
                 "State-wide oversight for a functional wing (e.g. Crime, L&O)."),
-    RankMapping("igp", "Inspector General of Police", "IGP", "supervisor", "range",
+    RankMapping("igp", "Inspector General of Police", "IGP", "adgp_igp_range", "range",
                 "Zonal/range command across several districts."),
-    RankMapping("dig", "Deputy Inspector General of Police", "DIG", "supervisor", "range",
+    RankMapping("dig", "Deputy Inspector General of Police", "DIG", "adgp_igp_range", "range",
                 "Range command; oversight of the districts in the range."),
-    RankMapping("sp", "Superintendent of Police", "SP", "supervisor", "district",
+    RankMapping("sp", "Superintendent of Police", "SP", "sp_district_command", "district",
                 "District police chief: workload, approvals and oversight for one district."),
-    RankMapping("dcp", "Deputy Commissioner of Police", "DCP", "supervisor", "district",
+    RankMapping("dcp", "Deputy Commissioner of Police", "DCP", "sp_district_command", "district",
                 "City-police district equivalent of the SP."),
-    RankMapping("addl sp", "Additional Superintendent of Police", "Addl. SP", "supervisor", "district",
+    RankMapping("addl sp", "Additional Superintendent of Police", "Addl. SP",
+                "sp_district_command", "district",
                 "Assists the SP across the district."),
-    RankMapping("dy sp", "Deputy Superintendent of Police", "Dy.SP", "supervisor", "subdivision",
+    RankMapping("dy sp", "Deputy Superintendent of Police", "Dy.SP", "dysp_acp", "subdivision",
                 "Sub-divisional police officer (SDPO): oversight of a sub-division."),
-    RankMapping("asp", "Assistant Superintendent of Police", "ASP", "supervisor", "subdivision",
+    RankMapping("asp", "Assistant Superintendent of Police", "ASP", "dysp_acp", "subdivision",
                 "IPS probationary sub-divisional officer."),
-    RankMapping("acp", "Assistant Commissioner of Police", "ACP", "supervisor", "subdivision",
+    RankMapping("acp", "Assistant Commissioner of Police", "ACP", "dysp_acp", "subdivision",
                 "City-police sub-divisional officer."),
-    RankMapping("ci", "Circle Inspector", "CI", "supervisor", "subdivision",
+    RankMapping("ci", "Circle Inspector", "CI", "dysp_acp", "subdivision",
                 "Circle inspector overseeing several stations in a circle."),
-    RankMapping("sho", "Station House Officer", "SHO", "supervisor", "station",
+    RankMapping("sho", "Station House Officer", "SHO", "sho", "station",
                 "Station chief: owns their police station's workload and review queue."),
-    RankMapping("pi", "Police Inspector", "PI", "supervisor", "station",
+    RankMapping("pi", "Police Inspector", "PI", "sho", "station",
                 "Inspector; commonly the SHO of a station."),
-    RankMapping("io", "Investigating Officer", "IO", "investigator", "assigned_case",
+    RankMapping("io", "Investigating Officer", "IO", "investigating_officer", "assigned_case",
                 "Officer investigating specific assigned cases."),
-    RankMapping("psi", "Police Sub-Inspector", "PSI", "investigator", "assigned_case",
+    RankMapping("psi", "Police Sub-Inspector", "PSI", "investigating_officer", "assigned_case",
                 "Sub-inspector; registers and investigates assigned FIRs."),
-    RankMapping("asi", "Assistant Sub-Inspector", "ASI", "investigator", "assigned_case",
+    RankMapping("asi", "Assistant Sub-Inspector", "ASI", "investigating_officer", "assigned_case",
                 "Assists investigation of assigned cases."),
-    RankMapping("head constable", "Head Constable", "HC", "investigator", "assigned_case",
+    RankMapping("head constable", "Head Constable", "HC", "investigating_officer", "assigned_case",
                 "Assists investigation of assigned cases."),
-    RankMapping("police constable", "Police Constable", "PC", "investigator", "assigned_case",
-                "Assists investigation of assigned cases."),
-    # Non-rank functional assignments (civilian cells / staff functions).
+    RankMapping("police constable", "Police Constable", "PC", "investigating_officer",
+                "assigned_case", "Assists investigation of assigned cases."),
+    # Non-rank functional assignments (staff cells / specialised commands).
     RankMapping("crime analyst", "Crime Analyst (District Crime Records)", "Analyst",
-                "analyst", "district",
+                "crime_analyst", "district",
                 "District crime-records / analytics cell: aggregate + pattern analysis."),
-    RankMapping("scrb", "State Crime Records Bureau / Policy Cell", "SCRB",
-                "policymaker", "state",
-                "Strategic aggregate-only consumer; no individual case/PII access."),
-    RankMapping("ddma", "District Disaster Management Coordinator", "DDMA",
-                "disaster_coordinator", "district",
-                "Emergency-response coordinator for one assigned district."),
+    RankMapping("scrb", "State Crime Records Bureau", "SCRB",
+                "crime_analyst", "state",
+                "State records/analytics bureau: strategic trends and forecasting."),
+    RankMapping("cyber cell", "Cyber Crime Police Station / CEN Cell", "CEN",
+                "cyber_cell", "state",
+                "Cyber + financial crime cell: money trail, devices and accounts."),
+    RankMapping("traffic", "Traffic Police Command", "Traffic",
+                "traffic_command", "district",
+                "Road-safety hotspots, accident patterns and enforcement load."),
     RankMapping("system administrator", "System Administrator", "Admin",
-                "super_admin", "state",
+                "system_admin", "state",
                 "Platform administration: user provisioning, role assignment, governance."),
 ]
 
@@ -146,7 +146,11 @@ _ALIASES = {
     "circle inspector": "ci",
     "analyst": "crime analyst",
     "policy": "scrb",
-    "disaster coordinator": "ddma",
+    "cyber": "cyber cell",
+    "cen": "cyber cell",
+    "cyber crime": "cyber cell",
+    "traffic police": "traffic",
+    "traffic command": "traffic",
     "admin": "system administrator",
 }
 
@@ -183,14 +187,7 @@ def role_for_rank(rank: Optional[str], designation: Optional[str] = None) -> Opt
 def scope_level_for_role(role: str) -> str:
     """Default (broadest) scope level a functional role may hold when no rank
     refinement is available. Used as a fallback in scope derivation."""
-    return {
-        "super_admin": "state",
-        "policymaker": "state",
-        "supervisor": "district",
-        "analyst": "district",
-        "disaster_coordinator": "district",
-        "investigator": "assigned_case",
-    }.get(role, "assigned_case")
+    return _roles.scope_level_for_role(role)
 
 
 def catalog() -> list[dict]:

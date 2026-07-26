@@ -16,17 +16,19 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from ..config import get_settings
 from ..intake.guards import require_write_allowed
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import flow
 from .schemas import (FirCommittedRequest, FreshnessResponse, ProcessedFirResponse,
                       ProjectFirRequest)
 
 router = APIRouter(prefix="/livefeed", tags=["live-command-center"])
 
-_COMMIT_ROLES = {"supervisor", "super_admin", "investigator"}
+# INTERIM: every command role may emit committed-FIR events.
+_COMMIT_ROLES = set(ALL_ROLES)
 
 
 def _role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_commit_role(x_role: Optional[str] = Header(default=None)) -> str:

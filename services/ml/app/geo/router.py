@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from .. import db
 from ..config import get_settings
 from ..intake import guards
+from ..roles import DEFAULT_ROLE
 from . import boundaries as boundaries_mod
 from . import jurisdiction
 from . import service
@@ -22,6 +23,22 @@ router = APIRouter(prefix="/geo", tags=["geo"])
 
 BOUNDARY_LEVELS = ("state", "districts", "taluks")
 DB_BOUNDARY_LEVELS = ("state", "district", "taluk", "unit", "sho")
+
+# Roles capped to district aggregates (no point-level incidents/pins/case links).
+# INTERIM ("all roles have access to everything"): none. Add a role id here to
+# re-impose the privacy cap; the check itself stays in one place.
+POINT_LEVEL_DENY: frozenset[str] = frozenset()
+
+
+def _require_point_level(x_role: Optional[str], what: str) -> str:
+    """Enforce the point-level privacy cap for the resolved caller role."""
+    role = (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
+    if role in POINT_LEVEL_DENY:
+        raise HTTPException(
+            status_code=403,
+            detail=f"{what} is not available to the '{role}' role "
+                   "(district-aggregate views only).")
+    return role
 
 
 def _parse_bbox(bbox: Optional[str]):
@@ -71,13 +88,8 @@ def points(
     limit: int = Query(5000, ge=1, le=20000),
     x_role: Optional[str] = Header(default=None),
 ):
-    """Point-level incidents for the Live Map — blocked for policymaker (privacy cap)."""
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    if role == "policymaker":
-        raise HTTPException(
-            status_code=403,
-            detail="Point-level incident data is not available to the policymaker role "
-                   "(district-aggregate views only).")
+    """Point-level incidents for the Live Map (privacy cap; see _require_point_level)."""
+    _require_point_level(x_role, "Point-level incident data")
     return service.points(_parse_bbox(bbox), start, end, crime_head_id, limit)
 
 
@@ -87,13 +99,8 @@ def stations(
     limit: int = Query(1500, ge=1, le=2000),
     x_role: Optional[str] = Header(default=None),
 ):
-    """Police stations for the map — blocked for policymaker (point-level pins)."""
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    if role == "policymaker":
-        raise HTTPException(
-            status_code=403,
-            detail="Station pins are not available to the policymaker role "
-                   "(district-aggregate views only).")
+    """Police stations for the map (point-level pins)."""
+    _require_point_level(x_role, "Station pins")
     return service.stations(_parse_bbox(bbox), limit)
 
 
@@ -103,10 +110,8 @@ def case_links(
     limit: int = Query(60, ge=1, le=200),
     x_role: Optional[str] = Header(default=None),
 ):
-    """Geo-located cases linked to a case by shared accused — blocked for policymaker."""
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    if role == "policymaker":
-        raise HTTPException(status_code=403, detail="Not available to the policymaker role.")
+    """Geo-located cases linked to a case by shared accused (case-scoped)."""
+    _require_point_level(x_role, "Linked-case geography")
     resp = service.case_links(case_id, limit)
     if resp is None:
         raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
@@ -141,7 +146,7 @@ def coverage():
 def boundaries(level: str):
     """Administrative boundary overlay as GeoJSON for the map — one of
     ``state | districts | taluks``. Public reference geography (real KGIS
-    polygons), so available to every role including policymaker."""
+    polygons), so available to every role (no point-level cap)."""
     if level not in BOUNDARY_LEVELS:
         raise HTTPException(
             status_code=404,
@@ -162,14 +167,8 @@ def sho_regions(
 ):
     """SHO (police-station jurisdiction) regions as GeoJSON: the Voronoi
     tessellation of station points clipped to each district, so the cells tile
-    the district and follow the real data. Station-derived -> blocked for the
-    policymaker role (aggregate views only)."""
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    if role == "policymaker":
-        raise HTTPException(
-            status_code=403,
-            detail="SHO regions are not available to the policymaker role "
-                   "(district-aggregate views only).")
+    the district and follow the real data. Station-derived (point-level)."""
+    _require_point_level(x_role, "SHO regions")
     resp = service.stations(None, limit)
     stations = [{
         "station_id": s.station_id, "name": s.name, "district": s.district,
@@ -208,10 +207,8 @@ def jurisdiction_issues(status: str = Query("open", pattern="^(open|resolved|qua
                         page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
                         x_role: Optional[str] = Header(default=None)):
     """Reviewed-reassignment queue: canonical rows flagged for a jurisdiction
-    mismatch. Case-scoped, so blocked for the policymaker role."""
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    if role == "policymaker":
-        raise HTTPException(status_code=403, detail="Not available to the policymaker role.")
+    mismatch (case-scoped)."""
+    _require_point_level(x_role, "The jurisdiction review queue")
     return jurisdiction.containment_issues(status=status, page=page, page_size=page_size)
 
 

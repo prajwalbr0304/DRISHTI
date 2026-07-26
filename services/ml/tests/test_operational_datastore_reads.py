@@ -52,16 +52,15 @@ def test_imports_templates_from_datastore():
 
 def test_money_authorization_is_code_based():
     from app.money import permissions as mp
-    assert mp.action_for_role("super_admin") == "write"
-    assert mp.action_for_role("investigator") == "read"
-    assert mp.action_for_role("analyst") == "read"
-    assert mp.action_for_role("supervisor") == "read"
-    # Known-but-denied roles carry an EXPLICIT 'none' grant, mirroring the SQL
-    # seed row ('policymaker','money_trail','none'). An entirely UNKNOWN role
-    # resolves to None. Both deny — only 'read'/'write' pass the gate.
-    assert mp.action_for_role("policymaker") == "none"       # denied (explicit none)
-    assert mp.action_for_role("disaster_coordinator") == "none"  # denied (explicit none)
-    assert mp.action_for_role("intruder_role") is None       # unknown -> None (also denied)
+    # INTERIM ("all roles have access to everything"): every command role holds
+    # WRITE on money_trail, mirroring the SQL seed's full-access grant.
+    from app.roles import FUNCTIONAL_ROLES
+    for role in FUNCTIONAL_ROLES:
+        assert mp.action_for_role(role) == "write", role
+    # A role outside the canonical set is UNMAPPED -> None, which denies. (A role
+    # deliberately denied later carries an EXPLICIT 'none'; both fail the gate,
+    # only 'read'/'write' pass.)
+    assert mp.action_for_role("intruder_role") is None       # unknown -> None (denied)
     # the gate performs no RDS access (no db connector usage in the module body)
     import inspect
     src = inspect.getsource(mp)

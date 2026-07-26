@@ -20,6 +20,7 @@ from typing import Any, Optional
 from psycopg2.extras import Json
 
 from .. import audit, db
+from ..roles import ALL_ROLES
 from ..signals import EVENT_REPORT_READY, get_signals
 from ..smartbrowz import get_smartbrowz
 from ..stratus import BUCKET_REPORT, DEFAULT_PRESIGN_TTL_S, ObjectRef, get_stratus
@@ -77,12 +78,12 @@ def _load_template(conn, code: str) -> Optional[dict]:
 def _authorize(template: dict, role: str, scope_kind: str, scope_ref_id: Optional[str]) -> None:
     if not template["is_active"]:
         raise TemplateNotFound(f"Report template '{template['code']}' is inactive.")
-    if role != "super_admin" and role not in template["allowed_roles"]:
+    # INTERIM ("all roles have access to everything"): any canonical command role
+    # may generate any active template; the per-template allow-list still applies
+    # to anything outside the canonical set.
+    if role not in ALL_ROLES and role not in template["allowed_roles"]:
         raise ReportAuthError(
             f"Role '{role}' is not authorized to generate the '{template['code']}' report.")
-    # individual-case reports are never available to the aggregate-only policymaker.
-    if template["scope_kind"] == "case" and role == "policymaker":
-        raise ReportAuthError("Policymaker cannot export individual-case reports (aggregate only).")
     if scope_kind != template["scope_kind"]:
         raise ScopeError(
             f"Template '{template['code']}' is {template['scope_kind']}-scoped, got '{scope_kind}'.")

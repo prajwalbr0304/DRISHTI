@@ -39,7 +39,7 @@ export function MoSearchBar() {
           e.preventDefault();
           run();
         }}
-        className="flex items-center gap-2"
+        className="flex flex-wrap items-center gap-2"
       >
         <Sparkles className="size-4 shrink-0 text-primary" />
         <span className="hidden shrink-0 text-13 text-content-dim sm:inline">Cases like this MO</span>
@@ -48,7 +48,7 @@ export function MoSearchBar() {
           onChange={(e) => setInput(e.target.value)}
           inputMode="numeric"
           placeholder="reference case id…"
-          className="h-8 max-w-[220px]"
+          className="h-8 min-w-0 flex-1 sm:max-w-[220px]"
         />
         <Button type="submit" size="sm" disabled={!input.trim()}>
           Find similar

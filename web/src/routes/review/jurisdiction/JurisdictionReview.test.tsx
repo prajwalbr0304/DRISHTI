@@ -48,7 +48,7 @@ describe("JurisdictionReview", () => {
   });
 
   it("lists an open mismatch with a reviewed reassignment affordance", async () => {
-    localStorage.setItem("drishti.role", "supervisor");
+    localStorage.setItem("drishti.role", "dysp_acp");
     jurisdictionIssues.mockResolvedValue({
       total: 1, page: 1, page_size: 100, status: "open",
       items: [{
@@ -67,10 +67,13 @@ describe("JurisdictionReview", () => {
     expect(screen.getByText("Synthetic Hackathon Demo")).toBeInTheDocument();
   });
 
-  it("is not available to the policymaker role", async () => {
-    localStorage.setItem("drishti.role", "policymaker");
+  // Interim access model: every command role holds every capability, so the
+  // queue opens for a field seat too (the server enforces the real decision).
+  it("opens for the investigating-officer seat", async () => {
+    localStorage.setItem("drishti.role", "investigating_officer");
     jurisdictionIssues.mockResolvedValue({ total: 0, page: 1, page_size: 100, status: "open", items: [] });
     wrap(<JurisdictionReview />);
-    expect(screen.getByText(/Not available for this role/i)).toBeInTheDocument();
+    expect(screen.getByText("Jurisdiction review")).toBeInTheDocument();
+    expect(screen.queryByText(/Not available for this role/i)).not.toBeInTheDocument();
   });
 });

@@ -36,6 +36,7 @@ export function MapCanvas({
   onViewStateChange,
   layers,
   getTooltip,
+  suppressTooltip = false,
   onMapClick,
   mapStyle,
   children,
@@ -44,6 +45,7 @@ export function MapCanvas({
   onViewStateChange: (v: MapViewState) => void;
   layers: Layer[];
   getTooltip?: TooltipGetter;
+  suppressTooltip?: boolean;
   onMapClick?: (lngLat: { lng: number; lat: number }) => void;
   mapStyle?: string | StyleSpecification;
   children?: ReactNode;
@@ -52,23 +54,28 @@ export function MapCanvas({
   const style = mapStyle ?? (theme === "ops" ? MAP_STYLES.ops : MAP_STYLES.desk);
 
   return (
-    <Map
-      reuseMaps
-      longitude={viewState.longitude}
-      latitude={viewState.latitude}
-      zoom={viewState.zoom}
-      pitch={viewState.pitch}
-      bearing={viewState.bearing}
-      maxPitch={75}
-      onMove={(e) => onViewStateChange(e.viewState as MapViewState)}
-      onClick={(e) => onMapClick?.(e.lngLat)}
-      mapStyle={style}
-      attributionControl={false}
+    <div
+      className={suppressTooltip ? "drishti-map-tooltip-suppressed" : undefined}
       style={{ position: "absolute", inset: 0 }}
     >
-      <NavigationControl position="top-right" visualizePitch showCompass />
-      <DeckOverlay layers={layers} getTooltip={getTooltip} />
-      {children}
-    </Map>
+      <Map
+        reuseMaps
+        longitude={viewState.longitude}
+        latitude={viewState.latitude}
+        zoom={viewState.zoom}
+        pitch={viewState.pitch}
+        bearing={viewState.bearing}
+        maxPitch={75}
+        onMove={(e) => onViewStateChange(e.viewState as MapViewState)}
+        onClick={(e) => onMapClick?.(e.lngLat)}
+        mapStyle={style}
+        attributionControl={false}
+        style={{ position: "absolute", inset: 0 }}
+      >
+        <NavigationControl position="top-right" visualizePitch showCompass />
+        <DeckOverlay layers={layers} getTooltip={getTooltip} />
+        {children}
+      </Map>
+    </div>
   );
 }

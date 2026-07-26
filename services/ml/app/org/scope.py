@@ -17,6 +17,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from . import hierarchy
+from ..roles import ALL_ROLES, DEFAULT_ROLE, normalize_role
+
+# Roles that are never geographically pinned (platform-wide seats).
+UNPINNED_ROLES = {"system_admin"}
 
 # Actions the allow/deny matrix covers (Prompt 20 Part B.3).
 MATRIX_ACTIONS = (
@@ -71,15 +75,15 @@ def derive_scope(role: str, *, user_id: Optional[int] = None,
     The scope LEVEL comes from the rank mapping when a rank/designation is known,
     otherwise from the role default. The geographic sets come only from the
     trusted ``district_id``/``unit_id`` assignment (never a client header)."""
-    role = (role or "investigator").strip()
+    role = (role or DEFAULT_ROLE).strip()
     mapping = hierarchy.map_rank(rank, designation)
     scope_level = mapping.scope_level if mapping else hierarchy.scope_level_for_role(role)
 
-    # State/range seats and super_admin are not district-pinned unless assigned.
+    # State/range seats and the platform admin are not district-pinned unless assigned.
     broad = scope_level in ("state", "range")
     districts: Optional[frozenset]
     units: Optional[frozenset]
-    if role == "super_admin":
+    if role in UNPINNED_ROLES:
         districts, units = None, None
     elif district_id is not None:
         districts = frozenset({int(district_id)})
@@ -100,7 +104,7 @@ def derive_scope(role: str, *, user_id: Optional[int] = None,
         role=role, scope_level=scope_level, district_ids=districts, unit_ids=units,
         assigned_case_ids=cases, user_id=user_id, username=username,
         rank=(mapping.rank if mapping else rank), source=source,
-        trusted=(district_id is not None or broad or role == "super_admin"),
+        trusted=(district_id is not None or broad or role in UNPINNED_ROLES),
     )
 
 
@@ -126,52 +130,48 @@ def within_geo_scope(scope: ScopeContext, *, district_id: Optional[int] = None,
 def can_view_case_detail(scope: ScopeContext, *, district_id: Optional[int] = None,
                          unit_id: Optional[int] = None,
                          case_id: Optional[int] = None) -> bool:
-    """Individual case/FIR detail (PII). Policymakers are aggregate-only; the
-    disaster coordinator is an emergency seat, not a crime investigator."""
+    """Individual case/FIR detail (PII).
+
+    INTERIM: every command role holds case-detail capability. What still applies
+    is GEOGRAPHIC containment (a district/station seat cannot read another
+    district) and, for a case-scoped seat with a known assignment list, the
+    assigned-case narrowing."""
     role = scope.role
-    if role == "super_admin":
-        return True
-    if role in ("policymaker", "disaster_coordinator"):
+    if role not in ALL_ROLES:
         return False
+    if role in UNPINNED_ROLES:
+        return True
     if not within_geo_scope(scope, district_id=district_id, unit_id=unit_id):
         return False
-    # Case-scoped investigators only see their assigned cases (when the set is known).
-    if role == "investigator" and scope.assigned_case_ids is not None:
+    # A case-scoped seat only sees its assigned cases (when the set is known).
+    if scope.scope_level == "assigned_case" and scope.assigned_case_ids is not None:
         return case_id is not None and int(case_id) in scope.assigned_case_ids
-    return role in ("investigator", "analyst", "supervisor")
+    return True
 
 
 def can_view_aggregate_dashboard(scope: ScopeContext) -> bool:
-    """Every functional role may see aggregate dashboards for its own scope
-    (policymaker sees ONLY aggregates)."""
-    return scope.role in hierarchy.FUNCTIONAL_ROLES
+    """Every functional role may see aggregate dashboards for its own scope."""
+    return scope.role in ALL_ROLES
 
 
 def can_export(scope: ScopeContext, *, aggregate: bool) -> bool:
-    """Exports. Case-level (PII) exports need case access; aggregate exports are
-    open to the analytics-capable roles. Policymakers export aggregates only."""
-    if scope.role == "super_admin":
-        return True
-    if aggregate:
-        return scope.role in ("analyst", "supervisor", "policymaker", "investigator")
-    # Case-level export mirrors case-detail capability.
-    return scope.role in ("investigator", "analyst", "supervisor")
+    """Exports. INTERIM: every command role may export both aggregate and
+    case-level extracts (case-level extracts remain audited)."""
+    return scope.role in ALL_ROLES
 
 
 def can_use_investigation_board(scope: ScopeContext) -> bool:
-    """Investigation Board is a crime-analysis canvas. Policymaker is denied
-    (Prompt 16); the disaster coordinator is out of the crime-investigation
-    domain."""
-    return scope.role in ("investigator", "analyst", "supervisor", "super_admin")
+    """Investigation Board — INTERIM: open to every command role."""
+    return scope.role in ALL_ROLES
 
 
 def can_approve_disaster(scope: ScopeContext, *, district_id: Optional[int] = None) -> bool:
-    """Disaster warning/allocation/evacuation approval: the disaster coordinator
-    within its assigned district, plus super_admin everywhere."""
-    if scope.role == "super_admin":
-        return True
-    if scope.role != "disaster_coordinator":
+    """Disaster warning/allocation/evacuation approval. INTERIM: every command
+    role may approve, still confined to its geographic scope."""
+    if scope.role not in ALL_ROLES:
         return False
+    if scope.role in UNPINNED_ROLES:
+        return True
     return within_geo_scope(scope, district_id=district_id)
 
 
@@ -245,12 +245,9 @@ def resolve_request_scope(request, *, fallback_role: Optional[str] = None) -> Sc
     ctx = getattr(getattr(request, "state", None), "gateway_context", None)
     if ctx is not None and getattr(ctx, "is_user", False):
         return scope_from_gateway_context(ctx)
-    role = (fallback_role
-            or (request.headers.get("x-role") if hasattr(request, "headers") else None)
-            or "investigator").strip() or "investigator"
-    if role not in hierarchy.FUNCTIONAL_ROLES:
-        role = "investigator"
-    return derive_scope(role, source="role-default")
+    raw = (fallback_role
+           or (request.headers.get("x-role") if hasattr(request, "headers") else None))
+    return derive_scope(normalize_role(raw), source="role-default")
 
 
 def matrix_for_roles(district_id: Optional[int] = None) -> dict:

@@ -21,6 +21,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 
 from ..config import get_settings
 from ..intake.guards import require_write_allowed
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import service
 from . import governance_bridge as gb
 from .schemas import (WorkloadBenchmarkListResponse, WorkloadEvaluationResponse,
@@ -30,12 +31,13 @@ from .schemas import (WorkloadBenchmarkListResponse, WorkloadEvaluationResponse,
 
 router = APIRouter(prefix="/workload", tags=["workload"])
 
-WORKLOAD_WRITE_ROLES = {"analyst", "investigator", "supervisor", "super_admin"}
-WORKLOAD_ADMIN_ROLES = {"supervisor", "super_admin"}
+# INTERIM: every command role may run the pipeline and change model lifecycle.
+WORKLOAD_WRITE_ROLES = set(ALL_ROLES)
+WORKLOAD_ADMIN_ROLES = set(ALL_ROLES)
 
 
 def _role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "analyst").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_workload_write(x_role: Optional[str] = Header(default=None)) -> str:

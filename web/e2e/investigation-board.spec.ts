@@ -8,14 +8,14 @@ import * as fx from "./fixtures";
 
    Covers        : board list · open the board workspace · canvas loads
                    (react-flow) with named toolbar controls + tabs.
-   States        : data · empty · unauthorized (policymaker redirected).
+   States        : data · empty · cross-role access (all seats allowed).
    Notes         : no pixel snapshot of the dynamic canvas — assertions are on
                    roles/text/structure (title, tabs, "Fit view" control).
    ========================================================================== */
 
 test.describe("(f) Investigation Board", () => {
   test("lists boards and opens the board workspace canvas", async ({ page }) => {
-    await authenticate(page, "investigator");
+    await authenticate(page, "investigating_officer");
     await page.goto("/board");
 
     await expect(page.getByRole("heading", { name: "Investigation Board" })).toBeVisible();
@@ -33,17 +33,19 @@ test.describe("(f) Investigation Board", () => {
   });
 
   test("empty state when there are no boards", async ({ page }) => {
-    await authenticate(page, "investigator");
+    await authenticate(page, "investigating_officer");
     await overrideJson(page, pathIs("/boards"), fx.boardListEmpty);
     await page.goto("/board");
 
     await expect(page.getByRole("heading", { name: "No boards yet" })).toBeVisible();
   });
 
-  test("unauthorized: policymaker is redirected away from the board", async ({ page }) => {
-    await authenticate(page, "policymaker");
+  // Interim access model: every command seat holds board_use, so the board is
+  // reachable from a state-command seat instead of redirecting to /analytics.
+  test("authorized: a state-command seat reaches the board", async ({ page }) => {
+    await authenticate(page, "dgp_state_command");
     await page.goto("/board");
 
-    await page.waitForURL(/\/analytics/);
+    await expect(page.getByRole("heading", { name: "Investigation Board" })).toBeVisible();
   });
 });

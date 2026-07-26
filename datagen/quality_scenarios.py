@@ -196,17 +196,17 @@ def build_quality_scenarios(world: C.World, ib: IdentityBuilder,
     # --- audit actor/action fixtures --------------------------------------
     actions = [
         ("io.ramesh", "case.create", "cases"),
-        ("analyst.kavya", "entity.merge", "people_entities"),
+        ("analyst.divya", "entity.merge", "people_entities"),
         ("sho.suresh", "evidence.upload", "evidence"),
         ("admin", "model.request", "predictions"),
-        ("dcp.anand", "report.export", "analytics"),
+        ("sp.anand", "report.export", "analytics"),
         ("io.ramesh", "evidence.download", "evidence"),
-        ("analyst.kavya", "prediction.review", "predictions"),
+        ("analyst.divya", "prediction.review", "predictions"),
         ("sho.suresh", "case.update", "cases"),
         ("admin", "import.commit", "imports"),
-        ("dcp.anand", "audit.search", "audit"),
+        ("sp.anand", "audit.search", "audit"),
         ("io.ramesh", "statement.record", "statements"),
-        ("analyst.kavya", "graph.rebuild", "network_analysis"),
+        ("analyst.divya", "graph.rebuild", "network_analysis"),
     ]
     for j, (actor, action, resource) in enumerate(actions):
         w.add("audit_logs", (None, action, resource, str(pick_case(j) or j),

@@ -37,10 +37,12 @@ def test_case_committed_is_a_valid_signal_event():
     assert signals.EVENT_CASE_COMMITTED in signals._VALID_EVENTS
 
 
-def test_fir_committed_role_gated_policymaker_denied():
+def test_fir_committed_role_gate_refuses_a_non_canonical_role():
+    # INTERIM ("all roles have access to everything"): every command seat may
+    # emit committed-FIR events; a role outside the canonical set may not.
     body = {"case_id": 1}
     assert client.post("/livefeed/fir-committed", json=body,
-                       headers=_hdr("policymaker")).status_code == 403
+                       headers=_hdr("wizard")).status_code == 403
 
 
 # ============================ projection + idempotency (DB) =================
@@ -106,8 +108,8 @@ def test_fir_committed_endpoint_idempotent_replay_flag():
     flow._LEDGER.reset()
     case_id, _ = _first_case()
     first = client.post("/livefeed/fir-committed", json={"case_id": case_id},
-                        headers=_hdr("supervisor"))
+                        headers=_hdr("sho"))
     assert first.status_code == 200 and first.json()["idempotent_replay"] is False
     again = client.post("/livefeed/fir-committed", json={"case_id": case_id},
-                        headers=_hdr("supervisor"))
+                        headers=_hdr("sho"))
     assert again.status_code == 200 and again.json()["idempotent_replay"] is True

@@ -23,6 +23,7 @@ from psycopg2.extras import Json
 from .. import audit, db
 from ..cache import get_cache, SEG_LOOKUP
 from ..config import get_settings
+from ..roles import ALL_ROLES
 from . import permissions
 from ..quickml import rag_enabled
 from ..signals import signals_enabled
@@ -584,7 +585,9 @@ def list_report_templates(role: Optional[str] = None) -> list[dict]:
     out = []
     for r in rows:
         allowed = list(r[6] or [])
-        if role is not None and role not in allowed and role != "super_admin":
+        # INTERIM: every command role reaches every template (see app/roles.py);
+        # the per-template AllowedRoles list is kept for when RBAC narrows again.
+        if role is not None and role not in allowed and role not in ALL_ROLES:
             continue
         out.append({"report_template_id": int(r[0]), "code": r[1], "name": r[2],
                     "description": r[3], "report_kind": r[4], "scope_kind": r[5],

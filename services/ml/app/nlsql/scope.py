@@ -3,7 +3,7 @@ NOT in the prompt").
 
 A user must not be able to prompt past their access. The LLM is *shown* a
 role-filtered schema, but the real guarantee is here: the final SQL is
-re-checked against the same forbidden-table policy, and a policymaker's query is
+re-checked against the same forbidden-table policy, and an aggregate-only query is
 forced to be aggregate-only. This runs regardless of what produced the SQL, so
 a crafted or jailbroken prompt still cannot read individual PII.
 

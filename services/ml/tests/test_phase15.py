@@ -33,26 +33,20 @@ from conftest import requires_db
 def test_authorization_matrix_role_permissions():
     from app.admin import permissions
     m = permissions.authorization_matrix()
-    # aggregate-only policymaker: no individual case read, no admin, but reports/RAG ok.
-    assert m["policymaker"]["case_read"] is False
-    assert m["policymaker"]["admin_read"] is False
-    assert m["policymaker"]["report_generate"] is True
-    assert m["policymaker"]["rag_use"] is True
-    # supervisor oversees but cannot change admin config.
-    assert m["supervisor"]["admin_read"] is True
-    assert m["supervisor"]["admin_write"] is False
-    assert m["supervisor"]["governance_review"] is True
-    # investigator writes cases + intake; analyst does not write cases.
-    assert m["investigator"]["case_write"] is True
-    assert m["analyst"]["case_write"] is False
-    # super_admin has everything.
-    assert all(m["super_admin"].values())
+    # INTERIM ("all roles have access to everything"): every command role holds
+    # every permission. The matrix still covers exactly the canonical roles.
+    assert set(m) == set(permissions.ROLES)
+    for role, grants in m.items():
+        assert all(grants.values()), role
+        assert set(grants) == set(permissions.PERMISSIONS)
 
 
 def test_permission_gate_helpers():
     from app.admin import permissions
-    assert permissions.has_permission("super_admin", "admin_write")
-    assert not permissions.has_permission("supervisor", "admin_write")
+    for role in permissions.ROLES:
+        assert permissions.has_permission(role, "admin_write"), role
+    # A role outside the canonical set holds nothing and clamps to the default.
+    assert not permissions.has_permission("wizard", "admin_write")
     assert permissions.resolve_role("bogus") in permissions.ROLES  # clamps to default
 
 
@@ -115,7 +109,7 @@ def test_rag_evaluation_fixed_set_passes():
 def test_rag_ask_graceful_disabled(monkeypatch):
     from app.rag import service as rag_service
     monkeypatch.setattr(rag_service, "assistant_available", lambda: False)
-    out = rag_service.ask("investigator", "anything at all")
+    out = rag_service.ask("investigating_officer", "anything at all")
     assert out["enabled"] is False and out["refused"] is True and out["citations"] == []
 
 
@@ -123,17 +117,24 @@ def test_rag_ask_enabled_cites(monkeypatch):
     from app.rag import service as rag_service
     monkeypatch.setattr(rag_service, "assistant_available", lambda: True)
     monkeypatch.setattr(rag_service, "_log_interaction", lambda *a, **k: None)  # no DB write
-    out = rag_service.ask("investigator",
+    out = rag_service.ask("investigating_officer",
                           "How is digital evidence integrity verified (chain of custody)?")
     assert out["enabled"] is True and out["refused"] is False
     assert any(c["source"] == "SOP-EVID-003" for c in out["citations"])
 
 
-def test_rag_ask_case_scope_denies_policymaker(monkeypatch):
+def test_rag_ask_case_scope_refuses_only_case_read_denied_roles(monkeypatch):
+    from app.cases import permissions as case_perms
     from app.rag import service as rag_service
     monkeypatch.setattr(rag_service, "assistant_available", lambda: True)
     monkeypatch.setattr(rag_service, "_log_interaction", lambda *a, **k: None)
-    out = rag_service.ask("policymaker", "How is evidence handled?", case_scope_ref_id="1")
+    # INTERIM: no command role is denied case scope, so the assistant answers.
+    out = rag_service.ask("dgp_state_command", "How is evidence handled?", case_scope_ref_id="1")
+    assert out["refused"] is False
+    # The case-scope gate itself still refuses a role on the deny list.
+    monkeypatch.setattr(rag_service, "CASE_READ_DENY", {"wizard"})
+    monkeypatch.setattr(case_perms, "CASE_READ_DENY", {"wizard"})
+    out = rag_service.ask("wizard", "How is evidence handled?", case_scope_ref_id="1")
     assert out["refused"] is True and "aggregate" in out["answer"].lower()
 
 
@@ -152,17 +153,20 @@ def test_rag_status_structure():
 def test_report_authorization_matrix():
     from app.reports import service as rep
     tpl = {"code": "CASE_SUMMARY", "report_kind": "case_summary", "scope_kind": "case",
-           "allowed_roles": ["investigator", "supervisor", "super_admin"], "is_active": True}
+           "allowed_roles": ["investigating_officer", "sho", "system_admin"], "is_active": True}
+    # INTERIM: any canonical command role may generate any active template, even
+    # one whose per-template allow-list predates the command roles.
+    rep._authorize(tpl, "dgp_state_command", "case", "1")
+    rep._authorize(tpl, "crime_analyst", "case", "1")
+    # A role outside the canonical set still needs the template's allow-list.
     with pytest.raises(rep.ReportAuthError):
-        rep._authorize(tpl, "policymaker", "case", "1")     # aggregate-only denied case
-    with pytest.raises(rep.ReportAuthError):
-        rep._authorize(tpl, "analyst", "case", "1")          # not in allowed roles
+        rep._authorize(tpl, "wizard", "case", "1")
     with pytest.raises(rep.ScopeError):
-        rep._authorize(tpl, "investigator", "unit", "1")     # scope mismatch
+        rep._authorize(tpl, "investigating_officer", "unit", "1")     # scope mismatch
     with pytest.raises(rep.ScopeError):
-        rep._authorize(tpl, "investigator", "case", None)    # missing scope ref
-    rep._authorize(tpl, "investigator", "case", "1")         # ok
-    rep._authorize(tpl, "super_admin", "case", "1")          # super_admin always ok
+        rep._authorize(tpl, "investigating_officer", "case", None)    # missing scope ref
+    rep._authorize(tpl, "investigating_officer", "case", "1")         # ok
+    rep._authorize(tpl, "system_admin", "case", "1")          # super_admin always ok
 
 
 def test_report_render_has_watermark_and_hash_reproducible():
@@ -257,7 +261,7 @@ def test_admin_usage_plan_baseline():
 def test_admin_seeds_present():
     from app.admin import service as adm
     assert len(adm.retention_overview()["policies"]) >= 4
-    assert len(adm.list_report_templates("super_admin")) >= 5
+    assert len(adm.list_report_templates("system_admin")) >= 5
     keys = {f["key"] for f in adm.list_feature_flags()}
     assert {"rag_assistant", "notifications_email", "reports_smartbrowz"} <= keys
 
@@ -345,7 +349,7 @@ def test_source_repair_restages_rejected(rw_rollback):
         cur.execute('INSERT INTO "SourceRecord" ("SourceSystemID","Status") VALUES (%s,%s) '
                     'RETURNING "SourceRecordID"', (ssid, "rejected"))
         srid = int(cur.fetchone()[0])
-    out = adm._repair_import(conn, None, [srid], "phase15 repair", "demo.super_admin")
+    out = adm._repair_import(conn, None, [srid], "phase15 repair", "demo.system_admin")
     assert out["source_records_restaged"] == 1
     with conn.cursor() as cur:
         cur.execute('SELECT "Status" FROM "SourceRecord" WHERE "SourceRecordID"=%s', (srid,))
@@ -361,7 +365,7 @@ def test_notification_write_minimized_and_in_app_delivered(rw_rollback):
     from app.notifications import service as notif
     conn = rw_rollback
     mid, pending = notif._write_notification(conn, "io.ph15.n", "task_assigned", "X" * 500,
-                                             actor="demo.super_admin")
+                                             actor="demo.system_admin")
     assert pending == []   # default preference: email/push off
     with conn.cursor() as cur:
         cur.execute('SELECT "Summary" FROM "NotificationMessage" WHERE "NotificationMessageID"=%s',
@@ -380,7 +384,7 @@ def test_notification_email_preference_queues_channel(rw_rollback):
     conn = rw_rollback
     notif._upsert_preference(conn, "io.ph15.e", True, True, False, "immediate", 24)
     mid, pending = notif._write_notification(conn, "io.ph15.e", "report_ready", "hello",
-                                             actor="demo.super_admin")
+                                             actor="demo.system_admin")
     assert "email" in pending
     with conn.cursor() as cur:
         cur.execute('SELECT "Channel","Status" FROM "NotificationDelivery" '
@@ -398,7 +402,7 @@ def test_task_escalation_sla(rw_rollback):
     past = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=2)).isoformat()
     body = WorkTaskCreate(task_type="case_review", title="review overdue case",
                           due_at=past, assignee_actor="io.ph15.esc")
-    row = notif._create_task(conn, body, "demo.super_admin")
+    row = notif._create_task(conn, body, "demo.system_admin")
     escalated = notif._escalate_db(conn)
     assert any(t["work_task_id"] == row["work_task_id"] for t in escalated)
     with conn.cursor() as cur:
@@ -417,7 +421,7 @@ def test_report_generate_watermark_hash_stratus_audit(rw_rollback):
     from app.reports import service as rep
     conn = rw_rollback
     out = rep._generate(conn, "MODEL_GOVERNANCE", "global", None, None, {},
-                        "demo.super_admin", "super_admin")
+                        "demo.system_admin", "system_admin")
     rid = out["report_id"]
     row = rep._get_report(conn, rid)
     assert row["watermark"] == "Synthetic Hackathon Demo"          # prominent synthetic watermark
@@ -438,10 +442,12 @@ def test_report_generate_watermark_hash_stratus_audit(rw_rollback):
 
 
 @requires_db
-def test_report_case_scope_denies_policymaker(rw_rollback):
+def test_report_case_scope_refuses_a_non_canonical_role(rw_rollback):
+    # INTERIM: every command role may export a case-scoped report; a role outside
+    # the canonical set is still refused by the template allow-list.
     from app.reports import service as rep
     with pytest.raises(rep.ReportAuthError):
-        rep._generate(rw_rollback, "CASE_SUMMARY", "case", "1", None, {}, "demo.pm", "policymaker")
+        rep._generate(rw_rollback, "CASE_SUMMARY", "case", "1", None, {}, "demo.x", "wizard")
     rw_rollback.rollback()
 
 

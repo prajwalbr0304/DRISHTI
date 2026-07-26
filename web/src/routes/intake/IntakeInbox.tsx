@@ -5,6 +5,7 @@ import { AlertTriangle, DatabaseZap, FilePlus2, Inbox, Lock } from "lucide-react
 import { api } from "@/api";
 import { ApiError, errorMessage } from "@/api/contracts";
 import { cn, formatNumber } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -13,7 +14,6 @@ import { StatusPill } from "@/routes/intake/components";
 import type { IntakeReviewAction } from "@/api/endpoints/intake";
 
 const TABS = ["all", "draft", "submitted", "approved", "returned_for_correction", "rejected"] as const;
-const REVIEW_ROLES = new Set(["supervisor", "super_admin"]);
 
 export function IntakeInbox() {
   const { role } = useRole();
@@ -21,15 +21,15 @@ export function IntakeInbox() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<(typeof TABS)[number]>("all");
   const [msg, setMsg] = useState<string | null>(null);
-  const isReviewer = REVIEW_ROLES.has(role);
+  const isReviewer = roleCan(role, "intake_review");
 
   // Hooks must run unconditionally and in a stable order (React Rules of Hooks),
-  // so the list query + review mutation are declared BEFORE the policymaker
-  // early-return below; the list is disabled for policymaker (blocked anyway).
+  // so the list query + review mutation are declared BEFORE the capability
+  // early-return below; the list is disabled without the capability (blocked anyway).
   const listQ = useQuery({
     queryKey: ["intake", "drafts", tab],
     queryFn: ({ signal }) => api.intake.listDrafts({ status: tab === "all" ? undefined : tab, page_size: 50 }, signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "intake_write"),
     placeholderData: keepPreviousData,
   });
 
@@ -51,13 +51,13 @@ export function IntakeInbox() {
     },
   });
 
-  // Policymaker full-page block (after hooks, before render).
-  if (role === "policymaker") {
+  // Capability full-page block (after hooks, before render).
+  if (!roleCan(role, "intake_write")) {
     return (
       <div>
         <PageHeader title="Intake inbox" />
         <EmptyState icon={Lock} title="Not available for this role"
-          description="Case intake is not accessible to the policymaker role, which works with aggregate views only." />
+          description="Case intake is not accessible to this role, which works with aggregate views only." />
       </div>
     );
   }

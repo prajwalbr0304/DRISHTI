@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, GitCompareArrows, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
-import type { BoardDetail, NodeDiff } from "@/api/endpoints/board";
+import type { BoardAnnotationT, BoardDetail, NodeDiff } from "@/api/endpoints/board";
 import type { BoardSelection } from "@/components/board/BoardCanvas";
 import { kindStyle } from "@/components/board/boardEncoding";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,10 @@ interface Props {
   onRefreshSnapshot: (nodeId: number) => void;
   onSaveRationale: (edgeId: number, rationale: string) => void;
   onPromote: (edgeId: number) => void;
+  onUpdateAnnotation: (
+    annotationId: number,
+    patch: { content: string; geometry?: Record<string, unknown>; style?: Record<string, unknown> },
+  ) => void;
 }
 
 export function SelectionInspector(props: Props) {
@@ -123,13 +127,124 @@ export function SelectionInspector(props: Props) {
   const a = detail.annotations.find((x) => x.board_annotation_id === selection.id);
   if (!a) return null;
   return (
+    <AnnotationInspector
+      key={a.board_annotation_id}
+      annotation={a}
+      readOnly={readOnly}
+      onSave={props.onUpdateAnnotation}
+      onDelete={() => props.onDelete(selection)}
+    />
+  );
+}
+
+function AnnotationInspector({
+  annotation,
+  readOnly,
+  onSave,
+  onDelete,
+}: {
+  annotation: BoardAnnotationT;
+  readOnly: boolean;
+  onSave: Props["onUpdateAnnotation"];
+  onDelete: () => void;
+}) {
+  const geometry = annotation.geometry as { w?: number; h?: number };
+  const style = annotation.style as { color?: string };
+  const [content, setContent] = useState(annotation.content ?? "");
+  const [width, setWidth] = useState(Number(geometry.w ?? 340));
+  const [height, setHeight] = useState(Number(geometry.h ?? 240));
+  const [color, setColor] = useState(style.color ?? "#fde68a");
+
+  useEffect(() => {
+    setContent(annotation.content ?? "");
+    setWidth(Number((annotation.geometry as { w?: number }).w ?? 340));
+    setHeight(Number((annotation.geometry as { h?: number }).h ?? 240));
+    setColor((annotation.style as { color?: string }).color ?? "#fde68a");
+  }, [annotation.board_annotation_id, annotation.content, annotation.geometry, annotation.style]);
+
+  const frameChanged = annotation.kind === "frame"
+    && (width !== Number(geometry.w ?? 340) || height !== Number(geometry.h ?? 240));
+  const colorChanged = annotation.kind === "sticky" && color !== (style.color ?? "#fde68a");
+  const changed = content !== (annotation.content ?? "") || frameChanged || colorChanged;
+
+  return (
     <div className="space-y-3 p-3 text-13">
-      <Header color="#64748b" kind={`${a.kind} annotation`} title={a.content || a.kind} />
+      <Header color="#64748b" kind={`${annotation.kind} annotation`} title={annotation.content || annotation.kind} />
+      <label className="block">
+        <span className="mb-1 block text-11 font-medium uppercase tracking-wide text-content-dim">
+          {annotation.kind === "frame" ? "Frame label" : annotation.kind === "text" ? "Text" : "Note text"}
+        </span>
+        <textarea
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          disabled={readOnly}
+          rows={annotation.kind === "frame" ? 2 : 5}
+          className="w-full resize-y rounded-control border border-hairline bg-surface-2 p-2 text-12 text-content outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+        />
+      </label>
+
+      {annotation.kind === "frame" && (
+        <div className="grid grid-cols-2 gap-2">
+          <label>
+            <span className="mb-1 block text-11 text-content-dim">Width</span>
+            <input
+              type="number"
+              min={220}
+              max={1200}
+              value={width}
+              onChange={(event) => setWidth(Number(event.target.value))}
+              disabled={readOnly}
+              className="h-8 w-full rounded-control border border-hairline bg-surface-2 px-2 text-12 text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-11 text-content-dim">Height</span>
+            <input
+              type="number"
+              min={140}
+              max={900}
+              value={height}
+              onChange={(event) => setHeight(Number(event.target.value))}
+              disabled={readOnly}
+              className="h-8 w-full rounded-control border border-hairline bg-surface-2 px-2 text-12 text-content outline-none focus:border-primary"
+            />
+          </label>
+        </div>
+      )}
+
+      {annotation.kind === "sticky" && (
+        <label className="flex items-center justify-between gap-3 rounded-control border border-hairline p-2">
+          <span className="text-12 text-content-dim">Note colour</span>
+          <input
+            type="color"
+            value={color}
+            onChange={(event) => setColor(event.target.value)}
+            disabled={readOnly}
+            className="h-7 w-11 cursor-pointer border-0 bg-transparent p-0"
+            aria-label="Sticky note colour"
+          />
+        </label>
+      )}
+
       {!readOnly && (
-        <Button variant="ghost" size="sm" className="text-severity-critical"
-                onClick={() => props.onDelete(selection)}>
-          <Trash2 /> Delete annotation
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            disabled={!content.trim() || !changed}
+            onClick={() => onSave(annotation.board_annotation_id, {
+              content: content.trim(),
+              geometry: annotation.kind === "frame"
+                ? { ...annotation.geometry, w: Math.max(220, width || 340), h: Math.max(140, height || 240) }
+                : undefined,
+              style: annotation.kind === "sticky" ? { ...annotation.style, color } : undefined,
+            })}
+          >
+            Save changes
+          </Button>
+          <Button variant="ghost" size="sm" className="text-severity-critical" onClick={onDelete}>
+            <Trash2 /> Delete
+          </Button>
+        </div>
       )}
     </div>
   );

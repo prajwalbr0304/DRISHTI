@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # Fallback caller role when no auth context is present yet (pre-Phase-14).
     # The money-trail gate resolves the caller's role from the X-Role header and
     # falls back to this; Phase 14 replaces it with the authenticated session.
-    default_role: str = "investigator"
+    default_role: str = "investigating_officer"
     # Connection timeout (seconds) for DB connects.
     db_connect_timeout: int = 15
     # sslmode for managed Postgres (AWS RDS requires/strongly prefers TLS).

@@ -4,13 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, MoveRight, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapCanvas, type MapViewState } from "@/components/map/MapCanvas";
 import { KARNATAKA_VIEW } from "@/components/map/mapConfig";
 
-const OVERRIDE_ROLES = new Set(["supervisor", "super_admin"]);
 
 /* Click-to-pin incident location with live jurisdiction/containment (DoD §E:
    map-based location with jurisdiction display). An out-of-assigned-district
@@ -32,7 +32,7 @@ export function LocationPicker({
   onOverrideReasonChange?: (reason: string) => void;
 }) {
   const { role } = useRole();
-  const canOverride = OVERRIDE_ROLES.has(role);
+  const canOverride = roleCan(role, "jurisdiction_override");
   const [view, setView] = useState<MapViewState>({ ...KARNATAKA_VIEW });
   const hasPoint = latitude != null && longitude != null;
 

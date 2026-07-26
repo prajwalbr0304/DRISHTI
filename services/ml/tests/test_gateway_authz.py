@@ -39,7 +39,7 @@ def _mint(payload: dict, secret: str = _SECRET) -> tuple[str, str]:
     return b64, sig
 
 
-def _ctx(role="investigator", *, scope="gateway", district_id=None, unit_id=None,
+def _ctx(role="investigating_officer", *, scope="gateway", district_id=None, unit_id=None,
          scope_level=None, nonce="n", extra=None):
     now = gc._now_ms()
     p = {"scope": scope, "aud": gc.DEFAULT_AUDIENCE, "role": role,
@@ -58,11 +58,11 @@ def _ctx(role="investigator", *, scope="gateway", district_id=None, unit_id=None
 
 def test_functional_roles_in_sync():
     assert set(gc.FUNCTIONAL_ROLES) == set(hierarchy.FUNCTIONAL_ROLES)
-    assert len(gc.FUNCTIONAL_ROLES) == 6
+    assert len(gc.FUNCTIONAL_ROLES) == 10
 
 
 @pytest.mark.parametrize("role", sorted(hierarchy.FUNCTIONAL_ROLES))
-def test_each_of_six_roles_verifies(role):
+def test_each_command_role_verifies(role):
     b64, sig = _mint(_ctx(role=role, nonce=f"n-{role}"))
     ctx = gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=False,
                                    expected_audience=gc.DEFAULT_AUDIENCE)
@@ -77,16 +77,16 @@ def test_unknown_role_is_rejected():
 
 
 def test_ambiguous_scope_is_rejected():
-    b64, sig = _mint(_ctx(role="supervisor", district_id="not-a-number", nonce="n-amb"))
+    b64, sig = _mint(_ctx(role="sho", district_id="not-a-number", nonce="n-amb"))
     with pytest.raises(gc.ContextError):
         gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=False)
 
 
 def test_signed_scope_is_parsed():
-    b64, sig = _mint(_ctx(role="disaster_coordinator", district_id=7, unit_id=42,
+    b64, sig = _mint(_ctx(role="dysp_acp", district_id=7, unit_id=42,
                           scope_level="district", nonce="n-scope"))
     ctx = gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=False)
-    assert ctx.role == "disaster_coordinator"
+    assert ctx.role == "dysp_acp"
     assert ctx.district_id == 7
     assert ctx.unit_id == 42
     assert ctx.scope_level == "district"
@@ -101,11 +101,11 @@ def test_service_scope_defaults_role_and_is_not_a_user():
 
 
 def test_scope_from_gateway_context_matches_backend_model():
-    b64, sig = _mint(_ctx(role="supervisor", district_id=3, unit_id=None,
+    b64, sig = _mint(_ctx(role="sho", district_id=3, unit_id=None,
                           scope_level="district", nonce="n-map"))
     ctx = gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=False)
     sc = scope_mod.scope_from_gateway_context(ctx)
-    assert sc.role == "supervisor"
+    assert sc.role == "sho"
     assert sc.district_ids == frozenset({3})
     assert sc.source == "signed-gateway-context"
 
@@ -121,17 +121,17 @@ def test_enforcement_strips_client_role_and_scope_headers():
             self.scope = {"headers": headers}
 
     spoofed = [
-        (b"x-role", b"super_admin"),               # spoofed elevation attempt
+        (b"x-role", b"system_admin"),               # spoofed elevation attempt
         (b"x-drishti-district", b"999"),           # spoofed scope
         (b"content-type", b"application/json"),
     ]
     req = _Req(list(spoofed))
     ctx = GatewayContext(scope="gateway", request_id="r", ts=0, exp=0, nonce="n",
-                         role="investigator", user_id="u-1", district_id=5,
+                         role="investigating_officer", user_id="u-1", district_id=5,
                          scope_level="assigned_case")
     _inject_trusted_identity(req, ctx)
     hdrs = dict(req.scope["headers"])
-    assert hdrs[b"x-role"] == b"investigator"      # trusted role, not super_admin
+    assert hdrs[b"x-role"] == b"investigating_officer"      # trusted role, not super_admin
     assert hdrs[b"x-drishti-district"] == b"5"     # trusted scope, not 999
     # exactly one x-role header remains (the spoofed one was stripped)
     assert sum(1 for k, _ in req.scope["headers"] if k == b"x-role") == 1
@@ -160,7 +160,7 @@ def test_authz_matrix_actual_matches_expected():
 def test_nonce_replay_rejected_single_instance():
     """A signed context nonce may be consumed exactly once (Prompt 21 §G.1
     single-instance replay guard). The second use of the same nonce is rejected."""
-    b64, sig = _mint(_ctx(role="investigator", nonce="replay-once"))
+    b64, sig = _mint(_ctx(role="investigating_officer", nonce="replay-once"))
     gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=True)  # first use ok
     with pytest.raises(gc.ContextError):
         gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=True)  # replay
@@ -190,23 +190,14 @@ def test_appsail_pinned_to_single_instance():
     assert deploy["liveness_path"] == "/health/live"
 
 
-def test_allow_deny_matrix_all_six_roles():
+def test_allow_deny_matrix_all_command_roles():
     """Sanity-check the backend allow/deny model for every role (full matrix is
-    generated + verified by the auth-matrix artifact)."""
+    generated + verified by the auth-matrix artifact).
+
+    INTERIM ("all roles have access to everything"): every command role is
+    allowed every matrix action at its role-default scope. Geographic
+    containment is asserted separately in test_org_scope.py."""
     m = scope_mod.matrix_for_roles()
     assert set(m.keys()) == set(hierarchy.FUNCTIONAL_ROLES)
-    # policymaker: aggregate-only (no individual case detail, no board)
-    assert m["policymaker"]["case_detail"] is False
-    assert m["policymaker"]["investigation_board"] is False
-    assert m["policymaker"]["aggregate_dashboard"] is True
-    # disaster_coordinator: not a crime investigator; owns disaster approval
-    assert m["disaster_coordinator"]["case_detail"] is False
-    assert m["disaster_coordinator"]["disaster_approval"] is True
-    # super_admin: everything
-    assert all(m["super_admin"][a] for a in scope_mod.MATRIX_ACTIONS)
-    # investigator/analyst/supervisor may see case detail (own scope)
-    for r in ("investigator", "analyst", "supervisor"):
-        assert m[r]["case_detail"] is True
-    # only super_admin + disaster_coordinator may approve disaster actions
-    for r in ("investigator", "analyst", "supervisor", "policymaker"):
-        assert m[r]["disaster_approval"] is False
+    for role in hierarchy.FUNCTIONAL_ROLES:
+        assert all(m[role][a] for a in scope_mod.MATRIX_ACTIONS), role

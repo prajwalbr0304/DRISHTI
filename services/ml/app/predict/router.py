@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from ..config import get_settings
 from ..intake.guards import require_write_allowed
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import capability_gaps, enablement, placement
 from .adapter import SignedHttpsAdapter
 from .dispatch_policy import (DEFERRED_MODES, SINGLE_MECHANISM, DispatchPolicyError,
@@ -36,7 +37,8 @@ from ..channel import channel_enabled
 
 router = APIRouter(prefix="/predict", tags=["predict"])
 
-PREDICT_WRITE_ROLES = {"analyst", "investigator", "supervisor", "super_admin"}
+# INTERIM: every command role may submit a prediction job.
+PREDICT_WRITE_ROLES = set(ALL_ROLES)
 
 
 @lru_cache(maxsize=1)
@@ -46,7 +48,7 @@ def _runtime() -> PredictionRuntime:
 
 
 def _role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "analyst").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_predict_write(x_role: Optional[str] = Header(default=None)) -> str:

@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { DEMO_BADGE, ROLE_HOME, VIEWPORT, isLocal, signInViaLoginPage } from "./support/app";
+import {
+  DEMO_BADGE, ROLE_HOME, ROLE_IDS, ROLE_LABEL, VIEWPORT, escapeRe, isLocal,
+  signInViaLoginPage,
+} from "./support/app";
 import { installLocalStubs } from "./support/stub";
 
 /* ============================================================================
@@ -27,15 +30,11 @@ test.describe("(a) Login & role context", () => {
     await expect(page.getByText(DEMO_BADGE, { exact: false }).first()).toBeVisible();
     await expect(page.getByText(/Synthetic data only/i)).toBeVisible();
 
-    for (const label of [
-      "Investigator",
-      "Crime Analyst",
-      "Supervisor",
-      "Policymaker",
-      "Disaster Coordinator",
-      "Super Admin",
-    ]) {
-      await expect(page.getByRole("button", { name: new RegExp(label) })).toBeVisible();
+    // Every command seat is offered, each with its synthetic demo officer.
+    for (const role of ROLE_IDS) {
+      await expect(
+        page.getByRole("button", { name: new RegExp(escapeRe(ROLE_LABEL[role])) }).first(),
+      ).toBeVisible();
     }
   });
 
@@ -50,18 +49,21 @@ test.describe("(a) Login & role context", () => {
     await installLocalStubs(page);
     await page.goto("/login");
 
-    const investigator = page.getByRole("button", { name: /Investigator/ });
+    const firstRole = ROLE_IDS[0];
+    const option = page
+      .getByRole("button", { name: new RegExp(escapeRe(ROLE_LABEL[firstRole])) })
+      .first();
 
     // Tab through the page until the first role option actually holds focus.
     let focused = false;
     for (let i = 0; i < 20 && !focused; i++) {
       await page.keyboard.press("Tab");
-      focused = await investigator.evaluate((el) => el === document.activeElement);
+      focused = await option.evaluate((el) => el === document.activeElement);
     }
-    await expect(investigator).toBeFocused();
+    await expect(option).toBeFocused();
 
     // Visible focus affordance: the app applies a :focus-visible outline ring.
-    const focus = await investigator.evaluate((el) => {
+    const focus = await option.evaluate((el) => {
       const s = getComputedStyle(el);
       return {
         focusVisible: el.matches(":focus-visible"),
@@ -78,24 +80,24 @@ test.describe("(a) Login & role context", () => {
 
     // Enter activates the focused role and lands on its home.
     await page.keyboard.press("Enter");
-    await page.waitForURL(new RegExp(`${ROLE_HOME.investigator.replace(/\//g, "\\/")}(\\?|$)`));
+    await page.waitForURL(new RegExp(`${ROLE_HOME[firstRole].replace(/\//g, "\\/")}(\\?|$)`));
   });
 
   test("signs in (offline) and switches the demo view from the profile menu", async ({ page }) => {
-    await signInViaLoginPage(page, "investigator");
+    await signInViaLoginPage(page, "investigating_officer");
 
     await expect(page.getByText(DEMO_BADGE, { exact: false }).first()).toBeVisible();
     const profile = page.getByRole("button", { name: "Profile and role" });
     await expect(profile).toBeVisible();
-    await expect(profile).toContainText("Investigator");
+    await expect(profile).toContainText(ROLE_LABEL.investigating_officer);
 
     await profile.click();
-    await page.getByRole("menuitemradio", { name: /Supervisor/ }).click();
-    await expect(profile).toContainText("Supervisor");
+    await page.getByRole("menuitemradio", { name: new RegExp(escapeRe(ROLE_LABEL.cyber_cell)) }).click();
+    await expect(profile).toContainText(ROLE_LABEL.cyber_cell);
   });
 
   test("a11y: the shell exposes labeled landmarks and controls", async ({ page }) => {
-    await signInViaLoginPage(page, "investigator");
+    await signInViaLoginPage(page, "investigating_officer");
 
     await expect(page.getByRole("navigation").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Profile and role" })).toBeVisible();
@@ -109,6 +111,8 @@ test.describe("(a) Login & role context", () => {
     await page.goto("/login");
 
     await expect(page.getByRole("heading", { name: /Choose your operational view/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Investigator/ })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(escapeRe(ROLE_LABEL[ROLE_IDS[0]])) }).first(),
+    ).toBeVisible();
   });
 });

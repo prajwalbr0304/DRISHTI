@@ -9,6 +9,8 @@ import {
   Flame,
   Layers,
   MapPin,
+  Maximize2,
+  Minimize2,
   Radar,
   Share2,
   Shapes,
@@ -19,6 +21,7 @@ import { api } from "@/api";
 import type { AlertFeature, CaseLinkNode, MapCell, PointFeature, StationFeature } from "@/api/types";
 import { cn, formatNumber } from "@/lib/utils";
 import { categoryColor } from "@/lib/palette";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { useTimeStore } from "@/stores/useTimeStore";
 import { useUIStore } from "@/stores/useUIStore";
@@ -76,11 +79,11 @@ const HORIZONS = [7, 14, 30];
 const STATION_MIN_ZOOM = 7;
 
 type BoundaryKey = "state" | "districts" | "taluks" | "sho";
-const BOUNDARY_TOGGLES: { key: BoundaryKey; label: string; swatch: string; policymaker: boolean }[] = [
-  { key: "state", label: "State", swatch: "#f59e0b", policymaker: true },
-  { key: "districts", label: "Districts", swatch: "#38bdf8", policymaker: true },
-  { key: "taluks", label: "Taluks", swatch: "#94a3b8", policymaker: true },
-  { key: "sho", label: "SHO regions", swatch: "#60a5fa", policymaker: false },
+const BOUNDARY_TOGGLES: { key: BoundaryKey; label: string; swatch: string; aggregateSafe: boolean }[] = [
+  { key: "state", label: "State", swatch: "#f59e0b", aggregateSafe: true },
+  { key: "districts", label: "Districts", swatch: "#38bdf8", aggregateSafe: true },
+  { key: "taluks", label: "Taluks", swatch: "#94a3b8", aggregateSafe: true },
+  { key: "sho", label: "SHO regions", swatch: "#60a5fa", aggregateSafe: false },
 ];
 
 type Selected =
@@ -103,10 +106,12 @@ export function MapHotspots() {
   const push = usePeekStore((s) => s.push);
   const playhead = useTimeStore((s) => s.playhead);
   const theme = useUIStore((s) => s.theme);
-  const isPolicymaker = role === "policymaker";
+  // District-aggregate-only seat (no point-level pins). INTERIM: none are,
+  // mirroring geo/router.py POINT_LEVEL_DENY.
+  const aggregateOnly = !roleCan(role, "case_read");
 
   const [viewState, setViewState] = useState<MapViewState>(KARNATAKA_VIEW);
-  const [mode, setMode] = useState<Mode>(isPolicymaker ? "forecast" : "live");
+  const [mode, setMode] = useState<Mode>(aggregateOnly ? "forecast" : "live");
   const [tod, setTod] = useState("all");
   const [horizon, setHorizon] = useState(30);
   const [crimeFilter, setCrimeFilter] = useState("");
@@ -122,6 +127,7 @@ export function MapHotspots() {
   const [is3D, setIs3D] = useState(false);
   const [hex3D, setHex3D] = useState(false);
   const [showLinks, setShowLinks] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [linkHub, setLinkHub] = useState<{ id: number; lon: number; lat: number } | null>(null);
   // optional admin boundary overlays (state / district / taluk / SHO regions)
   const [boundaries, setBoundaries] = useState<Set<BoundaryKey>>(() => new Set());
@@ -133,9 +139,23 @@ export function MapHotspots() {
       return n;
     });
 
-  const allowedModes = isPolicymaker ? MODES.filter((m) => m.key === "forecast") : MODES;
+  const allowedModes = aggregateOnly ? MODES.filter((m) => m.key === "forecast") : MODES;
 
   const mapStyle = basemapStyle(basemap, theme);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isFullscreen]);
 
   const set3D = (on: boolean) => {
     setIs3D(on);
@@ -162,12 +182,12 @@ export function MapHotspots() {
   const pointsQ = useQuery({
     queryKey: ["geo", "points", "all"],
     queryFn: ({ signal }) => api.geo.points({ limit: 12000 }, signal),
-    enabled: needPoints && !isPolicymaker,
+    enabled: needPoints && !aggregateOnly,
   });
   const stationsQ = useQuery({
     queryKey: ["geo", "stations"],
     queryFn: ({ signal }) => api.geo.stations({ limit: 1500 }, signal),
-    enabled: mode === "live" && !isPolicymaker,
+    enabled: mode === "live" && !aggregateOnly,
   });
   const hotspotsQ = useQuery({
     queryKey: ["geo", "hotspots", "map"],
@@ -212,7 +232,7 @@ export function MapHotspots() {
   const shoBndQ = useQuery({
     queryKey: ["geo", "sho-regions"],
     queryFn: ({ signal }) => api.geo.shoRegions(1500, signal),
-    enabled: boundaries.has("sho") && !isPolicymaker,
+    enabled: boundaries.has("sho") && !aggregateOnly,
     staleTime: Infinity,
   });
   // Persisted boundary versions/counts (data freshness) — the map overlays and
@@ -323,7 +343,7 @@ export function MapHotspots() {
     if (boundaries.has("taluks") && talukBndQ.data) L.push(talukBoundaries(talukBndQ.data));
     if (boundaries.has("districts") && distBndQ.data) L.push(districtBoundaries(distBndQ.data));
     if (boundaries.has("state") && stateBndQ.data) L.push(stateBoundary(stateBndQ.data));
-    if (isPolicymaker) {
+    if (aggregateOnly) {
       L.push(districtSymbols(districtAggs, horizonScale));
       return L;
     }
@@ -375,9 +395,13 @@ export function MapHotspots() {
     }
     return L;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, isPolicymaker, visiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D, boundaries, stateBndQ.data, distBndQ.data, talukBndQ.data, shoBndQ.data]);
+  }, [mode, aggregateOnly, visiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D, boundaries, stateBndQ.data, distBndQ.data, talukBndQ.data, shoBndQ.data]);
 
   const getTooltip = (info: PickingInfo): { html: string; style: Record<string, string> } | null => {
+    // Once a detail popup is open it becomes the single source of information
+    // for that marker. Hiding the hover label prevents the duplicate dark
+    // tooltip from sitting underneath the popup action, as seen in the prior UI.
+    if (selected) return null;
     const o = info.object as unknown;
     if (!o) return null;
     let html = "";
@@ -414,11 +438,15 @@ export function MapHotspots() {
   };
 
   return (
-    <div>
-      <PrintHeader title="Map & Hotspots" />
+    <div
+      className={cn(
+        isFullscreen && "fixed inset-0 z-[80] flex min-h-0 flex-col overflow-hidden bg-bg p-3",
+      )}
+    >
+      {!isFullscreen && <PrintHeader title="Map & Hotspots" />}
       {/* Mode sub-nav */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1">
+      <div className={cn("mb-3 flex flex-wrap items-center justify-between gap-2", isFullscreen && "shrink-0")}>
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Map analysis mode">
           {allowedModes.map((m) => {
             const Icon = m.icon;
             const active = mode === m.key;
@@ -426,6 +454,8 @@ export function MapHotspots() {
               <button
                 key={m.key}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setMode(m.key)}
                 className={cn(
                   "flex items-center gap-1.5 rounded-control px-2.5 py-1.5 text-13 font-medium transition-colors",
@@ -439,18 +469,34 @@ export function MapHotspots() {
           })}
         </div>
         <div className="flex items-center gap-2">
-          {isPolicymaker && <Badge variant="neutral">District-aggregate only</Badge>}
+          {aggregateOnly && <Badge variant="neutral">District-aggregate only</Badge>}
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((value) => !value)}
+            className="inline-flex items-center gap-1.5 rounded-control border border-hairline bg-surface px-2.5 py-1.5 text-13 font-medium text-content transition-colors hover:bg-surface-2"
+            aria-label={isFullscreen ? "Exit full screen map" : "Open full screen map"}
+            title={isFullscreen ? "Exit full screen (Esc)" : "Open full screen"}
+          >
+            {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            <span className="hidden sm:inline">{isFullscreen ? "Restore" : "Full screen"}</span>
+          </button>
           <ExportViewButton />
         </div>
       </div>
 
       {/* Map + floating panels */}
-      <div className="relative h-[calc(100vh-11rem)] overflow-hidden rounded-card border border-hairline">
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-card border border-hairline",
+          isFullscreen ? "min-h-0 flex-1" : "h-[calc(100vh-11rem)]",
+        )}
+      >
         <MapCanvas
           viewState={viewState}
           onViewStateChange={setViewState}
           layers={layers}
           getTooltip={getTooltip}
+          suppressTooltip={selected != null}
           mapStyle={mapStyle}
           onMapClick={(ll) => streetView && setStreetView({ lon: ll.lng, lat: ll.lat })}
         >
@@ -485,7 +531,7 @@ export function MapHotspots() {
         )}
 
         {/* Left control card */}
-        <div className="absolute left-3 top-3 z-10 max-h-[calc(100%-1.5rem)] w-64 overflow-y-auto rounded-card border border-hairline bg-surface/95 p-3 shadow-pop backdrop-blur">
+        <div className="absolute left-3 top-3 z-10 max-h-[calc(100%-1.5rem)] w-72 overflow-y-auto rounded-card border border-hairline bg-surface/95 p-3 shadow-pop backdrop-blur">
           {/* Map view: basemap + 3D (always available) */}
           <div className="mb-3 space-y-2 border-b border-hairline pb-3">
             <div className="flex items-center gap-1.5 text-12 font-semibold text-content-dim">
@@ -515,8 +561,8 @@ export function MapHotspots() {
               <Shapes className="size-3.5" /> Boundaries
             </div>
             <div className="grid grid-cols-2 gap-1">
-              {BOUNDARY_TOGGLES.map(({ key, label, swatch, policymaker }) => {
-                if (!policymaker && isPolicymaker) return null;
+              {BOUNDARY_TOGGLES.map(({ key, label, swatch, aggregateSafe }) => {
+                if (!aggregateSafe && aggregateOnly) return null;
                 const active = boundaries.has(key);
                 const q = key === "state" ? stateBndQ : key === "districts" ? distBndQ : key === "taluks" ? talukBndQ : shoBndQ;
                 const loading = active && q.isFetching && !q.data;
@@ -555,7 +601,7 @@ export function MapHotspots() {
                   {bndFreshnessQ.data.boundaries.district?.version != null
                     && ` · v${bndFreshnessQ.data.boundaries.district.version}`}
                 </p>
-                {!isPolicymaker && (
+                {!aggregateOnly && (
                   <div className="flex items-center justify-between">
                     <span>
                       {bndFreshnessQ.data.open_jurisdiction_issues > 0
@@ -572,7 +618,7 @@ export function MapHotspots() {
           </div>
           <ModeControls
             mode={mode}
-            isPolicymaker={isPolicymaker}
+            aggregateOnly={aggregateOnly}
             pointsCount={visiblePoints.length}
             stationCount={stations.length}
             hotspotCount={hotspotsQ.data?.count}
@@ -627,7 +673,7 @@ export function MapHotspots() {
           </div>
         </div>
 
-        <Legend mode={mode} isPolicymaker={isPolicymaker} crimeGroups={crimeGroups} />
+        <Legend mode={mode} aggregateOnly={aggregateOnly} crimeGroups={crimeGroups} />
       </div>
     </div>
   );
@@ -636,7 +682,7 @@ export function MapHotspots() {
 /* ------------------------------ Controls ---------------------------------- */
 function ModeControls({
   mode,
-  isPolicymaker,
+  aggregateOnly,
   pointsCount,
   stationCount,
   hotspotCount,
@@ -662,7 +708,7 @@ function ModeControls({
   onAlertClick,
 }: {
   mode: Mode;
-  isPolicymaker: boolean;
+  aggregateOnly: boolean;
   pointsCount: number;
   stationCount: number;
   hotspotCount?: number;
@@ -687,10 +733,10 @@ function ModeControls({
   ack: (id: number) => void;
   onAlertClick: (a: AlertFeature) => void;
 }) {
-  if (isPolicymaker || mode === "forecast" || mode === "patrol") {
+  if (aggregateOnly || mode === "forecast" || mode === "patrol") {
     return (
       <div className="space-y-2.5">
-        <div className="text-13 font-semibold text-content">{isPolicymaker ? "District forecast" : mode === "patrol" ? "Patrol planning" : "Forecast"}</div>
+        <div className="text-13 font-semibold text-content">{aggregateOnly ? "District forecast" : mode === "patrol" ? "Patrol planning" : "Forecast"}</div>
         <div>
           <div className="mb-1 text-12 text-content-dim">Horizon</div>
           <div className="flex gap-1">
@@ -802,8 +848,8 @@ function ModeControls({
 }
 
 /* ------------------------------- Legend ----------------------------------- */
-function Legend({ mode, isPolicymaker, crimeGroups }: { mode: Mode; isPolicymaker: boolean; crimeGroups: string[] }) {
-  if (!isPolicymaker && mode === "live") {
+function Legend({ mode, aggregateOnly, crimeGroups }: { mode: Mode; aggregateOnly: boolean; crimeGroups: string[] }) {
+  if (!aggregateOnly && mode === "live") {
     const groups = crimeGroups.slice(0, 6);
     if (groups.length === 0) return null;
     return (
@@ -829,7 +875,7 @@ function Legend({ mode, isPolicymaker, crimeGroups }: { mode: Mode; isPolicymake
       </LegendBox>
     );
   }
-  if (mode === "forecast" || isPolicymaker || mode === "patrol") {
+  if (mode === "forecast" || aggregateOnly || mode === "patrol") {
     return (
       <LegendBox title="Predicted (low → high)">
         <Ramp colors={["#12376b", "#2f7fd1", "#5aa2e8", "#9cc7f5"]} />
@@ -851,7 +897,7 @@ function Legend({ mode, isPolicymaker, crimeGroups }: { mode: Mode; isPolicymake
 
 function LegendBox({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="absolute bottom-3 left-3 z-10 flex max-w-md flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-hairline bg-surface/95 px-2.5 py-1.5 text-12 text-content-dim backdrop-blur">
+    <div className="absolute bottom-3 left-[19rem] z-10 flex max-w-[calc(100%-20rem)] flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-hairline bg-surface/95 px-2.5 py-1.5 text-12 text-content-dim shadow-sm backdrop-blur">
       <span className="font-medium text-content">{title}:</span>
       {children}
     </div>

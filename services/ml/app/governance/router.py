@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from ..config import get_settings
 from ..intake.guards import require_write_allowed
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import service
 from .schemas import (BuildSnapshotRequest, BuildSnapshotResult, CreatePredictionRequest,
                       FeatureDefinitionListResponse, FeatureSchemaListResponse,
@@ -35,14 +36,14 @@ from .schemas import (BuildSnapshotRequest, BuildSnapshotResult, CreatePredictio
 
 router = APIRouter(prefix="/governance", tags=["governance"])
 
-# Analysts run the governed feature/prediction pipeline; supervisors govern
-# (review a result, invalidate a snapshot, roll a model back).
-GOV_WRITE_ROLES = {"analyst", "investigator", "supervisor", "super_admin"}
-GOV_REVIEW_ROLES = {"supervisor", "super_admin"}
+# Running the governed feature/prediction pipeline and governing a result
+# (review, invalidate a snapshot, roll a model back) — INTERIM: every command role.
+GOV_WRITE_ROLES = set(ALL_ROLES)
+GOV_REVIEW_ROLES = set(ALL_ROLES)
 
 
 def _role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "analyst").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_gov_write(x_role: Optional[str] = Header(default=None)) -> str:

@@ -49,7 +49,7 @@ def _hash(snapshot: dict) -> str:
 
 
 def _node(nid, kind, ref_table, ref_id, label, x, y, snapshot, *, version="1",
-          created="demo.investigator", at=0, superseded=False):
+          created="demo.investigating_officer", at=0, superseded=False):
     """A board node. ``superseded`` writes a hash that no longer matches the
     (recomputed) snapshot, so the live-vs-snapshot diff reports 'changed'."""
     src_hash = _hash(snapshot)
@@ -72,12 +72,12 @@ def _evidence_edge(eid, s, t, rel, source_record, at=0):
         "directed": False, "confidence": 1.0, "rationale": None,
         "evidence_case_id": 1024, "source_record_id": source_record,
         "style": {"verified": True}, "promoted_status": None, "promoted_ref": None,
-        "created_by": "demo.investigator", "created_at": _ts(at),
+        "created_by": "demo.investigating_officer", "created_at": _ts(at),
     }
 
 
 def _hypothesis_edge(eid, s, t, rel, rationale, conf, *, directed=True, at=0,
-                     author="demo.investigator"):
+                     author="demo.investigating_officer"):
     return {
         "board_edge_id": eid, "source_node_id": s, "target_node_id": t,
         "edge_class": "hypothesis", "label": rel, "relationship_type": rel,
@@ -126,45 +126,45 @@ def _primary_board_doc() -> dict:
         _hypothesis_edge(5, 2, 5, "controls_vehicle",
                          "The vehicle was seen at three drop points on days the "
                          "accused's phone pinged the same towers.",
-                         0.55, at=12, author="demo.analyst"),
+                         0.55, at=12, author="demo.crime_analyst"),
     ]
 
     annotations = [
         {"board_annotation_id": 1, "kind": "sticky",
          "content": "Working theory: A runs the operation; B is a victim-witness.",
          "geometry": {"x": -160, "y": -40}, "style": {"color": "#fef3c7"},
-         "created_by": "demo.investigator", "created_at": _ts(13)},
+         "created_by": "demo.investigating_officer", "created_at": _ts(13)},
         {"board_annotation_id": 2, "kind": "frame",
          "content": "Financial cluster",
          "geometry": {"x": 320, "y": 380, "w": 380, "h": 220}, "style": {},
-         "created_by": "demo.investigator", "created_at": _ts(14)},
+         "created_by": "demo.investigating_officer", "created_at": _ts(14)},
     ]
 
     collaborators = [
-        {"board_collaborator_id": 1, "actor": "demo.analyst", "employee_id": None,
-         "role": "editor", "added_by": "demo.investigator", "added_at": _ts(15)},
+        {"board_collaborator_id": 1, "actor": "demo.crime_analyst", "employee_id": None,
+         "role": "editor", "added_by": "demo.investigating_officer", "added_at": _ts(15)},
     ]
 
     activity = [
         {"board_activity_id": i + 1, "actor": a, "action": act,
          "target_type": tt, "target_id": str(ti), "created_at": _ts(i + 1)}
         for i, (a, act, tt, ti) in enumerate([
-            ("demo.investigator", "board.create", "board", 1),
-            ("demo.investigator", "node.add", "node", 1),
-            ("demo.investigator", "node.add", "node", 2),
-            ("demo.investigator", "node.add", "node", 3),
-            ("demo.investigator", "subgraph.import", "subgraph", 5001),
-            ("demo.investigator", "edge.add", "edge", 4),
-            ("demo.analyst", "edge.add", "edge", 5),
-            ("demo.investigator", "annotation.add", "annotation", 1),
-            ("demo.investigator", "collaborator.add", "collaborator", 1),
+            ("demo.investigating_officer", "board.create", "board", 1),
+            ("demo.investigating_officer", "node.add", "node", 1),
+            ("demo.investigating_officer", "node.add", "node", 2),
+            ("demo.investigating_officer", "node.add", "node", 3),
+            ("demo.investigating_officer", "subgraph.import", "subgraph", 5001),
+            ("demo.investigating_officer", "edge.add", "edge", 4),
+            ("demo.crime_analyst", "edge.add", "edge", 5),
+            ("demo.investigating_officer", "annotation.add", "annotation", 1),
+            ("demo.investigating_officer", "collaborator.add", "collaborator", 1),
         ])
     ]
 
     board = {
         "board_id": 1, "title": "Operation Nightfall — CRIME-2025-1024",
         "description": "Golden fixture case board (synthetic).",
-        "owner_actor": "demo.investigator", "case_master_id": 1024,
+        "owner_actor": "demo.investigating_officer", "case_master_id": 1024,
         "status": "active", "visibility": "shared", "is_locked": False,
         "version": len(activity), "parent_board_id": None,
         "node_count": len(nodes), "edge_count": len(edges),
@@ -195,7 +195,7 @@ def _locked_and_branch() -> dict:
     locked = {
         "board_id": 2, "title": "CRIME-2025-1024 — filed exhibit",
         "description": "Locked for the chargesheet (synthetic).",
-        "owner_actor": "demo.supervisor", "case_master_id": 1024,
+        "owner_actor": "demo.sho", "case_master_id": 1024,
         "status": "locked", "visibility": "unit", "is_locked": True,
         "version": 5, "parent_board_id": None,
         "created_at": _ts(20), "updated_at": _ts(30),
@@ -203,7 +203,7 @@ def _locked_and_branch() -> dict:
     branch = {
         "board_id": 3, "title": "CRIME-2025-1024 — filed exhibit (branch)",
         "description": "Editable branch of the locked exhibit.",
-        "owner_actor": "demo.supervisor", "case_master_id": 1024,
+        "owner_actor": "demo.sho", "case_master_id": 1024,
         "status": "active", "visibility": "unit", "is_locked": False,
         "version": 1, "parent_board_id": 2,
         "created_at": _ts(31), "updated_at": _ts(31),

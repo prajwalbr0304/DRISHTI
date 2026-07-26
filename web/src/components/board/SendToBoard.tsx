@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Loader2, Plus, Workflow } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/api";
 import type { BoardSummary } from "@/api/endpoints/board";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +42,7 @@ export function SendToBoard({
   const { role } = useRole();
   const [open, setOpen] = useState(false);
 
-  if (role === "policymaker") return null; // no board access for this role
+  if (!roleCan(role, "board_use")) return null; // no board capability for this role
 
   return (
     <>
@@ -62,21 +63,29 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
   const [err, setErr] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
 
-  // lazy-load boards on first open
-  if (boards === null && !busy) {
+  useEffect(() => {
+    let alive = true;
     setBusy(true);
     api.board.list()
-      .then((r) => setBoards(r.items.filter((b) => !b.is_locked && b.my_role !== "viewer")))
-      .catch((e) => setErr(e instanceof Error ? e.message : "Could not load boards"))
-      .finally(() => setBusy(false));
-  }
+      .then((r) => {
+        if (alive) setBoards(r.items.filter((b) => !b.is_locked && b.my_role !== "viewer"));
+      })
+      .catch((e) => {
+        if (alive) setErr(e instanceof Error ? e.message : "Could not load boards");
+      })
+      .finally(() => {
+        if (alive) setBusy(false);
+      });
+    return () => { alive = false; };
+  }, []);
 
-  // Seed a subgraph, not a lone node: a case brings its involved parties, an
-  // entity brings its verified neighbourhood. Falls back to a single pin server-side.
+  // Seed a subgraph, not a lone node: a case brings its governed operational
+  // records and an entity brings its verified neighbourhood. Falls back to a
+  // single pin server-side.
   const seedBody = () => ({
     ref_table: target.refTable,
     ref_id: String(target.refId),
-    node_kind: target.nodeKind ?? "entity",
+    node_kind: target.nodeKind,
     label: target.label,
     expand: true,
   });
@@ -110,12 +119,13 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Workflow className="size-4" /> Send to board</DialogTitle>
           <DialogDescription>
-            Add <b>{target.label ?? `${target.refTable}:${target.refId}`}</b> and its immediate
-            network (a case brings its involved parties; an entity brings its verified links) as live references.
+            Add <b>{target.label ?? `${target.refTable}:${target.refId}`}</b> and its governed
+            network. A case brings people, legal sections, evidence, statements, property,
+            digital/financial links and lifecycle records; an entity brings its verified links.
             {target.unverified && " This is unverified open-source material and stays labelled as such."}
           </DialogDescription>
         </DialogHeader>
@@ -133,24 +143,24 @@ function BoardPickerDialog({ target, onClose }: { target: SendTarget; onClose: (
         ) : (
           <div className="space-y-3">
             {err && <p className="text-12 text-severity-critical">{err}</p>}
-            <div className="max-h-56 space-y-1 overflow-auto">
+            <div className="max-h-56 min-w-0 space-y-1 overflow-y-auto overflow-x-hidden">
               {busy && !boards && <div className="grid h-20 place-items-center"><Loader2 className="size-5 animate-spin text-content-dim" /></div>}
               {boards?.map((b) => (
                 <button key={b.board_id} type="button" disabled={busy} onClick={() => pin(b.board_id)}
-                  className={cn("flex w-full items-center gap-2 rounded-control border border-hairline px-3 py-2 text-left text-13",
+                  className={cn("flex w-full min-w-0 items-center gap-2 rounded-control border border-hairline px-3 py-2 text-left text-13",
                     "transition-colors hover:border-primary/50 hover:bg-surface-2/50 disabled:opacity-50")}>
-                  <span className="truncate font-medium text-content">{b.title}</span>
-                  <span className="ml-auto text-11 text-content-dim">{b.node_count} nodes</span>
+                  <span className="min-w-0 flex-1 truncate font-medium text-content" title={b.title}>{b.title}</span>
+                  <span className="shrink-0 text-11 text-content-dim">{b.node_count} nodes</span>
                 </button>
               ))}
               {boards && boards.length === 0 && <p className="px-1 py-2 text-12 text-content-dim">No editable boards yet — create one below.</p>}
             </div>
-            <div className="flex items-end gap-2 border-t border-hairline pt-3">
-              <div className="flex-1">
+            <div className="grid min-w-0 grid-cols-1 gap-2 border-t border-hairline pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="min-w-0">
                 <label className="mb-1 block text-12 text-content-dim">New board</label>
                 <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={`Board · ${target.label ?? target.refTable}`} className="h-8 text-13" />
               </div>
-              <Button size="sm" disabled={busy} onClick={createAndPin}><Plus /> Create & pin</Button>
+              <Button className="w-full sm:w-auto" size="sm" disabled={busy} onClick={createAndPin}><Plus /> Create & pin</Button>
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/api/client";
-import { DEFAULT_ROLE, ROLES, type RoleDef, type UserRole } from "@/config/roles";
+import { DEFAULT_ROLE, ROLES, isUserRole, type RoleDef, type UserRole } from "@/config/roles";
 import { useAuthOptional } from "@/auth";
 import { deriveDisplayRole } from "@/auth/roleMapping";
 import { useDisasterStore } from "@/stores/useDisasterStore";
@@ -33,8 +33,8 @@ const STORAGE_KEY = "drishti.role";
 
 function loadStoredRole(): UserRole | null {
   try {
-    const v = localStorage.getItem(STORAGE_KEY) as UserRole | null;
-    if (v && v in ROLES) return v;
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (isUserRole(v)) return v;
   } catch {
     /* ignore */
   }
@@ -67,12 +67,12 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     if (id !== lastUserId.current) {
       lastUserId.current = id;
       const derived = deriveDisplayRole(user);
-      // A super_admin (full access) may explore any role's workspace as a demo
-      // view, so honor an explicitly chosen role if one is stored. Every other
-      // identity snaps to its server-derived role — and the server re-derives +
-      // enforces the real role regardless of this presentation choice.
+      // INTERIM (all roles hold every capability): a full-access identity may
+      // explore any seat's workspace as a demo view, so an explicitly chosen
+      // role wins when one is stored. The server re-derives + enforces the real
+      // role regardless of this presentation choice.
       const stored = loadStoredRole();
-      const next = derived === "super_admin" && stored ? stored : derived;
+      const next = ROLES[derived].admin && stored ? stored : derived;
       setRoleState(next);
       persistRole(next);
     }
@@ -92,8 +92,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     // Actor = authenticated email for the audit trail when available; otherwise
     // the demo actor. Display/audit only — never authentication.
     apiClient.setActorGetter(() => userRef.current?.email || `demo.${roleRef.current}`);
-    // Emergency Response: send the coordinator's assigned district seat so the
-    // server scopes disaster writes. super_admin covers all districts server-side.
+    // Emergency Response: send the seat's assigned district so the server scopes
+    // disaster writes. A state-level/admin seat covers all districts server-side.
     apiClient.setDistrictGetter(() => useDisasterStore.getState().assignedDistrict);
   }, []);
 

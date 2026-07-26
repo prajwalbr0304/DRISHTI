@@ -103,7 +103,16 @@ def ask(role: str, question: str, language: Optional[str] = None,
         planner_source = "deterministic-fallback"
     lang = plan.language or lang
 
-    # Aggregate-only roles (e.g. policymaker) must receive an aggregate query.
+    # --- Deterministic override for reference-entity counts ------------------
+    # The LLM sometimes confuses "how many stations" with "how many FIRs".
+    # The offline planner maps these DETERMINISTICALLY and CORRECTLY, so prefer
+    # it whenever the question is clearly about stations/districts (not cases).
+    fb_plan = fallback_planner().plan(question, role, lang, history)
+    if fb_plan.intent in ("count_stations", "count_districts") and fb_plan.sql:
+        plan = fb_plan
+        planner_source = "deterministic-fallback"
+
+    # Aggregate-only roles (schema.AGGREGATE_ONLY_ROLES) must receive an aggregate query.
     # The semantic planner is NOT trusted to honour that on its own: if it
     # returned a non-aggregate SELECT (which the scope guard would then block) or
     # asked to clarify a question the deterministic planner can still map, we
@@ -330,11 +339,22 @@ def _grounded_reply(columns: list[str], rows: list[list], lang: str, cap: int) -
     if num_idx != -1:
         txt_idx = _first_col_where(columns, rows, want_numeric=False, exclude=num_idx)
         if txt_idx != -1:
-            top_name, top_val = rows[0][txt_idx], rows[0][num_idx]
+            # Never assume row 0 is the largest: a planner-produced SELECT may omit
+            # ORDER BY, and claiming the first row "leads" would be a FALSE
+            # statement. Pick the true maximum from the returned rows.
+            best = rows[0]
+            for r in rows:
+                try:
+                    if r[num_idx] is not None and (best[num_idx] is None
+                                                   or float(r[num_idx]) > float(best[num_idx])):
+                        best = r
+                except (TypeError, ValueError):
+                    continue
+            top_name, top_val = best[txt_idx], best[num_idx]
             if n == 1:
                 return f"{top_name}: {top_val}."
-            return (f"{top_name} ಮುಂಚೂಣಿಯಲ್ಲಿ ({top_val}); ಒಟ್ಟು {n} ಗುಂಪುಗಳು."
-                    if kn else f"{top_name} leads with {top_val}; {n} group(s) in total.")
+            return (f"{top_name} ಅತಿ ಹೆಚ್ಚು ({top_val}); ಒಟ್ಟು {n} ಗುಂಪುಗಳು."
+                    if kn else f"{top_name} is highest with {top_val}; {n} group(s) in total.")
 
     # 5) fallback: honest row count
     return (f"{n} ಸಾಲು(ಗಳು) ದೊರಕಿದವು." if kn else f"{n} row(s) returned.")

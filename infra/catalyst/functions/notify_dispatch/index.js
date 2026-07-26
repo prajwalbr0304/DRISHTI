@@ -46,7 +46,7 @@ module.exports = async (event, context) => {
   for (const e of events) {
     const d = e.data || {};
     const idem = d.idempotency_key || `notify:${e.id}`;
-    const toRole = d.recipients_role || d.role || 'investigator';
+    const toRole = d.recipients_role || d.role || 'investigating_officer';
     const toEmail = d.to_email || process.env.DRISHTI_NOTIFY_DEFAULT_TO || '';
     const { subject, body } = render(d.template, d);
 

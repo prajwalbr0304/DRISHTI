@@ -306,7 +306,7 @@ def test_money_scan_writes_reason_coded_reviewable_alerts(rw_rollback):
         row = cur.fetchone()
     assert row and row[1] == "STRUCT_SUBTHRESHOLD_FANIN" and row[2] == "open"
     # reviewer disposition transitions the alert + records a review
-    disp = analytics._disposition(conn, int(row[0]), "false_positive", "analyst", "benign")
+    disp = analytics._disposition(conn, int(row[0]), "false_positive", "crime_analyst", "benign")
     assert disp["status"] == "false_positive"
     with conn.cursor() as cur:
         cur.execute('SELECT count(*) FROM "MoneyAlertReview" WHERE "MoneyAlertID"=%s', (int(row[0]),))
@@ -322,7 +322,7 @@ client = TestClient(app)
 
 
 def test_templates_endpoint_lists_eight_domains():
-    r = client.get("/imports/templates", headers={"X-Role": "investigator"})
+    r = client.get("/imports/templates", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200
     body = r.json()
     assert body["count"] >= 8
@@ -330,18 +330,23 @@ def test_templates_endpoint_lists_eight_domains():
     assert {"cdr_call_events", "bank_transactions", "wallet_upi", "account_kyc"} <= codes
 
 
-def test_policymaker_denied_import_pipeline():
-    assert client.get("/imports/templates", headers={"X-Role": "policymaker"}).status_code == 403
-    assert client.get("/imports/batches", headers={"X-Role": "policymaker"}).status_code == 403
+def test_import_pipeline_open_to_every_command_role():
+    # INTERIM ("all roles have access to everything"): the import pipeline read
+    # gate no longer denies any command seat.
+    assert client.get("/imports/templates", headers={"X-Role": "dgp_state_command"}).status_code == 200
+    assert client.get("/imports/batches", headers={"X-Role": "dgp_state_command"}).status_code == 200
 
 
 def test_financial_views_gated_by_money_permission():
-    # policymaker has 'none' on money_trail -> 403; investigator has 'read' -> 200
-    assert client.get("/imports/accounts", headers={"X-Role": "policymaker"}).status_code == 403
-    assert client.get("/imports/transactions", headers={"X-Role": "policymaker"}).status_code == 403
-    assert client.get("/imports/accounts", headers={"X-Role": "investigator"}).status_code == 200
+    # INTERIM: every command seat holds money_trail; a non-canonical role is
+    # refused by the same code-based gate.
+    assert client.get("/imports/accounts", headers={"X-Role": "dgp_state_command"}).status_code == 200
+    assert client.get("/imports/accounts", headers={"X-Role": "investigating_officer"}).status_code == 200
+    assert client.get("/imports/accounts", headers={"X-Role": "wizard"}).status_code == 403
+    assert client.get("/imports/transactions", headers={"X-Role": "wizard"}).status_code == 403
 
 
 def test_money_scan_requires_write_permission():
-    # investigator has read (not write) on money_trail -> 403 on scan
-    assert client.post("/imports/money/scan", headers={"X-Role": "investigator"}).status_code == 403
+    # INTERIM: every command seat holds WRITE on money_trail, so the scan gate
+    # only refuses a role outside the canonical set.
+    assert client.post("/imports/money/scan", headers={"X-Role": "wizard"}).status_code == 403

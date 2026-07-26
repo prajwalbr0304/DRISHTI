@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeft, BadgeCheck, GitMerge, Undo2, UserCog } from "
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { IdentityPersonDetail } from "@/api/types";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +13,6 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SectionCard } from "@/routes/intake/components";
 
-const REVIEW_ROLES = new Set(["supervisor", "super_admin"]);
 const SENS: Record<string, "neutral" | "low" | "medium" | "high"> = {
   public: "neutral", demo_normal: "low", restricted: "high",
 };
@@ -22,7 +22,7 @@ export function CanonicalProfile() {
   const id = Number(cpid);
   const { role } = useRole();
   const actor = `demo.${role}`;
-  const canReview = REVIEW_ROLES.has(role);
+  const canReview = roleCan(role, "entity_review");
   const qc = useQueryClient();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export function CanonicalProfile() {
   const q = useQuery({
     queryKey: ["identity", "person", id],
     queryFn: ({ signal }) => api.identity.getPerson(id, signal),
-    enabled: Number.isFinite(id) && role !== "policymaker",
+    enabled: Number.isFinite(id) && roleCan(role, "case_read"),
     retry: false,
   });
 
@@ -52,8 +52,8 @@ export function CanonicalProfile() {
     onError: (e) => setErr(errorMessage(e)),
   });
 
-  if (role === "policymaker") {
-    return <div><PageHeader title="Canonical profile" /><EmptyState icon={AlertTriangle} title="Not available for this role" description="Individual identity records are not available to the policymaker role." /></div>;
+  if (!roleCan(role, "case_read")) {
+    return <div><PageHeader title="Canonical profile" /><EmptyState icon={AlertTriangle} title="Not available for this role" description="Individual identity records are not available to this role." /></div>;
   }
   if (q.isLoading) return <div><PageHeader title="Canonical profile" /><p className="text-13 text-content-dim">Loading…</p></div>;
   if (q.error || !q.data) return <div><PageHeader title="Canonical profile" /><EmptyState icon={AlertTriangle} title="Not found" description={q.error ? errorMessage(q.error) : `No canonical person ${id}.`} /></div>;

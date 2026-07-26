@@ -451,22 +451,24 @@ INSERT INTO "RetentionPolicy" ("Code","Name","AppliesTo","RetentionDays","Archiv
     ('REPORT_STD', 'Generated reports (demo)',   'report',      365,  180, 'flag_only',       'Synthetic report object retention — flag only.', 'system')
 ON CONFLICT ("Code") DO NOTHING;
 
--- 9b. Role-appropriate report templates.
+-- 9b. Report templates. INTERIM ("all roles have access to everything"): every
+-- seeded command role is allowed on every template, so AllowedRoles is derived
+-- from the seeded "roles" table instead of a hard-coded per-template list.
 INSERT INTO "ReportTemplate" ("Code","Name","Description","ReportKind","ScopeKind","AllowedRoles","ConfigSchema","CreatedByActor") VALUES
     ('CASE_SUMMARY', 'Case summary', 'Structured single-case summary from database fields (no file parsing).',
-        'case_summary', 'case', ARRAY['investigator','supervisor','super_admin'],
+        'case_summary', 'case', ARRAY(SELECT "role_name" FROM "roles" ORDER BY "role_id"),
         '{"sections":["identity","classification","status","timeline_counts"],"citations":true}'::jsonb, 'system'),
     ('UNIT_ACTIVITY', 'Unit activity', 'Station/unit activity summary from structured case counts.',
-        'unit_activity', 'unit', ARRAY['supervisor','super_admin'],
+        'unit_activity', 'unit', ARRAY(SELECT "role_name" FROM "roles" ORDER BY "role_id"),
         '{"sections":["case_counts","status_breakdown"],"citations":true}'::jsonb, 'system'),
     ('DISTRICT_DASHBOARD', 'District dashboard', 'District-level aggregate dashboard export.',
-        'district_dashboard', 'district', ARRAY['analyst','supervisor','policymaker','super_admin'],
+        'district_dashboard', 'district', ARRAY(SELECT "role_name" FROM "roles" ORDER BY "role_id"),
         '{"sections":["aggregate_counts","category_breakdown"],"citations":true}'::jsonb, 'system'),
     ('MODEL_GOVERNANCE', 'Model governance', 'Model registry + review-due governance extract.',
-        'model_governance', 'global', ARRAY['super_admin'],
+        'model_governance', 'global', ARRAY(SELECT "role_name" FROM "roles" ORDER BY "role_id"),
         '{"sections":["models","review_due"],"citations":true}'::jsonb, 'system'),
     ('AUDIT_EXTRACT', 'Audit extract', 'Filtered audit-event extract.',
-        'audit_extract', 'global', ARRAY['super_admin'],
+        'audit_extract', 'global', ARRAY(SELECT "role_name" FROM "roles" ORDER BY "role_id"),
         '{"sections":["audit_events"],"citations":true}'::jsonb, 'system')
 ON CONFLICT ("Code") DO NOTHING;
 

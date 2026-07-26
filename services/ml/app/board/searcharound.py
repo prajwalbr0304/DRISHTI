@@ -28,6 +28,46 @@ from .repo import board_cache
 
 MAX_HOPS = 3
 MAX_NEIGHBORS = 50
+MAX_CASE_RELATED = 100
+
+# The case canvas is an operational work surface, so seeding a FIR must carry
+# the case's governed child records too—not only the three or four graph
+# entities that happen to resolve through CasePartyRole.  Every identifier in
+# this tuple is server-owned (never interpolated from a client value).
+_CASE_RELATED_TABLES: tuple[tuple[str, str, str, str, str, str], ...] = (
+    # ref table, PK, case FK, relationship label, visual group, node kind
+    ("CasePartyRole", "CasePartyRoleID", "CaseMasterID",
+     "case_party_role", "people", ""),
+    ("Victim", "VictimMasterID", "CaseMasterID", "victim", "people", "victim"),
+    ("ComplainantDetails", "ComplainantID", "CaseMasterID",
+     "complainant", "people", "complainant"),
+    ("Accused", "AccusedMasterID", "CaseMasterID", "accused", "people", "accused"),
+    ("ArrestSurrender", "ArrestSurrenderID", "CaseMasterID",
+     "arrest_or_surrender", "legal", "note"),
+    ("ChargesheetDetails", "CSID", "CaseMasterID",
+     "chargesheet_or_final_report", "legal", "document"),
+    ("CaseEvent", "CaseEventID", "CaseMasterID",
+     "lifecycle_event", "timeline", "note"),
+    ("EvidenceItem", "EvidenceItemID", "CaseMasterID",
+     "evidence", "evidence", "document"),
+    ("Statement", "StatementID", "CaseMasterID",
+     "statement", "evidence", "note"),
+    ("Seizure", "SeizureID", "CaseMasterID", "seizure", "assets", "note"),
+    ("PropertyItem", "PropertyItemID", "CaseMasterID",
+     "property_or_seizure_item", "assets", "vehicle"),
+    ("Device", "DeviceID", "CaseMasterID", "device", "digital", "phone"),
+    ("CommunicationEvent", "CommunicationEventID", "CaseMasterID",
+     "communication", "digital", "phone"),
+    ("LocationObservation", "LocationObservationID", "CaseMasterID",
+     "location_observation", "digital", "location"),
+    ("CourtEvent", "CourtEventID", "CaseMasterID",
+     "court_event", "court", "note"),
+    ("BailEvent", "BailEventID", "CaseMasterID", "bail_event", "court", "note"),
+    ("CaseDisposition", "CaseDispositionID", "CaseMasterID",
+     "case_disposition", "court", "document"),
+    ("LabResult", "LabResultID", "CaseMasterID",
+     "lab_result", "evidence", "document"),
+)
 
 
 def _cache_key(entity_id: int, hops: int, max_neighbors: int,
@@ -195,15 +235,18 @@ def entities_for_case(case_master_id: int, limit: int = 12) -> list[dict[str, An
         cid = int(case_master_id)
     except (TypeError, ValueError):
         return []
-    # Parties resolve to canonical graph nodes via EntityGraph.RefTable =
-    # 'CanonicalEntity' keyed by the party's CanonicalPersonID/OrganisationID.
+    # Parties resolve through the canonical identity bridge. CanonicalPersonID
+    # and CanonicalEntityID are different key domains; comparing either value
+    # directly with EntityGraph.RefID can attach an unrelated person whose
+    # numeric id happens to match.
     sql = (
         'SELECT eg."EntityID", eg."Label", eg."EntityType"::text, cpr."RoleType"::text '
         'FROM "CasePartyRole" cpr '
+        'JOIN "CanonicalEntity" ce '
+        '  ON (ce."CanonicalPersonID" = cpr."CanonicalPersonID" '
+        '      OR ce."CanonicalOrganisationID" = cpr."CanonicalOrganisationID") '
         'JOIN "EntityGraph" eg '
-        '  ON eg."RefTable" = \'CanonicalEntity\' '
-        ' AND (eg."RefID"::text = cpr."CanonicalPersonID"::text '
-        '      OR eg."RefID"::text = cpr."CanonicalOrganisationID"::text) '
+        '  ON eg."CanonicalEntityID" = ce."CanonicalEntityID" '
         'WHERE cpr."CaseMasterID" = %s '
         'LIMIT %s'
     )
@@ -230,3 +273,164 @@ def entities_for_case(case_master_id: int, limit: int = 12) -> list[dict[str, An
     out.sort(key=lambda d: (_priority.get(str(d.get("role") or "").lower(), 5),
                             d["entity_id"]))
     return out
+
+
+def related_records_for_case(case_master_id: int,
+                             limit: int = MAX_CASE_RELATED) -> list[dict[str, Any]]:
+    """Return governed records that make up the complete operational case view.
+
+    The old seed path only resolved CasePartyRole -> EntityGraph, which is why a
+    rich FIR appeared as four nodes.  This read gathers the same bounded,
+    typed records surfaced by the case-file tabs (people, legal, evidence,
+    property, digital, financial and court/lifecycle).  It is deliberately
+    schema-tolerant: tables absent from a deployment are skipped, while the
+    remaining records still seed successfully.
+
+    Returned rows contain only source identifiers and relationship metadata;
+    labels and safe snapshots are hydrated later through the reference
+    whitelist.  Composite Act/Section rows are the sole exception and carry a
+    small sanitised snapshot because the source table has a composite key.
+    """
+    try:
+        cid = int(case_master_id)
+        cap = max(1, min(int(limit), MAX_CASE_RELATED))
+    except (TypeError, ValueError):
+        return []
+
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def append_record(ref_table: str, ref_id: Any, relationship: str, group: str,
+                      node_kind: str, *, snapshot: Optional[dict[str, Any]] = None,
+                      label: Optional[str] = None) -> None:
+        if ref_id is None or len(records) >= cap:
+            return
+        key = (ref_table, str(ref_id))
+        if key in seen:
+            return
+        seen.add(key)
+        records.append({
+            "ref_table": ref_table,
+            "ref_id": str(ref_id),
+            "relationship": relationship,
+            "group": group,
+            "node_kind": node_kind,
+            "snapshot": snapshot,
+            "label": label,
+        })
+
+    try:
+        with db.ro_conn() as conn:
+            with conn.cursor() as cur:
+                # Introspect once.  A missing optional migration then degrades
+                # cleanly without issuing a query that aborts the transaction.
+                cur.execute(
+                    "SELECT table_name, column_name FROM information_schema.columns "
+                    "WHERE table_schema='public'")
+                available: dict[str, set[str]] = {}
+                for table_name, column_name in cur.fetchall():
+                    available.setdefault(str(table_name), set()).add(str(column_name))
+
+                for (table, pk, case_fk, relationship, group,
+                     node_kind) in _CASE_RELATED_TABLES:
+                    cols = available.get(table, set())
+                    if pk not in cols or case_fk not in cols:
+                        continue
+                    cur.execute(
+                        f'SELECT "{pk}" FROM "{table}" '
+                        f'WHERE "{case_fk}"=%s ORDER BY "{pk}" LIMIT %s',
+                        (cid, cap))
+                    for row in cur.fetchall():
+                        append_record(table, row[0], relationship, group, node_kind)
+
+                # Evidence can be linked M:N even when EvidenceItem.CaseMasterID
+                # is empty.  Pull those references without duplicating direct
+                # evidence rows.
+                if ({"EvidenceCaseLink", "EvidenceItem"} <= set(available)
+                        and {"CaseMasterID", "EvidenceItemID"}
+                        <= available["EvidenceCaseLink"]):
+                    cur.execute(
+                        'SELECT "EvidenceItemID" FROM "EvidenceCaseLink" '
+                        'WHERE "CaseMasterID"=%s ORDER BY "EvidenceItemID" LIMIT %s',
+                        (cid, cap))
+                    for row in cur.fetchall():
+                        append_record("EvidenceItem", row[0], "evidence",
+                                      "evidence", "document")
+
+                # Device artifacts inherit case scope through their parent
+                # Device, but remain live references of their own.
+                if ({"Device", "DeviceArtifact"} <= set(available)
+                        and {"DeviceID", "CaseMasterID"} <= available["Device"]
+                        and {"DeviceArtifactID", "DeviceID"}
+                        <= available["DeviceArtifact"]):
+                    cur.execute(
+                        'SELECT da."DeviceArtifactID" FROM "DeviceArtifact" da '
+                        'JOIN "Device" d ON d."DeviceID"=da."DeviceID" '
+                        'WHERE d."CaseMasterID"=%s '
+                        'ORDER BY da."DeviceArtifactID" LIMIT %s', (cid, cap))
+                    for row in cur.fetchall():
+                        append_record("DeviceArtifact", row[0], "device_artifact",
+                                      "digital", "document")
+
+                # Transactions may be linked directly or through TransactionLink.
+                if ("FinancialTransaction" in available
+                        and "TransactionID" in available["FinancialTransaction"]):
+                    txn_ids: list[Any] = []
+                    if "EvidenceCaseID" in available["FinancialTransaction"]:
+                        cur.execute(
+                            'SELECT "TransactionID" FROM "FinancialTransaction" '
+                            'WHERE "EvidenceCaseID"=%s ORDER BY "TransactionID" LIMIT %s',
+                            (cid, cap))
+                        txn_ids.extend(r[0] for r in cur.fetchall())
+                    if ("TransactionLink" in available
+                            and {"TransactionID", "CaseMasterID"}
+                            <= available["TransactionLink"]):
+                        cur.execute(
+                            'SELECT "TransactionID" FROM "TransactionLink" '
+                            'WHERE "CaseMasterID"=%s ORDER BY "TransactionID" LIMIT %s',
+                            (cid, cap))
+                        txn_ids.extend(r[0] for r in cur.fetchall())
+                    for txn_id in txn_ids:
+                        append_record("FinancialTransaction", txn_id,
+                                      "financial_transaction", "financial", "account")
+
+                # ActSectionAssociation has a governed composite key.  Preserve
+                # every section as a source-backed fact node with explicit
+                # composite provenance rather than pretending CaseMasterID is a
+                # unique reference.
+                act_cols = available.get("ActSectionAssociation", set())
+                if {"CaseMasterID", "ActID", "SectionID"} <= act_cols:
+                    cur.execute(
+                        'SELECT "ActID", "SectionID", "ActOrderID", "SectionOrderID" '
+                        'FROM "ActSectionAssociation" WHERE "CaseMasterID"=%s '
+                        'ORDER BY "ActOrderID" NULLS LAST, "SectionOrderID" NULLS LAST, '
+                        '"ActID", "SectionID" LIMIT %s', (cid, cap))
+                    for act_id, section_id, act_order, section_order in cur.fetchall():
+                        composite_id = f"{cid}:{act_id}:{section_id}"
+                        append_record(
+                            "ActSectionAssociation", composite_id,
+                            "act_and_section", "legal", "note",
+                            snapshot={
+                                "CaseMasterID": cid,
+                                "ActID": act_id,
+                                "SectionID": section_id,
+                                "ActOrderID": act_order,
+                                "SectionOrderID": section_order,
+                                "SourceRef": (
+                                    f"ActSectionAssociation:{cid}:{act_id}:{section_id}"
+                                ),
+                            },
+                            label=f"{act_id} {section_id}".strip(),
+                        )
+    except Exception:  # noqa: BLE001 - case enrichment must never break a plain pin
+        return records
+
+    _group_order = {
+        "people": 0, "legal": 1, "evidence": 2, "assets": 3,
+        "digital": 4, "financial": 5, "court": 6, "timeline": 7,
+    }
+    records.sort(key=lambda item: (
+        _group_order.get(str(item.get("group")), 99),
+        str(item.get("ref_table")), str(item.get("ref_id")),
+    ))
+    return records[:cap]

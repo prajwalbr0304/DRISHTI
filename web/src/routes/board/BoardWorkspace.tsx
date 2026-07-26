@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, Clock, Download, GitBranch, Loader2, Lock, ScrollText, Share2, Users, Workflow,
+  ArrowLeft, Clock, Download, GitBranch, Loader2, Lock, PanelLeftOpen,
+  PanelRightOpen, ScrollText, Share2, Users, Workflow, X,
 } from "lucide-react";
 import { api } from "@/api";
 import type { BoardSelection } from "@/components/board/BoardCanvas";
 import type { ExportOut, NodeDiff } from "@/api/endpoints/board";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { BoardCanvas } from "@/components/board/BoardCanvas";
 import { BoardGraphView } from "@/components/board/BoardGraphView";
@@ -14,6 +16,9 @@ import { SelectionInspector } from "@/components/board/panels/SelectionInspector
 import { HelperDrawer } from "@/components/board/panels/HelperDrawer";
 import { RationaleDialog, type RationalePayload } from "@/components/board/dialogs/RationaleDialog";
 import { SearchAroundDialog } from "@/components/board/dialogs/SearchAroundDialog";
+import {
+  AnnotationDialog, type AnnotationDraft,
+} from "@/components/board/dialogs/AnnotationDialog";
 import { EvidenceTrail } from "@/routes/board/EvidenceTrail";
 import { BoardTimeline } from "@/routes/board/BoardTimeline";
 import { useBoardActivityPoll, useBoardDetail, useBoardPresence, useInvalidateBoard } from "@/routes/board/useBoard";
@@ -24,8 +29,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
 import { cn } from "@/lib/utils";
+import type { AnnotationKind } from "@/api/endpoints/board";
 
-const SHARE_LOCK_ROLES = new Set(["supervisor", "super_admin"]);
 
 export function BoardWorkspace() {
   const { boardId: boardIdParam } = useParams();
@@ -45,11 +50,14 @@ export function BoardWorkspace() {
     { evidence: true, hypothesis: true, search: "", hiddenKinds: [] });
   const [renderMode, setRenderMode] = useState<"flow" | "graph">("flow");
   const [focusMode, setFocusMode] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState<{ kind: "info" | "error"; msg: string } | null>(null);
   const [pendingConnect, setPendingConnect] = useState<{ s: number; t: number } | null>(null);
   const [searchAroundOpen, setSearchAroundOpen] = useState(false);
+  const [annotationKind, setAnnotationKind] = useState<Extract<AnnotationKind, "sticky" | "frame" | "text"> | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [exportResult, setExportResult] = useState<ExportOut | null>(null);
   const [diffs, setDiffs] = useState<Record<number, NodeDiff>>({});
@@ -60,8 +68,21 @@ export function BoardWorkspace() {
     selection: { kind: null, id: null }, readOnly: false, del: () => {},
   });
 
+  useEffect(() => {
+    setSelection({ kind: null, id: null });
+    setBanner(null);
+    setDrawerOpen(false);
+    setPaletteOpen(false);
+    setInspectorOpen(false);
+    setShareOpen(false);
+    setAnnotationKind(null);
+    setExportResult(null);
+    setScrubTime(null);
+    setRenderMode("flow");
+  }, [boardId]);
+
   const readOnly = !!detail?.board.is_locked || detail?.board.my_role === "viewer";
-  const canShareLock = SHARE_LOCK_ROLES.has(role);
+  const canShareLock = roleCan(role, "board_share");
   const refTables = useMemo(() => detail ? Array.from(new Set([
     "CaseMaster", "CanonicalPerson", "CanonicalEntity", "EntityGraph",
     "FinancialAccount", "EvidenceItem", "CrimeHotspot",
@@ -147,6 +168,10 @@ export function BoardWorkspace() {
     ? detail.nodes.find((n) => n.board_node_id === selection.id) : undefined;
   const canSearchAround = !!selectedNode &&
     (selectedNode.ref_table === "EntityGraph" || selectedNode.canonical_entity_id != null);
+  const selectBoardObject = (next: BoardSelection) => {
+    setSelection(next);
+    if (next.id != null) setInspectorOpen(true);
+  };
 
   // handlers -----------------------------------------------------------------
   const addObject = (refTable: string, refId: string) => {
@@ -154,13 +179,21 @@ export function BoardWorkspace() {
     run(() => api.board.addNode(boardId, { node_kind: "entity", ref_table: refTable, ref_id: refId, pos_x: p.x, pos_y: p.y }),
       "Object pinned.");
   };
-  const addNote = () => {
+  const addAnnotation = (draft: AnnotationDraft) => {
     const p = nextPos();
-    run(() => api.board.addAnnotation(boardId, { kind: "sticky", content: "New note", geometry: { x: p.x, y: p.y } }));
-  };
-  const addFrame = () => {
-    const p = nextPos();
-    run(() => api.board.addAnnotation(boardId, { kind: "frame", content: "Frame", geometry: { x: p.x, y: p.y, w: 340, h: 240 } }));
+    const geometry = draft.kind === "frame"
+      ? { x: p.x, y: p.y, w: draft.width ?? 340, h: draft.height ?? 240 }
+      : { x: p.x, y: p.y };
+    setAnnotationKind(null);
+    run(
+      () => api.board.addAnnotation(boardId, {
+        kind: draft.kind,
+        content: draft.content,
+        geometry,
+        style: draft.kind === "sticky" ? { color: draft.color ?? "#fde68a" } : {},
+      }),
+      `${draft.kind === "frame" ? "Frame" : draft.kind === "text" ? "Text" : "Sticky note"} added.`,
+    );
   };
   const moveNode = (id: number, x: number, y: number) => {
     api.board.patchNode(boardId, id, { pos_x: x, pos_y: y, is_move_only: true }).catch(() => undefined);
@@ -170,6 +203,17 @@ export function BoardWorkspace() {
     const g = { ...(a?.geometry || {}), x, y };
     api.board.patchAnnotation(boardId, id, { geometry: g }).catch(() => undefined);
   };
+  const resizeAnnotation = (id: number, width: number, height: number) => {
+    const annotation = detail.annotations.find((item) => item.board_annotation_id === id);
+    const geometry = { ...(annotation?.geometry || {}), w: width, h: height };
+    api.board.patchAnnotation(boardId, id, { geometry })
+      .then(() => invalidate())
+      .catch(() => setBanner({ kind: "error", msg: "Could not resize the frame." }));
+  };
+  const updateAnnotation = (
+    id: number,
+    patch: { content: string; geometry?: Record<string, unknown>; style?: Record<string, unknown> },
+  ) => run(() => api.board.patchAnnotation(boardId, id, patch), "Annotation updated.");
   const createEdge = (p: RationalePayload) => {
     if (!pendingConnect) return;
     const { s, t } = pendingConnect;
@@ -249,9 +293,9 @@ export function BoardWorkspace() {
             <ArrowLeft className="size-4" />
           </Button>
         )}
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="truncate text-16 font-semibold text-content">{b.title}</h1>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 flex-1 truncate text-16 font-semibold text-content">{b.title}</h1>
             <Badge variant="neutral">v{b.version}</Badge>
             {b.is_locked && <Badge variant="high"><Lock className="size-3" /> locked</Badge>}
             <Badge variant={b.visibility === "private" ? "neutral" : "primary"}>{b.visibility}</Badge>
@@ -260,7 +304,7 @@ export function BoardWorkspace() {
             </span>
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
           {presence.count > 1 && (
             <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-2/60 px-2 py-0.5 text-11 text-content-dim"
                   title={presence.actors.join(", ")}>
@@ -272,6 +316,18 @@ export function BoardWorkspace() {
             <TabBtn active={tab === "timeline"} onClick={() => setSp({ tab: "timeline" }, { replace: true })}><Clock className="size-3.5" /> Timeline</TabBtn>
             <TabBtn active={tab === "evidence"} onClick={() => setSp({ tab: "evidence" }, { replace: true })}><ScrollText className="size-3.5" /> Evidence Trail</TabBtn>
           </div>
+          {tab === "canvas" && !focusMode && (
+            <>
+              <Button className="xl:hidden" variant="secondary" size="sm"
+                onClick={() => setPaletteOpen(true)}>
+                <PanelLeftOpen /> Objects
+              </Button>
+              <Button className="xl:hidden" variant="secondary" size="sm"
+                onClick={() => setInspectorOpen(true)}>
+                <PanelRightOpen /> Details
+              </Button>
+            </>
+          )}
           {canShareLock && !b.is_locked && (
             <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}><Share2 /> Share</Button>
           )}
@@ -301,9 +357,19 @@ export function BoardWorkspace() {
       {/* body — focus mode always shows the canvas (projector view) */}
       {(tab === "canvas" || focusMode) && (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-hairline">
-          <div className="flex min-h-0 flex-1">
+          <div className="relative flex min-h-0 flex-1">
             {!focusMode && (
-              <div className="w-60 shrink-0 border-r border-hairline bg-surface">
+              <div className={cn(
+                "w-60 shrink-0 border-r border-hairline bg-surface xl:relative xl:block",
+                paletteOpen
+                  ? "absolute inset-y-0 left-0 z-30 block shadow-xl"
+                  : "hidden",
+              )}>
+                <Button className="absolute right-2 top-2 z-10 xl:hidden"
+                  variant="ghost" size="icon-sm" aria-label="Close object palette"
+                  onClick={() => setPaletteOpen(false)}>
+                  <X />
+                </Button>
                 <ObjectPalette
                   filters={filters}
                   setFilters={setFilters}
@@ -311,8 +377,7 @@ export function BoardWorkspace() {
                   kinds={presentKinds}
                   readOnly={readOnly}
                   hasSelectedNode={canSearchAround}
-                  onAddNote={addNote}
-                  onAddFrame={addFrame}
+                  onAddAnnotation={setAnnotationKind}
                   onAddObject={addObject}
                   onSearchAround={() => setSearchAroundOpen(true)}
                 />
@@ -328,9 +393,10 @@ export function BoardWorkspace() {
                 focusMode={focusMode}
                 readOnly={readOnly}
                 selection={selection}
-                onSelect={setSelection}
+                onSelect={selectBoardObject}
                 onMoveNode={moveNode}
                 onMoveAnnotation={moveAnnotation}
+                onResizeAnnotation={resizeAnnotation}
                 onConnect={(s, t) => setPendingConnect({ s, t })}
                 onOpenSource={openSource}
                 onToggleFocus={() => setFocusMode((v) => !v)}
@@ -343,7 +409,7 @@ export function BoardWorkspace() {
                 <BoardGraphView
                   detail={detail}
                   selection={selection}
-                  onSelect={setSelection}
+                  onSelect={selectBoardObject}
                   onExpandNode={expandNode}
                 />
               )}
@@ -359,7 +425,17 @@ export function BoardWorkspace() {
               )}
             </div>
             {!focusMode && (
-              <div className="w-72 shrink-0 overflow-y-auto border-l border-hairline bg-surface">
+              <div className={cn(
+                "w-72 shrink-0 overflow-y-auto border-l border-hairline bg-surface xl:relative xl:block",
+                inspectorOpen
+                  ? "absolute inset-y-0 right-0 z-30 block shadow-xl"
+                  : "hidden",
+              )}>
+                <Button className="absolute right-2 top-2 z-10 xl:hidden"
+                  variant="ghost" size="icon-sm" aria-label="Close details panel"
+                  onClick={() => setInspectorOpen(false)}>
+                  <X />
+                </Button>
                 <SelectionInspector
                   detail={detail}
                   selection={selection}
@@ -371,6 +447,7 @@ export function BoardWorkspace() {
                   onRefreshSnapshot={refreshSnapshot}
                   onSaveRationale={saveRationale}
                   onPromote={promote}
+                  onUpdateAnnotation={updateAnnotation}
                 />
               </div>
             )}
@@ -400,6 +477,11 @@ export function BoardWorkspace() {
         targetLabel={detail.nodes.find((n) => n.board_node_id === pendingConnect?.t)?.label ?? undefined}
         onCancel={() => setPendingConnect(null)}
         onCreate={createEdge}
+      />
+      <AnnotationDialog
+        kind={annotationKind}
+        onClose={() => setAnnotationKind(null)}
+        onCreate={addAnnotation}
       />
       <SearchAroundDialog
         open={searchAroundOpen}
@@ -465,7 +547,7 @@ function ShareDialog({ open, boardId, onClose, onDone, onError }: {
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <label className="mb-1 block text-12 text-content-dim">Actor</label>
-            <Input value={actor} onChange={(e) => setActor(e.target.value)} placeholder="demo.analyst" className="h-8 text-13" />
+            <Input value={actor} onChange={(e) => setActor(e.target.value)} placeholder="demo.crime_analyst" className="h-8 text-13" />
           </div>
           <NativeSelect value={role} onChange={setRole} className="w-28"
             options={[{ value: "viewer", label: "viewer" }, { value: "editor", label: "editor" }]} placeholder="role" />

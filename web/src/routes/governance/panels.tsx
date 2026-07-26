@@ -9,14 +9,13 @@ import { errorMessage } from "@/api/contracts";
 import type {
   GovFeatureSchemaVersion, GovModelVersion, GovPredictionDetail, GovPredictionRequest,
 } from "@/api/types";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SectionCard } from "@/routes/intake/components";
 
-const GOV_WRITE_ROLES = new Set(["analyst", "investigator", "supervisor", "super_admin"]);
-const GOV_REVIEW_ROLES = new Set(["supervisor", "super_admin"]);
 
 const STATUS_VARIANT: Record<string, "neutral" | "primary" | "low" | "medium" | "high"> = {
   queued: "neutral", running: "primary", completed: "low", reviewed: "low",
@@ -135,7 +134,7 @@ export function RegistryPanel() {
 export function SnapshotsPanel() {
   const qc = useQueryClient();
   const { role } = useRole();
-  const canWrite = GOV_WRITE_ROLES.has(role);
+  const canWrite = roleCan(role, "governance_run");
   const [schemaId, setSchemaId] = useState<number | "">("");
   const [district, setDistrict] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
@@ -235,8 +234,8 @@ export function SnapshotsPanel() {
 export function PredictionsPanel() {
   const qc = useQueryClient();
   const { role } = useRole();
-  const canWrite = GOV_WRITE_ROLES.has(role);
-  const canReview = GOV_REVIEW_ROLES.has(role);
+  const canWrite = roleCan(role, "governance_run");
+  const canReview = roleCan(role, "governance_review");
   const [selected, setSelected] = useState<number | null>(null);
   const [modelId, setModelId] = useState<number | "">("");
   const [snapId, setSnapId] = useState("");

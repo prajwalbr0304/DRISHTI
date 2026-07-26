@@ -4,8 +4,8 @@
   POST /investigate/{case_id}/ask           — bilingual case-scoped question -> cited answer
   POST /investigate/{case_id}/send-to-board — send selected cited objects to a Board
 
-Case access is gated by require_case_read (policymaker denied — aggregate-only).
-Send-to-board reuses the Board authorization (policymaker denied) + write guard.
+Case access is gated by require_case_read (see cases/permissions.py).
+Send-to-board reuses the Board authorization + the synthetic write guard.
 This composes existing governed APIs; it is not a second free-form chatbot.
 """
 from __future__ import annotations

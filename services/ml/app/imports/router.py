@@ -2,7 +2,7 @@
 
 Gating:
   * import pipeline (templates, batches, staging, commit, rollback, supersede,
-    entity-link queue, CDR/device views) — intake guards (reads deny policymaker;
+    entity-link queue, CDR/device views) — intake guards (reads pass the role gate;
     writes need an investigating/registering role + localhost + synthetic DB;
     commit/rollback/link-review need a supervisory role).
   * financial views + money alerts (accounts, transactions, money scan/alerts/

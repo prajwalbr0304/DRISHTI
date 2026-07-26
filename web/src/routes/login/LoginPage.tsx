@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowRight, KeyRound, Landmark, LineChart, Loader2, LogIn, RotateCw,
-  ScanEye, Search, ShieldAlert, ShieldCheck, Siren, TriangleAlert, Users,
+  ArrowRight, Building2, Cpu, KeyRound, Landmark, Layers, LineChart, Loader2,
+  LogIn, RotateCw, ScanEye, Search, ShieldAlert, ShieldCheck, TrafficCone,
+  TriangleAlert, Users, UserCog,
   type LucideIcon,
 } from "lucide-react";
 import { ROLES, ROLE_LIST, type UserRole } from "@/config/roles";
@@ -23,10 +24,10 @@ import "@/routes/login/login.css";
 
 const CATALYST_LOGIN_ELEMENT_ID = "drishti-catalyst-login";
 
-// Presentation-only: which role workspace opens after the (super_admin) sign-in.
-// The server ALWAYS re-derives + enforces the real role — this only picks the
-// initial demo view. RoleProvider reads the same key ("drishti.role") and honors
-// it for a super_admin identity.
+// Presentation-only: which role workspace opens after sign-in. The server ALWAYS
+// re-derives + enforces the real role — this only picks the initial demo view.
+// RoleProvider reads the same key ("drishti.role") and honors it for a
+// full-access identity.
 const WORKSPACE_KEY = "drishti.role";
 function rememberWorkspace(role: UserRole) {
   try {
@@ -36,25 +37,38 @@ function rememberWorkspace(role: UserRole) {
   }
 }
 
-type Accent = "crime" | "emergency" | "admin";
+function loadRememberedWorkspace(): UserRole | null {
+  try {
+    const role = localStorage.getItem(WORKSPACE_KEY);
+    return role && role in ROLES ? role as UserRole : null;
+  } catch {
+    return null;
+  }
+}
+
+type Accent = "command" | "field" | "admin";
 
 const ROLE_META: Record<UserRole, { icon: LucideIcon; accent: Accent }> = {
-  investigator: { icon: Search, accent: "crime" },
-  analyst: { icon: LineChart, accent: "crime" },
-  supervisor: { icon: Users, accent: "crime" },
-  policymaker: { icon: Landmark, accent: "crime" },
-  disaster_coordinator: { icon: Siren, accent: "emergency" },
-  super_admin: { icon: KeyRound, accent: "admin" },
+  dgp_state_command: { icon: Landmark, accent: "command" },
+  adgp_igp_range: { icon: Layers, accent: "command" },
+  sp_district_command: { icon: Building2, accent: "command" },
+  dysp_acp: { icon: Users, accent: "command" },
+  sho: { icon: ShieldCheck, accent: "field" },
+  investigating_officer: { icon: Search, accent: "field" },
+  crime_analyst: { icon: LineChart, accent: "field" },
+  cyber_cell: { icon: Cpu, accent: "field" },
+  traffic_command: { icon: TrafficCone, accent: "field" },
+  system_admin: { icon: KeyRound, accent: "admin" },
 };
 
 function badgeClasses(accent: Accent): string {
-  if (accent === "emergency") return "bg-severity-high/15 text-severity-high";
+  if (accent === "command") return "bg-severity-high/15 text-severity-high";
   if (accent === "admin") return "bg-accent/15 text-accent";
   return "bg-primary/15 text-primary";
 }
 
 function hoverBorder(accent: Accent): string {
-  if (accent === "emergency") return "hover:border-severity-high/60";
+  if (accent === "command") return "hover:border-severity-high/60";
   if (accent === "admin") return "hover:border-accent/60";
   return "hover:border-primary/60";
 }
@@ -66,12 +80,35 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from;
   const [workspace, setWorkspace] = useState<UserRole | null>(null);
 
+  // Keep the public sign-in route as a single-screen experience, then restore
+  // normal document scrolling as soon as the user leaves /login.
+  useEffect(() => {
+    document.documentElement.classList.add("login-scroll-lock");
+    document.body.classList.add("login-scroll-lock");
+    return () => {
+      document.documentElement.classList.remove("login-scroll-lock");
+      document.body.classList.remove("login-scroll-lock");
+    };
+  }, []);
+
   // Once authenticated (incl. an already-signed-in visit), leave /login.
   useEffect(() => {
     if (status !== "authenticated") return;
-    const home = user?.demoRole ? ROLES[user.demoRole].home : "/command";
-    navigate(from || home, { replace: true });
+    const selectedRole = user?.demoRole ?? loadRememberedWorkspace();
+    const home = selectedRole ? ROLES[selectedRole].home : "/command";
+    // An explicit role choice owns the destination. This prevents the protected
+    // route that originally sent the user to /login (often /command) from
+    // overriding Cyber, Analyst, Traffic, SHO, or Investigator role homes.
+    navigate(selectedRole ? home : from || home, { replace: true });
   }, [status, from, user, navigate]);
+
+  const openOfflineWorkspace = (role: UserRole) => {
+    // Keep RoleProvider and the offline identity in sync in the same click.
+    // Without this, a previously explored demo role could override the newly
+    // selected login card when the authenticated identity mounted.
+    rememberWorkspace(role);
+    signInOffline(role);
+  };
 
   if (status === "initializing") {
     return (
@@ -84,12 +121,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen w-full bg-bg text-content lg:grid-cols-[1.05fr_minmax(440px,0.95fr)]">
+    <div className="login-shell grid h-[100dvh] w-full overflow-hidden bg-bg text-content lg:grid-cols-[minmax(0,1.02fr)_minmax(560px,0.98fr)]">
       <HeroPanel />
-      <main className="relative flex items-center justify-center px-5 py-10 sm:px-8">
-        <div className="login-rise w-full max-w-md">
+      <main className="login-auth-panel relative flex min-h-0 items-center justify-center overflow-hidden px-5 py-5 sm:px-8 lg:px-10 lg:py-6 2xl:px-12">
+        <div className="login-rise w-full max-w-[900px]">
           {/* header: mobile brand */}
-          <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="mb-4 flex items-center justify-between gap-3 lg:hidden">
             <Link to="/" className="flex items-center gap-2 lg:hidden" aria-label="DRISHTI home">
               <span className="grid size-9 place-items-center rounded-control bg-primary/15 text-primary">
                 <ScanEye className="size-5" />
@@ -98,20 +135,27 @@ export function LoginPage() {
             </Link>
           </div>
 
-          <h1 className="text-28 font-semibold tracking-tight text-content">
+          <h1 className="text-28 font-semibold tracking-tight text-content xl:text-32">
             {mode === "offline" ? "Choose your operational view" : "Sign in to DRISHTI"}
           </h1>
-          <p className="mt-1.5 text-13 text-content-dim">
-            {mode === "offline"
-              ? "Continue with a synthetic demo identity. The server re-derives the real role from the authenticated session — this only chooses which view opens."
-              : "Sign in with your Catalyst account to continue."}
-          </p>
+          {mode !== "offline" && (
+            <p className="mt-2 max-w-[72ch] text-13 leading-relaxed text-content-dim xl:text-14">
+              Sign in with your Catalyst account to continue.
+            </p>
+          )}
 
-          <div className="mt-6">
+          <div className="mt-5">
             {mode === "offline" ? (
-              <RolePicker onPick={signInOffline} />
+              <>
+                <div className="login-role-cards">
+                  <RolePicker onPick={openOfflineWorkspace} />
+                </div>
+                <div className="login-role-select">
+                  <RoleSelect onPick={openOfflineWorkspace} actionLabel="Open workspace" />
+                </div>
+              </>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 <CatalystEmbed status={status} error={error} renderSignIn={renderSignIn} />
                 <div>
                   <div className="flex items-center gap-1.5 text-13 font-semibold text-content">
@@ -128,12 +172,13 @@ export function LoginPage() {
                       open after sign-in.
                     </p>
                   )}
-                  <div className="mt-3">
-                    <RolePicker
+                  <div className="mt-2">
+                    <RoleSelect
                       onPick={(r) => {
                         rememberWorkspace(r);
                         setWorkspace(r);
                       }}
+                      actionLabel="Set workspace"
                     />
                   </div>
                 </div>
@@ -141,13 +186,15 @@ export function LoginPage() {
             )}
           </div>
 
-          <p className="mt-6 flex items-center gap-1.5 text-11 text-content-dim">
-            <ShieldCheck className="size-3.5 shrink-0 text-accent" />
+          <div className="login-panel-footer mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-hairline pt-4">
+          <p className="flex items-center gap-1.5 text-11 text-content-dim xl:text-12">
+            <ShieldCheck className="size-4 shrink-0 text-accent" />
             Evidence-backed · Human-controlled · Auditable · Synthetic data only.
           </p>
-          <Link to="/" className="mt-2 inline-flex items-center gap-1 text-12 text-content-dim transition-colors hover:text-content">
-            <ArrowRight className="size-3.5 rotate-180" /> Back to overview
+          <Link to="/" className="inline-flex items-center gap-1 text-12 text-content-dim transition-colors hover:text-content">
+            <ArrowRight className="size-4 rotate-180" /> Back to overview
           </Link>
+          </div>
         </div>
       </main>
     </div>
@@ -157,7 +204,7 @@ export function LoginPage() {
 /* --------------------------------------------------------------------------- */
 function HeroPanel() {
   return (
-    <aside className="login-hero relative hidden flex-col justify-between overflow-hidden p-10 lg:flex xl:p-14">
+    <aside className="login-hero relative hidden min-h-0 flex-col justify-between overflow-hidden p-8 lg:flex xl:p-12 2xl:p-14">
       <div className="login-layer login-aurora" aria-hidden />
       <div className="login-layer login-grid" aria-hidden />
       <div className="login-rings" aria-hidden />
@@ -166,27 +213,27 @@ function HeroPanel() {
 
       {/* brand */}
       <div className="relative flex items-center gap-3">
-        <span className="grid size-11 place-items-center rounded-card bg-white/10 text-white shadow-pop ring-1 ring-white/15 backdrop-blur">
-          <ScanEye className="size-6" />
+        <span className="grid size-14 place-items-center rounded-card bg-white/10 text-white shadow-pop ring-1 ring-white/15 backdrop-blur">
+          <ScanEye className="size-7" />
         </span>
         <div className="leading-tight">
           <div className="text-20 font-semibold tracking-tight text-white">DRISHTI</div>
-          <div className="text-12 text-white/60">Decision intelligence for public safety</div>
+          <div className="text-17 text-white/65">Decision intelligence for public safety</div>
         </div>
       </div>
 
       {/* headline + context cards */}
-      <div className="relative max-w-lg">
-        <h2 className="text-36 font-semibold leading-[1.1] tracking-tight text-white">
+      <div className="relative max-w-[800px]">
+        <h2 className="text-[66px] font-semibold leading-[1.03] tracking-tight text-white xl:text-[78px] 2xl:text-[86px]">
           One operational picture.<br />
           <span className="text-white/70">From first signal to reviewed action.</span>
         </h2>
-        <p className="mt-4 max-w-md text-14 text-white/60">
+        <p className="mt-6 max-w-[680px] text-17 leading-relaxed text-white/70 2xl:text-18">
           Two connected workspaces over one governed ontology — crime intelligence and
           emergency response — each keeping a human accountable for every decision.
         </p>
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-2">
+        <div className="mt-7 grid gap-4 sm:grid-cols-2 2xl:mt-8">
           <ContextCard
             icon={ScanEye}
             title="Crime Intelligence"
@@ -203,7 +250,7 @@ function HeroPanel() {
       </div>
 
       {/* trust footer */}
-      <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 text-11 text-white/55">
+      <div className="relative flex flex-wrap items-center gap-x-8 gap-y-2.5 text-15 text-white/65 2xl:text-16">
         {["Reproducible forecasts", "Human-in-the-loop", "Append-only audit", "Synthetic data"].map((t) => (
           <span key={t} className="inline-flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-accent/80" /> {t}
@@ -218,10 +265,10 @@ function ContextCard({ icon: Icon, title, copy, tint }: {
   icon: LucideIcon; title: string; copy: string; tint: string;
 }) {
   return (
-    <div className="rounded-card border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm transition-colors hover:border-white/20">
-      <Icon className={cn("size-5", tint)} />
-      <div className="mt-2.5 text-14 font-semibold text-white">{title}</div>
-      <div className="mt-0.5 text-12 leading-snug text-white/55">{copy}</div>
+    <div className="min-h-[180px] rounded-card border border-white/10 bg-white/[0.06] p-5 backdrop-blur-sm transition-colors hover:border-white/20 2xl:p-6">
+      <Icon className={cn("size-6", tint)} />
+      <div className="mt-3 text-18 font-semibold text-white">{title}</div>
+      <div className="mt-1 text-14 leading-relaxed text-white/65 2xl:text-15">{copy}</div>
     </div>
   );
 }
@@ -229,7 +276,7 @@ function ContextCard({ icon: Icon, title, copy, tint }: {
 /* --------------------------------------------------------------------------- */
 function RolePicker({ onPick }: { onPick: (r: UserRole) => void }) {
   return (
-    <div className="grid gap-2.5 sm:grid-cols-2">
+    <div className="login-role-grid grid grid-cols-2 gap-4">
       {ROLE_LIST.map((r, i) => {
         const meta = ROLE_META[r.id];
         const Icon = meta.icon;
@@ -240,32 +287,66 @@ function RolePicker({ onPick }: { onPick: (r: UserRole) => void }) {
             onClick={() => onPick(r.id)}
             style={{ animationDelay: `${80 + i * 45}ms` }}
             className={cn(
-              "login-rise group relative flex flex-col rounded-card border border-hairline bg-surface p-3.5 text-left",
-              "transition-all duration-150 hover:-translate-y-0.5 hover:bg-surface-2/60 hover:shadow-pop",
+              "login-rise login-role-card group relative flex min-w-0 rounded-card border border-hairline bg-surface p-5 text-left",
+              "transition-all duration-150 hover:-translate-y-px hover:bg-surface-2/60 hover:shadow-pop",
               hoverBorder(meta.accent),
             )}
           >
-            <div className="flex items-center gap-2.5">
-              <span className={cn("grid size-9 shrink-0 place-items-center rounded-control", badgeClasses(meta.accent))}>
-                <Icon className="size-[18px]" />
+            <div className="flex min-w-0 flex-1 items-center gap-4">
+              <span className={cn("grid size-14 shrink-0 place-items-center rounded-control", badgeClasses(meta.accent))}>
+                <Icon className="size-[30px]" />
               </span>
-              <span className="min-w-0 flex-1 text-14 font-semibold text-content">{r.label}</span>
-              <ArrowRight className="size-4 shrink-0 text-content-dim opacity-0 transition-opacity group-hover:opacity-100" />
-            </div>
-            <p className="mt-2 text-12 leading-snug text-content-dim">{r.blurb}</p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="truncate rounded-full border border-hairline bg-surface-2 px-2 py-0.5 text-[11px] text-content-dim">
-                {r.scope}
-              </span>
-              {r.id === "disaster_coordinator" && (
-                <span className="rounded-full bg-severity-high/15 px-2 py-0.5 text-[11px] font-medium text-severity-high">
-                  Emergency
+              <span className="min-w-0 flex-1">
+                <span className="block text-17 font-bold leading-tight text-content xl:text-18">{r.label}</span>
+                <span className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5 text-12 leading-relaxed text-content-dim xl:text-13">
+                  <UserCog className="mt-0.5 size-3.5 shrink-0" />
+                  <span className="break-words">{r.demoName} · {r.scope}</span>
                 </span>
-              )}
+              </span>
+              <ArrowRight className="size-4 shrink-0 text-content-dim opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
             </div>
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function RoleSelect({ onPick, actionLabel }: {
+  onPick: (r: UserRole) => void;
+  actionLabel: string;
+}) {
+  const [selected, setSelected] = useState<UserRole>(ROLE_LIST[0].id);
+  const role = ROLES[selected];
+  const selectId = `role-select-${actionLabel.toLowerCase().replace(/\s+/g, "-")}`;
+
+  return (
+    <div className="rounded-card border border-hairline bg-surface p-3">
+      <label htmlFor={selectId} className="text-11 font-semibold text-content">
+        Operational workspace
+      </label>
+      <select
+        id={selectId}
+        value={selected}
+        onChange={(event) => setSelected(event.target.value as UserRole)}
+        className="mt-2 h-10 w-full rounded-control border border-hairline bg-surface-2 px-3 text-12 text-content outline-none transition-colors focus:border-primary"
+      >
+        {ROLE_LIST.map((entry) => (
+          <option key={entry.id} value={entry.id}>
+            {entry.label} — {entry.scope}
+          </option>
+        ))}
+      </select>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-10 text-content-dim">{role.demoName}</span>
+        <button
+          type="button"
+          onClick={() => onPick(selected)}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-control bg-primary px-3 text-11 font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          {actionLabel} <ArrowRight className="size-3" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -346,7 +427,7 @@ function CatalystEmbed({ status, error, renderSignIn }: {
             in the effect); the loader overlays it until the iframe mounts. */}
         <div
           id={CATALYST_LOGIN_ELEMENT_ID}
-          className="relative mx-auto h-[360px] w-full max-w-[400px]"
+          className="login-catalyst-host relative mx-auto h-[360px] w-full max-w-[400px]"
         />
         {!widgetReady && (
           <div className="absolute inset-0 grid place-items-center">

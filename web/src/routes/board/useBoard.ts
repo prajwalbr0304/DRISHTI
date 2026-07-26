@@ -92,6 +92,14 @@ export function useBoardActivityPoll(
   const lastSeen = useRef<number>(0);
   const newestNotice = useRef<{ actor: string; action: string } | null>(null);
 
+  // Route transitions reuse the workspace component. Reset the poll cursor and
+  // transient notice so a freshly branched/opened board never inherits the
+  // previous board's "locked" or activity message.
+  useEffect(() => {
+    lastSeen.current = 0;
+    newestNotice.current = null;
+  }, [boardId]);
+
   useEffect(() => {
     if (detail) lastSeen.current = Math.max(lastSeen.current, detail.latest_activity_id);
   }, [detail]);

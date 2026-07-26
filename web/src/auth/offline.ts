@@ -1,4 +1,4 @@
-import { ROLES, type UserRole } from "@/config/roles";
+import { ROLES, isUserRole, type UserRole } from "@/config/roles";
 import type { AuthUser } from "@/auth/types";
 
 /* ============================================================================
@@ -15,13 +15,14 @@ import type { AuthUser } from "@/auth/types";
 
 const STORAGE_KEY = "drishti.auth.offline";
 
-/** Build a synthetic demo identity for a given role. */
+/** Build a synthetic demo identity for a given role. The name/username are the
+ *  seat's demo officer (config/roles.ts), matching the seeded `users` rows. */
 export function offlineIdentity(role: UserRole): AuthUser {
   const def = ROLES[role];
   return {
     userId: `offline-${role}`,
-    email: `demo.${role}@drishti.local`,
-    fullName: `Demo ${def.label}`,
+    email: `${def.demoUsername}@drishti.local`,
+    fullName: def.demoName,
     source: "offline",
     demoRole: role,
   };
@@ -32,7 +33,7 @@ export function loadOfflineUser(): AuthUser | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { demoRole?: UserRole };
-    if (parsed.demoRole && parsed.demoRole in ROLES) return offlineIdentity(parsed.demoRole);
+    if (isUserRole(parsed.demoRole)) return offlineIdentity(parsed.demoRole);
   } catch {
     /* ignore malformed storage */
   }

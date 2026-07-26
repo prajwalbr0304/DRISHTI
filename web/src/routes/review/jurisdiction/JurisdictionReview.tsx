@@ -5,6 +5,7 @@ import { AlertTriangle, Ban, Lock, MapPinned, MoveRight, RefreshCw, ShieldCheck 
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { ContainmentIssue } from "@/api/types";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,25 +21,24 @@ import { SectionCard } from "@/routes/intake/components";
    district), or quarantine it out of the canonical analytics set. The demo
    view/role is UX simulation, not authentication. */
 
-const REVIEW_ROLES = new Set(["supervisor", "super_admin"]);
 
 export function JurisdictionReview() {
   const { role } = useRole();
   const qc = useQueryClient();
   const actor = `demo.${role}`;
-  const canReview = REVIEW_ROLES.has(role);
+  const canReview = roleCan(role, "entity_review");
   const [banner, setBanner] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const issuesQ = useQuery({
     queryKey: ["geo", "jurisdiction", "issues", "open"],
     queryFn: ({ signal }) => api.geo.jurisdictionIssues({ status: "open", page_size: 100 }, signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "entity_review"),
   });
   const freshnessQ = useQuery({
     queryKey: ["geo", "jurisdiction", "freshness"],
     queryFn: ({ signal }) => api.geo.jurisdictionFreshness(signal),
-    enabled: role !== "policymaker",
+    enabled: roleCan(role, "entity_review"),
     retry: false,
   });
 
@@ -59,11 +59,11 @@ export function JurisdictionReview() {
     onError: (e) => setErr(errorMessage(e)),
   });
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "entity_review")) {
     return (
       <div><PageHeader title="Jurisdiction review" />
         <EmptyState icon={Lock} title="Not available for this role"
-          description="Jurisdiction review works on individual case records and is not available to the policymaker role (aggregate views only)." /></div>
+          description="Jurisdiction review works on individual case records and is not available to this role (aggregate views only)." /></div>
     );
   }
 

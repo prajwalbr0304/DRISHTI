@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronsUpDown, Layers, LogOut, ShieldQuestion } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
-import { ROLE_LIST } from "@/config/roles";
+import { ROLE_LIST, ROLES } from "@/config/roles";
 import { useAuth } from "@/auth";
 import { useRole } from "@/providers/RoleProvider";
 import { useUIStore } from "@/stores/useUIStore";
 import { Button } from "@/components/ui/button";
+import { RoleIcon } from "@/components/roles/RoleIcon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +31,7 @@ import {
 export function ProfileMenu() {
   const { role, def, setRole } = useRole();
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const density = useUIStore((s) => s.density);
   const setDensity = useUIStore((s) => s.setDensity);
 
@@ -45,8 +48,8 @@ export function ProfileMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-9 shrink-0 gap-2 px-1.5" aria-label="Profile and role">
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/15 text-12 font-semibold uppercase text-primary">
-            {def.label.charAt(0)}
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+            <RoleIcon role={role} className="size-4" />
           </span>
           <span className="hidden max-w-[11rem] text-left leading-tight md:block">
             <span className="block truncate text-12 font-medium text-content">{def.label}</span>
@@ -56,9 +59,12 @@ export function ProfileMenu() {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[calc(100dvh-5rem)] w-[480px] max-w-[calc(100vw-1rem)] overflow-y-auto p-1.5"
+      >
         {user && (
-          <div className="px-2 pt-1.5">
+          <div className="px-2.5 pb-1 pt-1.5">
             <div className="truncate text-13 font-semibold text-content">{user.fullName}</div>
             <div className="truncate text-11 text-content-dim">{user.email}</div>
           </div>
@@ -70,29 +76,35 @@ export function ProfileMenu() {
 
         <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5">
-          <div className="text-13 font-semibold text-content">{def.label}</div>
-          <div className="text-12 text-content-dim">{def.blurb}</div>
-          <div className="mt-1 text-12 text-content-dim">
-            Scope: <span className="text-content">{def.scope}</span>
-          </div>
-        </div>
-
-        <DropdownMenuSeparator />
-
         <DropdownMenuLabel className="flex items-center gap-1.5">
           <ShieldQuestion className="size-3.5" /> Demo view
         </DropdownMenuLabel>
-        <div className="px-2 pb-1 text-[11px] text-content-dim">
-          Presentation only — switches the role-specific screens. The server re-derives the
-          real role from your identity; it never trusts this choice.
+        <div className="px-2 pb-2 text-11 leading-relaxed text-content-dim">
+          Preview another role workspace. Your authenticated permissions remain unchanged.
         </div>
-        <DropdownMenuRadioGroup value={role} onValueChange={(v) => setRole(v as typeof role)}>
+        <DropdownMenuRadioGroup
+          value={role}
+          className="grid grid-cols-2 gap-1.5"
+          onValueChange={(v) => {
+            const nextRole = v as typeof role;
+            setRole(nextRole);
+            navigate(ROLES[nextRole].home);
+          }}
+        >
           {ROLE_LIST.map((r) => (
-            <DropdownMenuRadioItem key={r.id} value={r.id}>
-              <span className="flex flex-col">
-                <span className="text-13 text-content">{r.label}</span>
-                <span className="text-12 text-content-dim">{r.scope}</span>
+            <DropdownMenuRadioItem
+              key={r.id}
+              value={r.id}
+              className="min-h-[54px] items-start border border-transparent py-1.5 pl-8 pr-2 data-[state=checked]:border-primary/30 data-[state=checked]:bg-primary/10"
+            >
+              <span className="flex min-w-0 items-start gap-2">
+                <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  <RoleIcon role={r.id} className="size-4" />
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-12 font-medium leading-snug text-content">{r.label}</span>
+                  <span className="mt-0.5 text-11 leading-snug text-content-dim">{r.scope}</span>
+                </span>
               </span>
             </DropdownMenuRadioItem>
           ))}
@@ -103,9 +115,23 @@ export function ProfileMenu() {
         <DropdownMenuLabel className="flex items-center gap-1.5">
           <Layers className="size-3.5" /> Density
         </DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as typeof density)}>
-          <DropdownMenuRadioItem value="comfortable">Comfortable</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="compact">Compact</DropdownMenuRadioItem>
+        <DropdownMenuRadioGroup
+          value={density}
+          className="grid grid-cols-2 gap-1"
+          onValueChange={(v) => setDensity(v as typeof density)}
+        >
+          <DropdownMenuRadioItem
+            className="border border-transparent data-[state=checked]:border-primary/30 data-[state=checked]:bg-primary/10"
+            value="comfortable"
+          >
+            Comfortable
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem
+            className="border border-transparent data-[state=checked]:border-primary/30 data-[state=checked]:bg-primary/10"
+            value="compact"
+          >
+            Compact
+          </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />

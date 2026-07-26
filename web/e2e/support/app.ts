@@ -15,32 +15,52 @@ import { installLocalStubs } from "./stub";
    ========================================================================== */
 
 export type Role =
-  | "investigator"
-  | "analyst"
-  | "supervisor"
-  | "policymaker"
-  | "disaster_coordinator"
-  | "super_admin";
+  | "dgp_state_command"
+  | "adgp_igp_range"
+  | "sp_district_command"
+  | "dysp_acp"
+  | "sho"
+  | "investigating_officer"
+  | "crime_analyst"
+  | "cyber_cell"
+  | "traffic_command"
+  | "system_admin";
 
 /** Home route each role lands on after sign-in (mirrors config/roles.ts). */
 export const ROLE_HOME: Record<Role, string> = {
-  investigator: "/cases",
-  analyst: "/command",
-  supervisor: "/command",
-  policymaker: "/analytics",
-  disaster_coordinator: "/er",
-  super_admin: "/command",
+  dgp_state_command: "/command",
+  adgp_igp_range: "/command",
+  sp_district_command: "/command",
+  dysp_acp: "/command",
+  sho: "/cases",
+  investigating_officer: "/cases",
+  crime_analyst: "/analytics",
+  cyber_cell: "/network",
+  traffic_command: "/map",
+  system_admin: "/command",
 };
 
 /** Login-page RolePicker button label per role (config/roles.ts labels). */
 export const ROLE_LABEL: Record<Role, string> = {
-  investigator: "Investigator",
-  analyst: "Crime Analyst",
-  supervisor: "Supervisor",
-  policymaker: "Policymaker",
-  disaster_coordinator: "Disaster Coordinator",
-  super_admin: "Super Admin",
+  dgp_state_command: "DGP / State Command",
+  adgp_igp_range: "ADGP / IGP Range",
+  sp_district_command: "SP / District Command",
+  dysp_acp: "DySP / ACP",
+  sho: "SHO",
+  investigating_officer: "Investigating Officer",
+  crime_analyst: "Crime Analyst",
+  cyber_cell: "Cyber Cell",
+  traffic_command: "Traffic Command",
+  system_admin: "System Admin",
 };
+
+/** Every role id, in login-picker order. */
+export const ROLE_IDS = Object.keys(ROLE_HOME) as Role[];
+
+/** Escape a label for use inside a RegExp (labels contain "/" and "."). */
+export function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export const VIEWPORT = {
   desktop: { width: 1440, height: 900 },

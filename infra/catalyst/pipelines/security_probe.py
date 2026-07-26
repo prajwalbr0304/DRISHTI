@@ -96,12 +96,12 @@ def main() -> int:
     check("2 valid service ctx -> 200 scope=service", code == 200 and '"scope":"service"' in body.replace(" ", ""), f"got {code} {body[:90]}")
 
     # 3. valid gateway ctx role=super_admin -> 200
-    code, body = _post(url, sign(secret, base_ctx("gateway", role="super_admin", user_id="u-sa")))
-    check("3 gateway ctx super_admin -> 200 role=super_admin", code == 200 and '"role":"super_admin"' in body.replace(" ", ""), f"got {code} {body[:90]}")
+    code, body = _post(url, sign(secret, base_ctx("gateway", role="system_admin", user_id="u-sa")))
+    check("3 gateway ctx super_admin -> 200 role=super_admin", code == 200 and '"role":"system_admin"' in body.replace(" ", ""), f"got {code} {body[:90]}")
 
     # 4. valid gateway ctx role=investigator -> 200
-    code, body = _post(url, sign(secret, base_ctx("gateway", role="investigator", user_id="u-io")))
-    check("4 gateway ctx investigator -> 200 role=investigator", code == 200 and '"role":"investigator"' in body.replace(" ", ""), f"got {code} {body[:90]}")
+    code, body = _post(url, sign(secret, base_ctx("gateway", role="investigating_officer", user_id="u-io")))
+    check("4 gateway ctx investigator -> 200 role=investigator", code == 200 and '"role":"investigating_officer"' in body.replace(" ", ""), f"got {code} {body[:90]}")
 
     # 5. expired context -> 401
     now = int(time.time() * 1000)
@@ -123,8 +123,8 @@ def main() -> int:
     check("8 tampered signature -> 401", code == 401, f"got {code}")
 
     # 9. tampered payload keeping an old (now-wrong) signature -> 401
-    good = sign(secret, base_ctx("gateway", role="investigator", user_id="u1"))
-    forged_ctx = base_ctx("gateway", role="super_admin", user_id="u1")  # escalate role
+    good = sign(secret, base_ctx("gateway", role="investigating_officer", user_id="u1"))
+    forged_ctx = base_ctx("gateway", role="system_admin", user_id="u1")  # escalate role
     forged_payload = _b64url(json.dumps(forged_ctx).encode())
     code, body = _post(url, {"X-DRISHTI-Context": forged_payload,
                              "X-DRISHTI-Signature": good["X-DRISHTI-Signature"]})

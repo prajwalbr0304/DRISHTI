@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { Handle, NodeResizer, Position, type NodeProps } from "reactflow";
 import { AlertTriangle, ExternalLink, GitCompareArrows } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BoardAnnotationT, BoardNodeT } from "@/api/endpoints/board";
@@ -16,6 +16,7 @@ export interface ObjectNodeData {
 export interface StickyNodeData {
   ann: BoardAnnotationT;
   dimmed?: boolean;
+  onResize?: (annotationId: number, width: number, height: number) => void;
 }
 
 // Person-like kinds render an avatar (initials) like a Palantir photo node.
@@ -130,7 +131,7 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
 
 /* --- frame (grouping rectangle) ----------------------------------------- */
 export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<StickyNodeData>) {
-  const { ann, dimmed } = data;
+  const { ann, dimmed, onResize } = data;
   return (
     <div
       className={cn(
@@ -139,6 +140,18 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<S
         dimmed && "opacity-30",
       )}
     >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={220}
+        minHeight={140}
+        maxWidth={1200}
+        maxHeight={900}
+        lineClassName="!border-primary/60"
+        handleClassName="!size-2.5 !border-primary !bg-surface"
+        onResizeEnd={(_event, params) => {
+          onResize?.(ann.board_annotation_id, Math.round(params.width), Math.round(params.height));
+        }}
+      />
       <div className="inline-block rounded-br-card bg-surface-2/60 px-2 py-1 text-11 font-medium uppercase tracking-wide text-content-dim">
         {ann.content || "Frame"}
       </div>

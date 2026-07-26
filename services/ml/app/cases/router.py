@@ -13,7 +13,7 @@ Phase 15c (Case Explorer + Case file, raw operational reads):
   GET  /cases/{id}/evidence — evidence feed
   POST /cases/{id}/evidence — add evidence (IO only)
 
-Individual case files are gated away from the policymaker role (aggregate-only).
+Individual case files pass the cases role gate (see cases/permissions.py).
 """
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def caseload(
 
     A present-state snapshot: each case falls into exactly one lifecycle stage,
     so the stage counts sum to the total. Optional filters scope the caseload
-    (e.g. by district / station). Denied to the policymaker role (case-scoped)."""
+    (e.g. by district / station). Case-scoped, behind the cases role gate."""
     filters = {
         "district_id": district_id, "station_id": station_id,
         "major_head_id": major_head_id, "minor_head_id": minor_head_id,

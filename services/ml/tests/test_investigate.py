@@ -46,16 +46,13 @@ def test_board_ref_kind_mapping_is_whitelisted():
 
 
 # ============================ permission-safety ============================
-def test_policymaker_denied_case_assistant():
-    assert client.get("/investigate/1/brief", headers=_hdr("policymaker")).status_code == 403
-    assert client.post("/investigate/1/ask", json={"question": "similar?"},
-                       headers=_hdr("policymaker")).status_code == 403
-
-
-def test_policymaker_denied_send_to_board():
-    body = {"board_id": 1, "objects": [{"ref_table": "CaseMaster", "ref_id": "1"}]}
-    assert client.post("/investigate/1/send-to-board", json=body,
-                       headers=_hdr("policymaker")).status_code == 403
+def test_case_assistant_gates_open_to_every_command_role():
+    # INTERIM ("all roles have access to everything"): the case-read gate behind
+    # the assistant + send-to-board no longer denies any command seat.
+    from app.cases.permissions import require_case_read
+    from app.roles import FUNCTIONAL_ROLES
+    for role in FUNCTIONAL_ROLES:
+        assert require_case_read(role) == role
 
 
 # ============================ composed answer (DB) =========================
@@ -70,7 +67,7 @@ def _first_case_id() -> int:
 @requires_db
 def test_brief_separates_facts_and_hypotheses_with_citations():
     cid = _first_case_id()
-    r = client.get(f"/investigate/{cid}/brief", headers=_hdr("investigator"))
+    r = client.get(f"/investigate/{cid}/brief", headers=_hdr("investigating_officer"))
     assert r.status_code == 200
     body = r.json()
     assert body["planner_source"] == "case-orchestrator"
@@ -91,13 +88,13 @@ def test_ask_bilingual_cited_and_permission_safe():
     cid = _first_case_id()
     en = client.post(f"/investigate/{cid}/ask",
                      json={"question": "Have similar cases happened before?"},
-                     headers=_hdr("investigator"))
+                     headers=_hdr("investigating_officer"))
     assert en.status_code == 200
     assert en.json()["intent"] == "similar_cases"
     assert en.json()["language"] == "en"
     kn = client.post(f"/investigate/{cid}/ask",
                      json={"question": "ಇದೇ ರೀತಿಯ ಪ್ರಕರಣಗಳು ಹಿಂದೆ ಆಗಿವೆಯೇ?"},
-                     headers=_hdr("investigator"))
+                     headers=_hdr("investigating_officer"))
     assert kn.status_code == 200
     assert kn.json()["language"] == "kn"
     assert kn.json()["intent"] == "similar_cases"
@@ -119,7 +116,7 @@ def test_reviewed_identity_links_are_facts_name_matches_are_hypotheses():
 
 @requires_db
 def test_case_not_found_is_404():
-    assert client.get("/investigate/999999999/brief", headers=_hdr("investigator")).status_code == 404
+    assert client.get("/investigate/999999999/brief", headers=_hdr("investigating_officer")).status_code == 404
 
 
 # ============================ send-to-board (no persist) ===================
@@ -128,6 +125,6 @@ def test_send_to_board_invalid_board_is_skipped_gracefully():
     # A bogus board id -> add_node raises BoardNotFound -> skipped (no persist, no crash).
     out = service.send_to_board(
         999999999, [{"ref_table": "CaseMaster", "ref_id": "1", "label": "Case 1", "kind": "case"}],
-        actor="demo.investigator", role="investigator")
+        actor="demo.investigating_officer", role="investigating_officer")
     assert out["created_count"] == 0
     assert out["skipped_count"] == 1

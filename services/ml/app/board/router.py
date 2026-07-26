@@ -1,6 +1,6 @@
 """FastAPI router for the Investigation Board (Prompt 16 §C).
 
-Every mutating route: coarse role gate (deny policymaker) + synthetic write guard
+Every mutating route: coarse role gate (canonical command roles) + write guard
 + resolved demo actor + optional idempotency key + optional If-Match version.
 Lock / promotion / export additionally require a fresh authenticated confirmation.
 Per-board authorization (owner/editor/viewer, out-of-scope share) is enforced in
@@ -287,8 +287,8 @@ def import_subgraph(board_id: int, req: SearchAroundRequest, request: Request,
 def seed_reference(board_id: int, req: SeedRequest, request: Request,
                    role: str = Depends(guards.require_board_role),
                    x_idempotency_key: Optional[str] = Header(default=None)):
-    """Pin an object AND auto-populate its immediate network (parties for a case,
-    verified neighbourhood for an entity). Graceful: degrades to a single pin."""
+    """Pin an object and auto-populate its governed case records or verified
+    entity neighbourhood. Graceful: degrades to a single pin."""
     guards.require_board_write_allowed(request)
     return _call(service.seed_reference, board_id, req, guards.resolve_actor(request),
                  role, idem_key=_idem(x_idempotency_key))

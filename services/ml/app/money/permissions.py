@@ -3,8 +3,7 @@
 Financial data is sensitive, so every /money endpoint depends on this gate. It
 resolves the caller's role (the server-trusted X-Role, rewritten from the signed
 gateway context in deployed mode) and checks the in-code authorization matrix
-for resource='money_trail'. A role whose grant is absent (e.g. policymaker) is
-refused with 403.
+for resource='money_trail'. A role whose grant is absent is refused with 403.
 
 The matrix is enforced IN CODE (not read from AWS RDS): the versioned
 AWS→Data Store map records role_permissions as NOT_IMPORTED, so the gate holds
@@ -18,29 +17,23 @@ from typing import Optional
 from fastapi import Header, HTTPException
 
 from ..config import get_settings
+from ..roles import DEFAULT_ROLE, FUNCTIONAL_ROLES
 
 MONEY_RESOURCE = "money_trail"
 
 # Code-based 'money_trail' authorization matrix (Prompt 21 §B/§E). The versioned
 # AWS→Data Store map (app/datastore/mapping.py) records role_permissions as
 # NOT_IMPORTED — "authorization matrix enforced in code, not imported" — so the
-# gate must NOT read AWS RDS. This mirrors exactly the seed in
-# services/ml/sql/police_fir_extensions.sql (super_admin=write; investigator/
-# analyst/supervisor=read; policymaker + disaster_coordinator are unmapped =>
-# denied). It therefore holds with DATABASE_URL absent (deployed AppSail).
-MONEY_TRAIL_ACTIONS: dict[str, str] = {
-    "super_admin": "write",
-    "investigator": "read",
-    "analyst": "read",
-    "supervisor": "read",
-    # Aggregate-only / non-financial-crime roles carry an EXPLICIT 'none' grant,
-    # mirroring the SQL seed row ('policymaker','money_trail','none'). 'none' is a
-    # first-class permission_action_enum value, distinct from an unknown role
-    # (which resolves to None below). Both deny, but 'none' means "known role,
-    # deliberately no money_trail access".
-    "policymaker": "none",
-    "disaster_coordinator": "none",
-}
+# gate must NOT read AWS RDS. It mirrors the seed in
+# services/ml/sql/police_fir_extensions.sql and therefore holds with
+# DATABASE_URL absent (deployed AppSail).
+#
+# INTERIM ("all roles have access to everything"): every command role holds
+# WRITE on money_trail. A role that is later denied should carry an EXPLICIT
+# 'none' grant (a first-class permission_action_enum value, distinct from an
+# unknown role which resolves to None below) — both deny, but 'none' means
+# "known role, deliberately no money_trail access".
+MONEY_TRAIL_ACTIONS: dict[str, str] = {role: "write" for role in FUNCTIONAL_ROLES}
 
 
 def action_for_role(role: str) -> Optional[str]:
@@ -53,7 +46,7 @@ def action_for_role(role: str) -> Optional[str]:
 
 
 def _resolve_role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_money_permission(x_role: Optional[str] = Header(default=None)) -> str:

@@ -138,7 +138,7 @@ client = TestClient(app)
 
 def _mint(scope="service", nonce="n", source="cron_forecast"):
     now = gc._now_ms()
-    p = {"scope": scope, "aud": gc.DEFAULT_AUDIENCE, "role": "investigator",
+    p = {"scope": scope, "aud": gc.DEFAULT_AUDIENCE, "role": "investigating_officer",
          "ts": now, "exp": now + 60_000, "nonce": nonce, "request_id": "r",
          "source": source}
     raw = json.dumps(p).encode("utf-8")

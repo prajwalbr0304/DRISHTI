@@ -80,18 +80,20 @@ def _assert_airesult(r: AiResult):
 
 @requires_db
 def test_money_permission_matrix():
-    assert permissions.action_for_role("policymaker") == "none"
-    assert permissions.action_for_role("investigator") == "read"
-    assert permissions.action_for_role("super_admin") == "write"
-    # read gate: policymaker denied, investigator allowed
+    # INTERIM ("all roles have access to everything"): every command role holds
+    # WRITE on money_trail; a role outside the canonical set is unmapped.
+    from app.roles import FUNCTIONAL_ROLES
+    for role in FUNCTIONAL_ROLES:
+        assert permissions.action_for_role(role) == "write", role
+        assert permissions.require_money_permission(role) == role
+        assert permissions.require_money_write(role) == role
+    assert permissions.action_for_role("wizard") is None
+    # An unmapped role is refused by both gates (the gate is code-based).
     with pytest.raises(HTTPException) as ex:
-        permissions.require_money_permission("policymaker")
+        permissions.require_money_permission("wizard")
     assert ex.value.status_code == 403
-    assert permissions.require_money_permission("investigator") == "investigator"
-    # write gate: read-only role denied, write role allowed
     with pytest.raises(HTTPException):
-        permissions.require_money_write("investigator")
-    assert permissions.require_money_write("super_admin") == "super_admin"
+        permissions.require_money_write("wizard")
 
 
 def _an_account_with_outflow():

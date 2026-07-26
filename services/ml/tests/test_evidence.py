@@ -88,7 +88,7 @@ def _sha(data: bytes) -> str:
 def _create(conn, case_id=None, etype="document", **kw):
     req = EvidenceCreateRequest(case_id=case_id, evidence_type=etype,
                                 title=kw.pop("title", "Test evidence"),
-                                uploader_actor="demo.investigator", **kw)
+                                uploader_actor="demo.investigating_officer", **kw)
     item_id, warn = svc._create_item(conn, req)
     return item_id
 
@@ -278,7 +278,7 @@ def test_metadata_correction_is_appended_not_overwritten(rw_rollback):
     before = len(svc._serialize_item(conn, item_id).activity)
     svc._update_metadata(conn, item_id, EvidenceMetadataUpdate(
         title="Corrected title", tags=["synthetic", "corrected"],
-        change_reason="fix typo", actor="demo.supervisor"))
+        change_reason="fix typo", actor="demo.sho"))
     item = svc._serialize_item(conn, item_id)
     assert item.title == "Corrected title"
     assert "corrected" in item.tags
@@ -321,7 +321,7 @@ def test_download_url_is_short_lived(rw_rollback):
     gw = FakeS3Gateway()
     item_id = _create(conn, case_id=_case_id(conn))
     _upload(conn, item_id, gw, b"downloadable synthetic bytes")
-    resp = svc._download_url(conn, item_id, None, "demo.analyst", gw)
+    resp = svc._download_url(conn, item_id, None, "demo.crime_analyst", gw)
     expiry = get_settings().s3_presign_expiry_s
     assert resp.expires_in == expiry
     assert expiry <= 3600                              # short-lived
@@ -337,12 +337,12 @@ def test_archive_then_restore(rw_rollback):
     gw = FakeS3Gateway()
     item_id = _create(conn, case_id=_case_id(conn))
     _upload(conn, item_id, gw, b"archivable bytes")
-    svc._archive(conn, item_id, ArchiveRequest(reason="demo", actor="demo.super_admin"))
+    svc._archive(conn, item_id, ArchiveRequest(reason="demo", actor="demo.system_admin"))
     assert svc._item_row(conn, item_id)[13] == "archived"
     # archived items cannot be edited
     with pytest.raises(EvidenceConflict):
         svc._update_metadata(conn, item_id, EvidenceMetadataUpdate(title="nope"))
-    svc._restore(conn, item_id, "demo.super_admin")
+    svc._restore(conn, item_id, "demo.system_admin")
     assert svc._item_row(conn, item_id)[13] == "available"   # has an object -> available
 
 
@@ -356,7 +356,7 @@ def test_link_and_unlink_second_case(rw_rollback):
     svc._link(conn, item_id, LinkRequest(case_id=c2, link_type="related"))
     item = svc._serialize_item(conn, item_id)
     assert {cl.case_master_id for cl in item.case_links} == {c1, c2}
-    svc._unlink(conn, item_id, c2, None, "demo.investigator")
+    svc._unlink(conn, item_id, c2, None, "demo.investigating_officer")
     item = svc._serialize_item(conn, item_id)
     assert {cl.case_master_id for cl in item.case_links} == {c1}
 
@@ -393,9 +393,9 @@ def test_legacy_migration_idempotent(rw_rollback):
         cur.execute(
             'INSERT INTO "CaseEvidence" ("CaseMasterID","EvidenceType","Title","Description","Reference","CreatedByRole") '
             'VALUES (%s,%s,%s,%s,%s,%s) RETURNING "EvidenceID"',
-            (cid, "seizure", "Legacy seizure memo", "desc", "SEIZ-TEST-1", "investigator"))
+            (cid, "seizure", "Legacy seizure memo", "desc", "SEIZ-TEST-1", "investigating_officer"))
         leg_id = int(cur.fetchone()[0])
-    res = svc._migrate_legacy(conn, cid, "demo.super_admin")
+    res = svc._migrate_legacy(conn, cid, "demo.system_admin")
     assert res.migrated >= 1
     # the migrated item carries the legacy marker + mapped type
     with conn.cursor() as cur:
@@ -404,7 +404,7 @@ def test_legacy_migration_idempotent(rw_rollback):
         row = cur.fetchone()
     assert row is not None and row[0] == "property_item"      # seizure -> property_item
     # re-run: already migrated -> skipped, not duplicated
-    res2 = svc._migrate_legacy(conn, cid, "demo.super_admin")
+    res2 = svc._migrate_legacy(conn, cid, "demo.system_admin")
     assert res2.skipped_existing >= 1
 
 
@@ -463,7 +463,7 @@ client = TestClient(app)
 
 
 def test_status_endpoint():
-    r = client.get("/evidence/status", headers={"X-Role": "investigator"})
+    r = client.get("/evidence/status", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200
     body = r.json()
     assert body["environment_label"] == "Synthetic Hackathon Demo"
@@ -471,30 +471,37 @@ def test_status_endpoint():
 
 
 def test_lookups_endpoint():
-    r = client.get("/evidence/lookups", headers={"X-Role": "investigator"})
+    r = client.get("/evidence/lookups", headers={"X-Role": "investigating_officer"})
     assert r.status_code == 200
     assert any(t["value"] == "document" for t in r.json()["evidence_types"])
 
 
-def test_policymaker_denied_evidence():
-    assert client.get("/evidence/items", headers={"X-Role": "policymaker"}).status_code == 403
-    r = client.post("/evidence/items", headers={"X-Role": "policymaker"},
-                    json={"title": "x", "evidence_type": "document"})
-    assert r.status_code == 403
+def test_evidence_gates_open_to_every_command_role():
+    # INTERIM ("all roles have access to everything"): no command seat is denied
+    # evidence reads or writes; a non-canonical role is still refused the write.
+    from fastapi import HTTPException
+
+    from app.roles import FUNCTIONAL_ROLES
+    for role in FUNCTIONAL_ROLES:
+        assert guards.require_evidence_read(role) == role
+        assert guards.require_evidence_write(role) == role
+    with pytest.raises(HTTPException) as ex:
+        guards.require_evidence_write("wizard")
+    assert ex.value.status_code == 403
 
 
 def test_upload_url_requires_s3_config():
     # S3_EVIDENCE_BUCKET is unset in the test env -> upload is 503 (metadata-only mode).
     if get_settings().s3_configured():
         pytest.skip("S3 configured in this environment")
-    r = client.post("/evidence/items/1/upload-url", headers={"X-Role": "investigator"},
+    r = client.post("/evidence/items/1/upload-url", headers={"X-Role": "investigating_officer"},
                     json={"file_name": "a.pdf", "mime_type": "application/pdf", "size_bytes": 10})
     assert r.status_code == 503
 
 
 @requires_db
 def test_items_list_read():
-    r = client.get("/evidence/items", headers={"X-Role": "investigator"},
+    r = client.get("/evidence/items", headers={"X-Role": "investigating_officer"},
                    params={"page_size": 5})
     assert r.status_code == 200
     body = r.json()

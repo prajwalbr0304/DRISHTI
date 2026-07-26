@@ -2,7 +2,7 @@
 
   GET /performance/overview — scoped station/officer operational metrics.
 
-Supervisory view: investigators/policymakers do not get the per-station/officer
+Command-chain view. INTERIM: every command role may open the per-station/officer
 performance surface. The requested unit/district filter is confined server-side
 to the caller's derived scope (station chief -> their station, SP -> assigned
 units, higher ranks -> authorized aggregates); a browser header is never trusted.
@@ -16,18 +16,19 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from ..config import get_settings
 from ..org import scope as scope_mod
 from ..org import service as org_service
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import service
 from .schemas import PerformanceResponse
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
-# The supervisory command chain maps to the supervisor functional role
-# (SP/DGP/... -> supervisor); super_admin oversees all.
-PERFORMANCE_ROLES = {"supervisor", "super_admin"}
+# Station/officer performance. INTERIM ("all roles have access to everything"):
+# every command role may open it; the seat's own scope still bounds the numbers.
+PERFORMANCE_ROLES = set(ALL_ROLES)
 
 
 def _role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def require_supervisor(x_role: Optional[str] = Header(default=None)) -> str:
@@ -36,7 +37,7 @@ def require_supervisor(x_role: Optional[str] = Header(default=None)) -> str:
         raise HTTPException(
             status_code=403,
             detail=(f"Role '{role}' cannot open station/officer performance — this "
-                    "is a supervisory view (SP/station-chief/super-admin)."))
+                    "is a command-chain view."))
     return role
 
 

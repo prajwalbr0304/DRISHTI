@@ -4,14 +4,12 @@ Because AWS PostgreSQL RLS/FORCE RLS remain DISABLED (as requested), the access
 boundary is the Catalyst-authenticated API. This module enforces it server-side
 in AppSail for every board read, mutation, collaboration and export route:
 
-  * Catalyst Authentication identities map to synthetic IO (investigator),
-    Analyst, Supervisor and policymaker/demo-lead roles (the trusted role is the
-    server-injected X-Role — see gateway_enforcement.py; in dev it is the demo
-    header, still enforced as defence in depth).
-  * policymakers/demo-leads have NO board access (boards model sensitive
-    investigative material even though all data is synthetic).
-  * IOs own/edit assigned-case boards; Analysts use explicitly shared boards;
-    Supervisors can share, lock, branch and promote.
+  * Catalyst Authentication identities map to the synthetic command roles in
+    app/roles.py (the trusted role is the server-injected X-Role — see
+    gateway_enforcement.py; in dev it is the demo header, still enforced as
+    defence in depth).
+  * INTERIM: every command role holds board access, including share, lock and
+    promote. Per-board authorization (owner/editor/viewer) still applies.
   * `investigation_board` (read/write), `board_share` and `board_promote` are
     the enforced permissions.
   * lock, promotion and export require a fresh authenticated confirmation.
@@ -28,25 +26,22 @@ from fastapi import Header, HTTPException, Request
 
 from ..config import get_settings
 from ..intake.guards import require_localhost, synthetic_db_ok
+from ..roles import ALL_ROLES, DEFAULT_ROLE
 
 # --- role sets --------------------------------------------------------------
-# Boards carry PII-equivalent investigative material -> policymaker/demo-lead
-# has NO access at all.
-BOARD_DENY_ROLES = {"policymaker"}
-# Any role that may touch boards at all (everything except the denied set).
-BOARD_ROLES = {"investigator", "analyst", "supervisor", "super_admin"}
-# Who may create/own a board.
-BOARD_CREATE_ROLES = {"investigator", "analyst", "supervisor", "super_admin"}
-# board_share: share/visibility changes are an owner + supervisory action.
-BOARD_SHARE_ROLES = {"supervisor", "super_admin"}
-# Locking / branching a locked board.
-BOARD_LOCK_ROLES = {"supervisor", "super_admin"}
-# board_promote: hypothesis -> review proposal.
-BOARD_PROMOTE_ROLES = {"supervisor", "super_admin"}
+# INTERIM ("all roles have access to everything"): no role is denied the board,
+# and every command role may create, share, lock and promote. Per-BOARD
+# authorization (owner/editor/viewer) still applies in service.py.
+BOARD_DENY_ROLES: set[str] = set()
+BOARD_ROLES = set(ALL_ROLES)
+BOARD_CREATE_ROLES = set(ALL_ROLES)
+BOARD_SHARE_ROLES = set(ALL_ROLES)
+BOARD_LOCK_ROLES = set(ALL_ROLES)
+BOARD_PROMOTE_ROLES = set(ALL_ROLES)
 
 
 def _resolve_role(x_role: Optional[str]) -> str:
-    return (x_role or get_settings().default_role or "investigator").strip()
+    return (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
 
 
 def resolve_actor(request: Request) -> str:
@@ -61,7 +56,7 @@ def resolve_actor(request: Request) -> str:
 
 # --- coarse role gates (FastAPI dependencies) -------------------------------
 def require_board_role(x_role: Optional[str] = Header(default=None)) -> str:
-    """Any board route: deny the policymaker/demo-lead role entirely."""
+    """Any board route — INTERIM: no command role is denied."""
     role = _resolve_role(x_role)
     if role in BOARD_DENY_ROLES:
         raise HTTPException(

@@ -75,6 +75,7 @@ interface Props {
   onSelect: (s: BoardSelection) => void;
   onMoveNode: (id: number, x: number, y: number) => void;
   onMoveAnnotation: (id: number, x: number, y: number) => void;
+  onResizeAnnotation: (id: number, width: number, height: number) => void;
   onConnect: (source: number, target: number) => void;
   onOpenSource: (path: string) => void;
   onToggleFocus: () => void;
@@ -198,7 +199,7 @@ function isDegenerateLayout(nodes: BoardNodeT[], edges: BoardEdgeT[]): boolean {
 function Inner(props: Props) {
   const {
     detail, diffs, filters, scrubTime, readOnly, selection, onSelect, onMoveNode,
-    onMoveAnnotation, onConnect, onOpenSource, focusMode, onToggleFocus,
+    onMoveAnnotation, onResizeAnnotation, onConnect, onOpenSource, focusMode, onToggleFocus,
     onSearchAround, onDeleteNode, onExpandNode, onFindPath,
   } = props;
   const rf = useReactFlow();
@@ -287,8 +288,10 @@ function Inner(props: Props) {
         type: a.kind === "frame" ? "frame" : "sticky",
         position: { x: g.x ?? 0, y: g.y ?? 0 },
         selected: sel.kind === "annotation" && sel.id === a.board_annotation_id,
-        style: a.kind === "frame" ? { width: g.w ?? 320, height: g.h ?? 220, zIndex: -1 } : undefined,
-        data: { ann: a, dimmed: false },
+        style: a.kind === "frame"
+          ? { width: g.w ?? 320, height: g.h ?? 220, zIndex: 0, pointerEvents: "auto" }
+          : { zIndex: 1 },
+        data: { ann: a, dimmed: false, onResize: onResizeAnnotation },
         draggable: !readOnly,
       });
     }
@@ -335,10 +338,14 @@ function Inner(props: Props) {
         }
         const id = Number(rn.id.slice(2));
         const a = aById.get(id);
+        const g = (a?.geometry || {}) as { w?: number; h?: number };
         return {
           ...rn,
           selected: selection.kind === "annotation" && selection.id === id,
-          data: { ann: a ?? (rn.data as { ann: unknown }).ann, dimmed: false },
+          data: { ann: a ?? (rn.data as { ann: unknown }).ann, dimmed: false, onResize: onResizeAnnotation },
+          style: a?.kind === "frame"
+            ? { ...rn.style, width: g.w ?? 320, height: g.h ?? 220, zIndex: 0, pointerEvents: "auto" }
+            : { ...rn.style, zIndex: 1 },
         };
       }),
     );
@@ -437,18 +444,20 @@ function Inner(props: Props) {
   }, [multiSel, detail.nodes]);
 
   const onSelChange = useCallback(
-    (params: { nodes: Node[]; edges: Edge[] }) => {
+    (params: { nodes: Node[] }) => {
       setMultiSel(params.nodes.filter((n) => n.id.startsWith("n:")).map((n) => Number(n.id.slice(2))));
-      if (params.edges.length) {
-        onSelect({ kind: "edge", id: Number(params.edges[0].id.slice(2)) });
-      } else if (params.nodes.length) {
-        const nd = params.nodes[0];
-        const [k, idStr] = nd.id.split(":");
-        onSelect({ kind: k === "a" ? "annotation" : "node", id: Number(idStr) });
-      } else {
-        onSelect({ kind: null, id: null });
-      }
     },
+    [],
+  );
+  const onNodeClick = useCallback(
+    (_e: ReactMouseEvent, node: Node) => {
+      const [kind, idStr] = node.id.split(":");
+      onSelect({ kind: kind === "a" ? "annotation" : "node", id: Number(idStr) });
+    },
+    [onSelect],
+  );
+  const onEdgeClick = useCallback(
+    (_e: ReactMouseEvent, edge: Edge) => onSelect({ kind: "edge", id: Number(edge.id.slice(2)) }),
     [onSelect],
   );
 
@@ -478,6 +487,8 @@ function Inner(props: Props) {
       onConnect={handleConnect}
       onNodeDragStop={handleDragStop}
       onSelectionChange={onSelChange}
+      onNodeClick={onNodeClick}
+      onEdgeClick={onEdgeClick}
       onNodeContextMenu={onNodeContextMenu}
       onNodeDoubleClick={handleNodeDoubleClick}
       onPaneClick={() => { closeMenu(); onSelect({ kind: null, id: null }); }}

@@ -25,6 +25,7 @@ import {
 import { api } from "@/api";
 import { ApiError, errorMessage } from "@/api/contracts";
 import { cn } from "@/lib/utils";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -53,8 +54,8 @@ import { DigitalPage } from "@/routes/cases/subpages/DigitalPage";
 /* ============================================================================
    Case file shell (doc 01 §4.2): AWS-style object page with a left sub-nav.
    A single /cases/{id}/detail fetch powers the detail sub-pages; async sub-pages
-   (similar, summary, leads, network, evidence) fetch independently. Policymaker
-   is blocked entirely with an explicit state.
+   (similar, summary, leads, network, evidence) fetch independently. A role
+   without the case_read capability is blocked with an explicit state.
    ========================================================================== */
 
 interface SubNavItem {
@@ -98,23 +99,23 @@ export function CaseFile() {
   );
 
   // Hooks must run unconditionally and in a stable order (React Rules of
-  // Hooks), so this query is declared BEFORE the policymaker early-return
-  // below; it is simply disabled for policymaker (who is blocked anyway).
+  // Hooks), so this query is declared BEFORE the no-access early-return
+  // below; it is simply disabled without the capability (who is blocked anyway).
   const q = useQuery({
     queryKey: ["cases", "detail", caseId],
     queryFn: ({ signal }) => api.cases.detail(caseId, signal),
-    enabled: role !== "policymaker" && Number.isFinite(caseId) && caseId > 0,
+    enabled: roleCan(role, "case_read") && Number.isFinite(caseId) && caseId > 0,
   });
 
-  // Policymaker full-file block.
-  if (role === "policymaker") {
+  // Full-file capability block.
+  if (!roleCan(role, "case_read")) {
     return (
       <div>
         <PageHeader title="Case file" />
         <EmptyState
           icon={Lock}
           title="Not available for this role"
-          description="Individual case files contain personal data and are not accessible to the policymaker role. This role sees aggregate-only district views."
+          description="Individual case files contain personal data and are not accessible to this role. This role sees aggregate-only district views."
         />
       </div>
     );

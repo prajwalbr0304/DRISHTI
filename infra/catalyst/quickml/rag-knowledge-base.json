@@ -18,7 +18,7 @@
     "unreviewed case narratives",
     "any PII / real personal data"
   ],
-  "access_checks": "Before retrieval, the assistant enforces the same Catalyst identity + demo-role + case/unit scope checks as ordinary APIs (a case-scoped question is refused for the aggregate-only policymaker role).",
+  "access_checks": "Before retrieval, the assistant enforces the same Catalyst identity + demo-role + case/unit scope checks as ordinary APIs (a case-scoped question is refused for any role without case access).",
   "retention": "Only data-minimized prompt/response/audit metadata is retained (RagInteraction: question hash + short preview + citations + refusal + KB version + scope + latency), with an explicit synthetic retention window (default 30 days). Never logs secrets or unrestricted evidence text.",
   "evaluation": {
     "citation_required": true,

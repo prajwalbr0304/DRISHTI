@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Lock } from "lucide-react";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -14,8 +15,8 @@ import {
 /* ============================================================================
    Phase 8 workspace: template-driven digital + financial imports.
    Tabs: Import inbox (dry-run/commit/rollback) · Entity-link review ·
-   Accounts & transactions · Money alerts. Policymaker is blocked (aggregate-
-   only role); financial tabs are additionally permission-gated server-side.
+   Accounts & transactions · Money alerts. A seat without the capability is
+   blocked; financial tabs are additionally permission-gated server-side.
    ========================================================================== */
 
 const TABS = [
@@ -29,12 +30,12 @@ export function ImportsWorkspace() {
   const { role } = useRole();
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("inbox");
 
-  if (role === "policymaker") {
+  if (!roleCan(role, "imports_review")) {
     return (
       <div>
         <PageHeader title="Digital & financial imports" />
         <EmptyState icon={Lock} title="Not available for this role"
-          description="Structured imports and financial data are not accessible to the policymaker role, which works with aggregate views only." />
+          description="Structured imports and financial data are not accessible to this role, which works with aggregate views only." />
       </div>
     );
   }

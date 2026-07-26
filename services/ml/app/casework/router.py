@@ -1,7 +1,7 @@
 """FastAPI router for casework (Phase 7): statements, property/seizure, lab
 results, court events/bail/disposition/outcome, event-backed lifecycle, timeline.
 
-Reuses the intake hackathon guards: reads deny policymaker; writes need an
+Reuses the intake hackathon guards: reads pass the role gate; writes need an
 investigating/registering role + localhost + synthetic-DB; statement/lab review
 needs a supervisory role. Restricted statement/lab text is redacted server-side
 for roles without sensitive access. Uploaded files are linked by id only.

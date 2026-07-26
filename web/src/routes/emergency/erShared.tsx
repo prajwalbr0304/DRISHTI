@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, CircleSlash, Clock, WifiOff } from "lucide
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
+import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { DISTRICT_NAMES, districtName, useDisasterStore } from "@/stores/useDisasterStore";
 import type { FeedFreshness } from "@/api/endpoints/disaster";
@@ -153,6 +154,6 @@ export function useErCapabilities() {
   const { role } = useRole();
   const assignedDistrict = useDisasterStore((s) => s.assignedDistrict);
   const activeDistrict = useDisasterStore((s) => s.activeDistrict);
-  const canWrite = role === "disaster_coordinator" || role === "super_admin";
+  const canWrite = roleCan(role, "disaster_write");
   return { role, canWrite, assignedDistrict, activeDistrict, districtName };
 }

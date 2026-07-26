@@ -3,15 +3,15 @@
   "fixture_status": "representative",
   "idempotency_key": "intake:draft-77:8b1e...",
   "input": {
-    "draft": { "draft_id": "draft-77", "kind": "fir", "actor": "investigator:emp-12", "role": "investigator",
+    "draft": { "draft_id": "draft-77", "kind": "fir", "actor": "investigating_officer:emp-12", "role": "investigating_officer",
                "fields": { "crime_type": "theft", "location_district_id": 3, "brief": "synthetic draft" } },
-    "then": { "supervisor_approval": { "actor": "supervisor:emp-3", "role": "supervisor", "decision": "approve" } }
+    "then": { "supervisor_approval": { "actor": "sho:emp-3", "role": "sho", "decision": "approve" } }
   },
   "expected_output": {
     "on_draft_save": { "staging_id": "stg-77", "canonical_case_version_created": false, "prediction_request_created": false },
     "on_approval": { "canonical": "CaseVersion:cv-1001", "audit_id": "aud-5567", "signal": "row_inserted CaseVersion" }
   },
-  "lineage": { "staging_to_canonical": "stg-77 -> cv-1001", "approval_chain": ["investigator:emp-12", "supervisor:emp-3"] },
+  "lineage": { "staging_to_canonical": "stg-77 -> cv-1001", "approval_chain": ["investigating_officer:emp-12", "sho:emp-3"] },
   "asserts": [
     "draft save and submission NEVER create a canonical CaseVersion or PredictionRequest",
     "canonicalization happens only after supervisor approval"

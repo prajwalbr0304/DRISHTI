@@ -15,8 +15,9 @@ from typing import Optional
 from fastapi import Header, HTTPException
 
 from ..config import get_settings
+from ..roles import ALL_ROLES, FUNCTIONAL_ROLES, normalize_role
 
-ROLES = ("investigator", "analyst", "supervisor", "policymaker", "super_admin")
+ROLES = FUNCTIONAL_ROLES
 
 # Permission keys used across the app (aligned with the existing per-module gates
 # in cases/permissions.py, intake/guards.py and governance/router.py).
@@ -26,19 +27,10 @@ PERMISSIONS = (
     "report_generate", "report_global_scope", "notification_manage", "rag_use",
 )
 
-# role -> set of granted permissions. super_admin gets everything.
-_GRANTS: dict[str, set[str]] = {
-    "investigator": {"case_read", "case_write", "intake_write", "governance_run",
-                     "report_generate", "notification_manage", "rag_use"},
-    "analyst": {"case_read", "governance_run", "report_generate",
-                "notification_manage", "rag_use"},
-    "supervisor": {"case_read", "intake_write", "intake_review", "governance_run",
-                   "governance_review", "admin_read", "report_generate",
-                   "notification_manage", "rag_use"},
-    # policymaker sees aggregate only: no individual case read, no intake.
-    "policymaker": {"report_generate", "rag_use"},
-    "super_admin": set(PERMISSIONS),
-}
+# role -> set of granted permissions. INTERIM: every command role holds every
+# permission ("all roles have access to everything"). Narrow this dict — and the
+# capability list in web/src/config/roles.ts — when real RBAC lands.
+_GRANTS: dict[str, set[str]] = {role: set(PERMISSIONS) for role in FUNCTIONAL_ROLES}
 
 
 def has_permission(role: str, permission: str) -> bool:
@@ -52,13 +44,15 @@ def authorization_matrix() -> dict[str, dict[str, bool]]:
 
 
 def resolve_role(x_role: Optional[str]) -> str:
-    role = (x_role or get_settings().default_role or "investigator").strip()
-    return role if role in ROLES else (get_settings().default_role or "investigator")
+    role = (x_role or get_settings().default_role or "").strip()
+    if role in ALL_ROLES:
+        return role
+    return normalize_role(get_settings().default_role)
 
 
 # --- FastAPI dependency gates ----------------------------------------------
 def require_admin_read(x_role: Optional[str] = Header(default=None)) -> str:
-    """Admin console reads — supervisor + super_admin (operational oversight)."""
+    """Admin console reads — INTERIM: open to every command role."""
     role = resolve_role(x_role)
     if not has_permission(role, "admin_read"):
         raise HTTPException(
@@ -69,7 +63,8 @@ def require_admin_read(x_role: Optional[str] = Header(default=None)) -> str:
 
 
 def require_admin_write(x_role: Optional[str] = Header(default=None)) -> str:
-    """Admin configuration changes — super_admin only (retention/holds/flags/models)."""
+    """Admin configuration changes (retention/holds/flags/models) — INTERIM: open
+    to every command role."""
     role = resolve_role(x_role)
     if not has_permission(role, "admin_write"):
         raise HTTPException(

@@ -46,7 +46,7 @@ def ask(req: AskRequest, x_role: Optional[str] = Header(default=None)):
     """NL->SQL: a grounded, cited, read-only answer scoped to the caller's role.
 
     The role comes from the X-Role header and drives server-side scoping — a
-    policymaker's same question returns aggregate-only. Scoping is NOT in the
+    an aggregate-only role's same question returns aggregates. Scoping is NOT in the
     prompt; it's enforced by the guarded executor.
     """
     q = (req.question or "").strip()

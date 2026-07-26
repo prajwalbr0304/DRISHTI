@@ -2,7 +2,7 @@
 
 The ONLY path a model-proposed query reaches Postgres. Three independent guards:
   1. validate_select — single read-only SELECT, no DDL/DML/dangerous funcs (guard.py)
-  2. enforce_scope   — role may not touch forbidden/PII tables; policymaker aggregate-only (scope.py)
+  2. enforce_scope   — role may not touch forbidden/PII tables; aggregate-only roles (scope.py)
   3. db.ro_conn      — SET ROLE drishti_readonly + read-only transaction (privilege + txn)
 Plus a statement timeout and a row cap. Returns the cleaned SELECT that was run
 (for the "SQL executed" proof) and the result columns + rows.

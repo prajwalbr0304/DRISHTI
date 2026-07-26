@@ -153,7 +153,7 @@ def points(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
            end: Optional[dt.date] = None, crime_head_id: Optional[int] = None,
            limit: int = 5000):
     """Raw incident coordinates for the Live Map. Point-level, so only for
-    authorised roles (the router blocks policymaker). Capped + bbox/time filtered."""
+    authorised roles (the router applies the point-level cap). Capped + filtered."""
     from .schemas import PointFeature, PointsResponse
     limit = max(1, min(int(limit), 20000))
     where = ['cm."geom" IS NOT NULL']
@@ -196,7 +196,7 @@ def points(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
 
 def stations(bbox: Optional[tuple] = None, limit: int = 1500):
     """Police stations plotted at the centroid of the incidents they handle
-    (Unit has no geometry of its own). Point-level, so router blocks policymaker."""
+    (Unit has no geometry of its own). Point-level -> router applies the cap."""
     from .schemas import StationFeature, StationsResponse
     limit = max(1, min(int(limit), 2000))
     where = ['cm."geom" IS NOT NULL', 'cm."PoliceStationID" IS NOT NULL']
@@ -231,7 +231,7 @@ def stations(bbox: Optional[tuple] = None, limit: int = 1500):
 def case_links(case_id: int, limit: int = 60):
     """Geo-located cases linked to a source case by a shared CANONICAL accused
     person (co-offending footprint, Phase 4 — never a name match). Powers the Live
-    Map arc view. Point-level -> router blocks policymaker."""
+    Map arc view. Point-level -> router applies the point-level cap."""
     from .schemas import CaseLinkNode, CaseLinksResponse
     limit = max(1, min(int(limit), 200))
     with db.ro_conn() as conn:
