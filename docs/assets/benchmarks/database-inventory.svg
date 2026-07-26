@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">DRISHTI AWS RDS PostgreSQL database inventory</title>
+  <desc id="desc">A graphical summary of the database size, tables, rows, indexes and exact row counts by data domain.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset=".56" stop-color="#10183a"/>
+      <stop offset="1" stop-color="#23113d"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c084fc"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="720" rx="28" fill="url(#bg)"/>
+  <circle cx="1080" cy="62" r="190" fill="#7c3aed" opacity=".1"/>
+  <circle cx="80" cy="700" r="230" fill="#06b6d4" opacity=".07"/>
+  <text x="58" y="58" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="800">DRISHTI database inventory</text>
+  <text x="58" y="89" fill="#a5b4fc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">AWS RDS PostgreSQL 17.10 • exact counts • synthetic hackathon dataset • measured 26 July 2026</text>
+
+  <!-- KPI cards -->
+  <g filter="url(#shadow)">
+    <rect x="58" y="118" width="255" height="105" rx="20" fill="#0c243b" stroke="#22d3ee" stroke-opacity=".55"/>
+    <text x="82" y="148" fill="#67e8f9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">EXACT ROWS</text>
+    <text x="82" y="187" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="31" font-weight="800">3,011,145</text>
+    <text x="82" y="207" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11">across all ordinary tables</text>
+
+    <rect x="328" y="118" width="255" height="105" rx="20" fill="#1a1738" stroke="#a78bfa" stroke-opacity=".6"/>
+    <text x="352" y="148" fill="#c4b5fd" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">DATABASE OBJECTS</text>
+    <text x="352" y="187" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="31" font-weight="800">140 tables</text>
+    <text x="352" y="207" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11">20 views • 3 materialized views</text>
+
+    <rect x="598" y="118" width="255" height="105" rx="20" fill="#0e2b27" stroke="#34d399" stroke-opacity=".55"/>
+    <text x="622" y="148" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">CURRENT DATABASE SIZE</text>
+    <text x="622" y="187" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="31" font-weight="800">1.02 GB</text>
+    <text x="622" y="207" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11">0.95 GiB of 30 GiB allocated</text>
+
+    <rect x="868" y="118" width="274" height="105" rx="20" fill="#30210f" stroke="#fbbf24" stroke-opacity=".6"/>
+    <text x="892" y="148" fill="#fde68a" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">SCHEMA CONTROLS</text>
+    <text x="892" y="187" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="31" font-weight="800">503 indexes</text>
+    <text x="892" y="207" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11">1,708 columns • 582 constraints</text>
+  </g>
+
+  <!-- domain bars -->
+  <rect x="58" y="252" width="1084" height="388" rx="24" fill="#0d172c" stroke="#334155" filter="url(#shadow)"/>
+  <text x="88" y="291" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="800">Exact rows by governed data domain</text>
+  <text x="888" y="291" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11">bar scale relative to largest domain</text>
+
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="88" y="335" fill="#cbd5e1" font-size="13" font-weight="700">People, parties &amp; organisations</text>
+    <rect x="340" y="320" width="650" height="18" rx="9" fill="url(#cyan)"/>
+    <text x="1004" y="335" fill="#67e8f9" font-size="13" font-weight="800">1,156,931</text>
+
+    <text x="88" y="375" fill="#cbd5e1" font-size="13" font-weight="700">Core cases &amp; FIR taxonomy</text>
+    <rect x="340" y="360" width="555" height="18" rx="9" fill="url(#violet)"/>
+    <text x="909" y="375" fill="#c4b5fd" font-size="13" font-weight="800">987,211</text>
+
+    <text x="88" y="415" fill="#cbd5e1" font-size="13" font-weight="700">Legal, court &amp; lifecycle</text>
+    <rect x="340" y="400" width="295" height="18" rx="9" fill="url(#green)"/>
+    <text x="649" y="415" fill="#6ee7b7" font-size="13" font-weight="800">524,821</text>
+
+    <text x="88" y="455" fill="#cbd5e1" font-size="13" font-weight="700">Networks &amp; intelligence</text>
+    <rect x="340" y="440" width="125" height="18" rx="9" fill="url(#orange)"/>
+    <text x="479" y="455" fill="#fde68a" font-size="13" font-weight="800">222,407</text>
+
+    <text x="88" y="495" fill="#cbd5e1" font-size="13" font-weight="700">Evidence, property, digital &amp; financial</text>
+    <rect x="340" y="480" width="59" height="18" rx="9" fill="#f43f5e"/>
+    <text x="413" y="495" fill="#fda4af" font-size="13" font-weight="800">104,432</text>
+
+    <text x="88" y="535" fill="#cbd5e1" font-size="13" font-weight="700">Geospatial &amp; contextual</text>
+    <rect x="340" y="520" width="18" height="18" rx="9" fill="#38bdf8"/>
+    <text x="372" y="535" fill="#7dd3fc" font-size="13" font-weight="800">12,167</text>
+
+    <text x="88" y="575" fill="#cbd5e1" font-size="13" font-weight="700">ML, forecasts &amp; model governance</text>
+    <rect x="340" y="560" width="9" height="18" rx="4.5" fill="#a78bfa"/>
+    <text x="363" y="575" fill="#c4b5fd" font-size="13" font-weight="800">1,335</text>
+
+    <text x="626" y="575" fill="#cbd5e1" font-size="13" font-weight="700">Identity, audit &amp; reporting</text>
+    <rect x="836" y="560" width="9" height="18" rx="4.5" fill="#fbbf24"/>
+    <text x="859" y="575" fill="#fde68a" font-size="13" font-weight="800">1,559</text>
+
+    <text x="88" y="615" fill="#cbd5e1" font-size="13" font-weight="700">Intake, import &amp; data quality</text>
+    <rect x="340" y="600" width="6" height="18" rx="3" fill="#34d399"/>
+    <text x="360" y="615" fill="#6ee7b7" font-size="13" font-weight="800">282</text>
+  </g>
+
+  <rect x="58" y="660" width="1084" height="35" rx="17.5" fill="#142039" stroke="#334155"/>
+  <text x="600" y="683" text-anchor="middle" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12">
+    118 non-empty tables • 22 intentionally empty workflow/future-state tables • encrypted RDS storage • PostGIS + pgvector + pgRouting
+  </text>
+</svg>

@@ -60,21 +60,22 @@
 11. [Wireframes and mock diagrams](#wireframes-and-mock-diagrams)
 12. [Detailed solution architecture](#detailed-solution-architecture)
 13. [Technology stack](#technology-stack)
-14. [Zoho Catalyst services used](#zoho-catalyst-services-used)
-15. [Data, AI and model-governance approach](#data-ai-and-model-governance-approach)
-16. [Security, privacy and responsible use](#security-privacy-and-responsible-use)
-17. [Prototype snapshots](#prototype-snapshots)
-18. [Prototype performance report and benchmarking](#prototype-performance-report-and-benchmarking)
-19. [Proposed impact and use cases](#proposed-impact-and-use-cases)
-20. [Estimated implementation cost](#estimated-implementation-cost)
-21. [Repository structure](#repository-structure)
-22. [How to run the project locally](#how-to-run-the-project-locally)
-23. [Testing and release validation](#testing-and-release-validation)
-24. [Catalyst deployment model](#catalyst-deployment-model)
-25. [Future development](#future-development)
-26. [Known constraints](#known-constraints)
-27. [Three-minute demo script](#three-minute-demo-script)
-28. [Final submission checklist](#final-submission-checklist)
+14. [Database inventory and data volume](#database-inventory-and-data-volume)
+15. [Zoho Catalyst services used](#zoho-catalyst-services-used)
+16. [Data, AI and model-governance approach](#data-ai-and-model-governance-approach)
+17. [Security, privacy and responsible use](#security-privacy-and-responsible-use)
+18. [Prototype snapshots](#prototype-snapshots)
+19. [Prototype performance report and benchmarking](#prototype-performance-report-and-benchmarking)
+20. [Proposed impact and use cases](#proposed-impact-and-use-cases)
+21. [Estimated implementation cost](#estimated-implementation-cost)
+22. [Repository structure](#repository-structure)
+23. [How to run the project locally](#how-to-run-the-project-locally)
+24. [Testing and release validation](#testing-and-release-validation)
+25. [Catalyst deployment model](#catalyst-deployment-model)
+26. [Future development](#future-development)
+27. [Known constraints](#known-constraints)
+28. [Three-minute demo script](#three-minute-demo-script)
+29. [Final submission checklist](#final-submission-checklist)
 
 ---
 
@@ -709,6 +710,203 @@ flowchart LR
 
 ---
 
+## Database inventory and data volume
+
+### Measured database overview
+
+The database inventory below was measured directly from the authenticated AWS RDS PostgreSQL instance on **26 July 2026**. Row totals use exact `COUNT(*)` queries over every ordinary user table—not PostgreSQL planner estimates. The inspection was read-only and did not run `ANALYZE`, modify data or expose the connection credential.
+
+![DRISHTI database inventory](docs/assets/benchmarks/database-inventory.svg)
+
+| Database measure | Exact/current value |
+|---|---:|
+| Database | `drishti` |
+| Engine | AWS RDS PostgreSQL **17.10** on ARM64 |
+| RDS instance class | `db.t4g.medium` |
+| RDS status | Available |
+| Allocated storage | 30 GiB |
+| Storage encryption | Enabled |
+| Current database size | **1,024,399,027 bytes—1.02 GB / 0.95 GiB** |
+| Ordinary tables | **140** |
+| Non-empty tables | **118** |
+| Empty/future-state tables | **22** |
+| Exact rows across ordinary tables | **3,011,145** |
+| Views | **20** |
+| Materialized views | **3** |
+| Columns | **1,708** |
+| Indexes | **503** |
+| Constraints | **582** |
+| Table-relation storage | 1,008,418,816 bytes |
+| Table heap/data storage | 579,411,968 bytes |
+| Index storage | 424,673,280 bytes |
+
+> [!IMPORTANT]
+> The RDS instance is publicly addressable for the synthetic prototype. Authentication, encryption and server-side access controls still apply, but a production deployment should move the database into private subnets, disable public accessibility and permit traffic only from approved application/network boundaries.
+
+### Exact rows by data domain
+
+| Governed data domain | Tables | Non-empty | Exact rows | Share of all rows | What the domain contains |
+|---|---:|---:|---:|---:|---|
+| **People, parties and organisations** | 17 | 14 | **1,156,931** | 38.422% | Typed case roles, accused, victims, complainants, canonical people/entities, staff and reference attributes |
+| **Core cases and FIR taxonomy** | 14 | 14 | **987,211** | 32.785% | FIR/case master, versions, events, sources, occurrence time, crime heads/sub-heads and workflow taxonomy |
+| **Legal, court and lifecycle** | 14 | 14 | **524,821** | 17.429% | Acts/sections, arrests, accused-arrest links, chargesheets, bail, court events, outcomes and statements |
+| **Networks and intelligence** | 7 | 7 | **222,407** | 7.386% | Canonical graph, verified network edges, hidden associations, patterns, gangs and location observations |
+| **Evidence, property, digital and financial** | 20 | 14 | **104,432** | 3.468% | Evidence objects/versions/links, property, seizures, accounts, transactions, devices and communications |
+| **Geospatial and contextual** | 14 | 14 | **12,167** | 0.404% | State/district/unit boundaries, locations, hotspots, weather, social/economic indicators and calendar context |
+| **Identity, audit, collaboration and reporting** | 21 | 14 | **1,559** | 0.052% | Users, roles, permissions, audit, alerts, chat, voice, notifications, reports, flags and retention |
+| **ML, forecasts and model governance** | 17 | 15 | **1,335** | 0.044% | Predictions, model versions, benchmarks, feature snapshots, requests/results, reviews and backtests |
+| **Intake, import and data quality** | 16 | 12 | **282** | 0.009% | Draft FIR activity, ingestion, templates, entity-resolution review, quality issues and synthetic runs |
+| **Total** | **140** | **118** | **3,011,145** | **100%** | Synthetic, connected operational and analytical data |
+
+### Highest-volume tables
+
+| Table | Exact rows | Storage | Data represented |
+|---|---:|---:|---|
+| `CaseEvent` | **386,990** | 94 MB | Append-style case lifecycle and operational events |
+| `CasePartyRole` | **374,280** | 81 MB | Typed links between a case and complainant, victim, accused or other party |
+| `CanonicalEntity` | **223,161** | 41 MB | Canonical cross-source entity identifiers |
+| `CanonicalPerson` | **210,890** | 56 MB | Resolved synthetic person profiles |
+| `EntityGraph` | **206,026** | **340 MB** | Governed graph nodes/relationships and graph provenance |
+| `CaseSource` | **200,003** | 26 MB | Case-to-source-system mappings |
+| `ActSectionAssociation` | **172,374** | 18 MB | Legal act/section associations for cases |
+| `Accused` | **164,861** | 21 MB | Synthetic accused-party details |
+| `SourceRecord` | **100,068** | 31 MB | Source lineage and content identity |
+| `CaseMaster` | **100,003** | 69 MB | Primary FIR/case records |
+| `CaseVersion` | **100,003** | 34 MB | Versioned case snapshots |
+| `ComplainantDetails` | **100,003** | 17 MB | Synthetic complainant details |
+| `Inv_OccuranceTime` | **100,000** | 5.8 MB | Incident/occurrence temporal information |
+| `ArrestSurrender` | **72,762** | 13 MB | Arrest and surrender lifecycle records |
+| `inv_arrestsurrenderaccused` | **72,762** | 5.8 MB | Arrest-to-accused join records |
+| `Victim` | **71,604** | 9.6 MB | Synthetic victim-party details |
+| `CourtEvent` | **64,391** | 9.7 MB | Court lifecycle events |
+| `ChargesheetDetails` | **37,147** | 4 MB | Chargesheet records |
+| `CaseDisposition` | **28,309** | 4.4 MB | Case disposition state |
+| `OutcomeObservation` | **28,309** | 5.5 MB | Governed outcome observations for evaluation |
+| `BailEvent` | **27,196** | 4.4 MB | Bail lifecycle events |
+| `PropertyItem` | **13,766** | 3.2 MB | Stolen, recovered or case-linked property |
+| `Seizure` | **13,642** | 2.1 MB | Property/evidence seizure events |
+| `Employee` | **12,000** | 2.2 MB | Synthetic police employee records |
+| `StatementVersion` | **11,091** | 2.4 MB | Versioned witness/party statements |
+| `FinancialTransaction` | **11,049** | 7.8 MB | Synthetic transaction graph facts |
+| `Statement` | **9,895** | 2 MB | Governed statements |
+| `FinancialAccount` | **9,445** | 3 MB | Synthetic financial accounts |
+
+`EntityGraph` is the largest relation because its 206,026 records carry both graph data and substantial indexing; its 340 MB footprint is split approximately between 167 MB of table data and 173 MB of indexes.
+
+### Operational evidence and analytical tables
+
+| Capability | Supporting tables and measured volume |
+|---|---|
+| Case lifecycle | `CaseMaster` 100,003; `CaseVersion` 100,003; `CaseEvent` 386,990; `CaseDisposition` 28,309 |
+| Parties | `CasePartyRole` 374,280; `Accused` 164,861; `Victim` 71,604; `ComplainantDetails` 100,003 |
+| Legal workflow | `ActSectionAssociation` 172,374; `ArrestSurrender` 72,762; `ChargesheetDetails` 37,147; `CourtEvent` 64,391; `BailEvent` 27,196 |
+| Evidence | `EvidenceObject` 8,025; `EvidenceItem` 8,021; `EvidenceVersion` 8,009; `EvidenceCaseLink` 8,013; `EvidenceEntityLink` 5,276 |
+| Property and seizure | `PropertyItem` 13,766; `Seizure` 13,642 |
+| Digital and financial | `FinancialAccount` 9,445; `FinancialTransaction` 11,049; `TransactionLink` 3,120; `Device` 764; `DeviceArtifact` 764; `CommunicationEvent` 6,187 |
+| Network intelligence | `EntityGraph` 206,026; `NetworkEdge` 4,739; `drishti_hidden_associations` 2,463; `CrimePatternCase` 889 |
+| Geography | `JurisdictionBoundary` 1,263; `Unit` 1,032; `UnitLocation` 1,000; `District` 32; `State` 1; `CrimeHotspot` 41 |
+| Forecasting | `CrimePrediction` 278; `FeatureSnapshot` 192; `PredictionRequest` 161; `PredictionResult` 161; `ForecastBacktest` 2 |
+| Model governance | `ModelVersion` 21; `ModelBenchmark` 15; `ModelReview` 3; `PredictionReview` 1; `TrainingDatasetSnapshot` 3 |
+| Data quality | `DataQualityIssue` 56; `EntityResolutionCandidate` 37; `EntityMergeHistory` 13; `IngestionJob` 20; `IngestionRecord` 24 |
+| Audit and collaboration | `audit_logs` 77; `AlertHistory` 320; `ChatSession` 300; `ChatMessage` 592; `VoiceTranscript` 64 |
+
+### Views and materialized projections
+
+| Materialized view | Rows | Purpose |
+|---|---:|---|
+| `mv_crime_stats` | 831 | Pre-aggregated crime statistics |
+| `mv_active_hotspots` | 41 | Current hotspot projection |
+| `mv_district_risk_profile` | 0 | Future/refresh-controlled district risk projection |
+
+The 20 ordinary views are:
+
+`geography_columns`, `geometry_columns`, `pg_stat_statements`, `pg_stat_statements_info`, `vw_active_alerts`, `vw_arrest_details`, `vw_audit_events`, `vw_canonical_graph_edge`, `vw_canonical_graph_node`, `vw_case_parties`, `vw_caseversion_containment`, `vw_entity_link_queue`, `vw_evidence_quarantine_queue`, `vw_evidence_retention`, `vw_fir_full`, `vw_intake_inbox`, `vw_location_observation_containment`, `vw_model_review_due`, `vw_related_cases_by_person` and `vw_source_reconciliation`.
+
+### PostgreSQL extensions
+
+| Extension | Version | DRISHTI use |
+|---|---:|---|
+| PostGIS | 3.5.6 | Geography, boundaries, point-in-polygon and spatial indexing |
+| pgRouting | 3.6.3 | Governed path/routing support |
+| pgvector | 0.8.2 | Embeddings and semantic similarity |
+| `pg_trgm` | 1.6 | Approximate text/entity matching |
+| `pgcrypto` | 1.3 | Cryptographic database helpers |
+| `uuid-ossp` | 1.1 | Stable UUID generation |
+| `pg_stat_statements` | 1.11 | Query-performance observability |
+
+### Empty tables are explicit future-state contracts
+
+The following 22 tables currently have zero rows:
+
+`CaseEvidence`, `CrimeEmbedding`, `CrimeRiskScore`, `DigitalImportBatch`, `ImportBatch`, `ImportStagingRow`, `JurisdictionReassignment`, `LabResult`, `LegalHold`, `MoneyAlert`, `MoneyAlertReview`, `NotificationDelivery`, `NotificationMessage`, `PersonAddress`, `PersonContact`, `PersonIdentifier`, `RagInteraction`, `ReportSnapshot`, `SavedFilter`, `SavedQuery`, `SpatialRepairRun` and `WorkTask`.
+
+Zero rows do not mean an omitted schema. These tables preserve reviewed contracts for future workflows while preventing the prototype from fabricating activity that has not occurred—for example, legal holds, lab results, money-alert reviews or RAG interactions.
+
+<details>
+<summary><strong>Complete measured table inventory—140 ordinary tables</strong></summary>
+
+#### Core cases and FIR taxonomy—987,211 rows
+
+`CaseEvent` 386,990 · `CaseSource` 200,003 · `SourceRecord` 100,068 · `CaseMaster` 100,003 · `CaseVersion` 100,003 · `Inv_OccuranceTime` 100,000 · `CrimeHeadActSection` 44 · `CaseCategoryWorkflow` 36 · `CrimeSubHead` 26 · `CaseStatusMaster` 14 · `CrimeHead` 9 · `SourceSystem` 7 · `CaseCategory` 5 · `GravityOffence` 3
+
+#### People, parties and organisations—1,156,931 rows
+
+`CasePartyRole` 374,280 · `CanonicalEntity` 223,161 · `CanonicalPerson` 210,890 · `Accused` 164,861 · `ComplainantDetails` 100,003 · `Victim` 71,604 · `Employee` 12,000 · `CanonicalOrganisation` 60 · `PersonAlias` 20 · `OccupationMaster` 15 · `Rank` 12 · `CasteMaster` 10 · `Designation` 8 · `ReligionMaster` 7 · `PersonAddress` 0 · `PersonContact` 0 · `PersonIdentifier` 0
+
+#### Legal, court and lifecycle—524,821 rows
+
+`ActSectionAssociation` 172,374 · `ArrestSurrender` 72,762 · `inv_arrestsurrenderaccused` 72,762 · `CourtEvent` 64,391 · `ChargesheetDetails` 37,147 · `CaseDisposition` 28,309 · `OutcomeObservation` 28,309 · `BailEvent` 27,196 · `StatementVersion` 11,091 · `Statement` 9,895 · `Court` 500 · `Section` 45 · `OutcomeLabel` 32 · `Act` 8
+
+#### Evidence, property, digital and financial—104,432 rows
+
+`PropertyItem` 13,766 · `Seizure` 13,642 · `FinancialTransaction` 11,049 · `FinancialAccount` 9,445 · `EvidenceActivityEvent` 8,351 · `EvidenceObject` 8,025 · `EvidenceItem` 8,021 · `EvidenceCaseLink` 8,013 · `EvidenceVersion` 8,009 · `CommunicationEvent` 6,187 · `EvidenceEntityLink` 5,276 · `TransactionLink` 3,120 · `Device` 764 · `DeviceArtifact` 764 · `CaseEvidence` 0 · `DigitalImportBatch` 0 · `LabResult` 0 · `LegalHold` 0 · `MoneyAlert` 0 · `MoneyAlertReview` 0
+
+#### Networks and intelligence—222,407 rows
+
+`EntityGraph` 206,026 · `LocationObservation` 7,684 · `NetworkEdge` 4,739 · `drishti_hidden_associations` 2,463 · `CrimePatternCase` 889 · `GangMembership` 524 · `CrimePattern` 82
+
+#### Geospatial and contextual—12,167 rows
+
+`spatial_ref_sys` 8,500 · `JurisdictionBoundary` 1,263 · `Unit` 1,032 · `UnitLocation` 1,000 · `AreaContextObservation` 160 · `CrimeHotspot` 41 · `District` 32 · `EconomicIndicator` 32 · `SocialIndicator` 32 · `WeatherIndicator` 32 · `HolidayCalendar` 30 · `PublicEvent` 6 · `UnitType` 6 · `State` 1
+
+#### ML, forecasts and model governance—1,335 rows
+
+`ModelInference` 467 · `CrimePrediction` 278 · `FeatureSnapshot` 192 · `PredictionRequest` 161 · `PredictionResult` 161 · `ModelVersion` 21 · `FeatureDefinition` 20 · `ModelBenchmark` 15 · `OfficerRecommendation` 6 · `FeatureSchemaVersion` 3 · `ModelReview` 3 · `TrainingDatasetSnapshot` 3 · `AISummary` 2 · `ForecastBacktest` 2 · `PredictionReview` 1 · `CrimeEmbedding` 0 · `CrimeRiskScore` 0
+
+#### Intake, import and data quality—282 rows
+
+`IntakeDraftActivity` 87 · `DataQualityIssue` 56 · `EntityResolutionCandidate` 37 · `IngestionRecord` 24 · `IngestionJob` 20 · `EntityMergeHistory` 13 · `IntakeDraft` 12 · `ImportTemplateVersion` 9 · `ImportTemplate` 8 · `IntakeDraftParty` 8 · `ExternalSourceVersion` 4 · `SyntheticDataRun` 4 · `ImportBatch` 0 · `ImportStagingRow` 0 · `JurisdictionReassignment` 0 · `SpatialRepairRun` 0
+
+#### Identity, audit, collaboration and reporting—1,559 rows
+
+`ChatMessage` 592 · `AlertHistory` 320 · `ChatSession` 300 · `role_permissions` 150 · `audit_logs` 77 · `VoiceTranscript` 64 · `roles` 15 · `users` 12 · `DemoActor` 5 · `FeatureFlag` 5 · `NotificationPreference` 5 · `ReportTemplate` 5 · `synthetic_meta` 5 · `RetentionPolicy` 4 · `NotificationDelivery` 0 · `NotificationMessage` 0 · `RagInteraction` 0 · `ReportSnapshot` 0 · `SavedFilter` 0 · `SavedQuery` 0 · `WorkTask` 0
+
+</details>
+
+### Reproduce the read-only inventory
+
+The inventory can be reproduced using the server-side `DATABASE_URL` from `.env`. Never print that value or add it to a browser environment variable.
+
+```powershell
+aws sso login --profile drishti
+aws rds describe-db-instances --profile drishti
+
+# Load the server-side URL into this process without printing it.
+$dbLine = Get-Content .env |
+  Where-Object { $_ -match '^DATABASE_URL=' } |
+  Select-Object -First 1
+$env:DATABASE_URL = $dbLine.Substring('DATABASE_URL='.Length)
+
+# Read-only catalogue inspection + exact SELECT count(*) per ordinary table.
+python scripts/database_inventory.py --exact --format markdown
+
+Remove-Item Env:DATABASE_URL
+```
+
+Use `--format json` for machine-readable evidence. Omitting `--exact` uses faster planner estimates. The helper never prints the connection URL and does not modify or analyse database tables.
+
+---
+
 ## Zoho Catalyst services used
 
 | Catalyst service | How DRISHTI uses it | Current repository evidence |
@@ -1186,7 +1384,9 @@ DRISHTI/
 ├── .env.example                  # Server-side configuration template
 ├── datagen/                      # Deterministic synthetic-data generation
 ├── docs/
-│   └── assets/screenshots/       # Submission-safe prototype screenshots
+│   └── assets/
+│       ├── benchmarks/           # Database and ML benchmark SVG dashboards
+│       └── screenshots/          # Submission-safe prototype screenshots
 ├── infra/
 │   ├── catalyst/
 │   │   ├── api-gateway/          # Public route definitions
@@ -1206,7 +1406,9 @@ DRISHTI/
 │   │   └── workflows/            # Controlled operational workflows
 │   ├── aws/                      # Protected analytical/GPU adapters
 │   └── db/                       # Database infrastructure helpers
-├── scripts/                      # Validation and release automation
+├── scripts/
+│   ├── database_inventory.py     # Read-only exact PostgreSQL inventory
+│   └── ...                       # Validation and release automation
 ├── services/
 │   └── ml/
 │       ├── app/                  # FastAPI application and 31 router groups
