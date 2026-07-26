@@ -5,7 +5,6 @@ import { PRESETS, useTimeStore } from "@/stores/useTimeStore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
-import { LiveFreshness } from "@/components/dashboard/LiveFreshness";
 import { InvestigatorHome } from "@/routes/home/InvestigatorHome";
 import { AnalystHome } from "@/routes/home/AnalystHome";
 import { SupervisorHome } from "@/routes/home/SupervisorHome";
@@ -51,7 +50,6 @@ export function CommandCenter() {
         }
       />
 
-      <LiveFreshness />
       <RoleHome role={role} />
     </div>
   );
