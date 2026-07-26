@@ -759,6 +759,27 @@ This reduces cost and operational complexity while preserving a clear path to pr
 | Hawkes/KDE spatial-temporal analysis | Catalyst AppSail CPU | Appropriate for moderate synthetic workloads |
 | TabFM, TimesFM, ST-GNN | Temporary AWS GPU endpoint | Custom foundation/GPU workloads not suited to the lightweight AppSail image |
 
+### TabFM and TimesFM in DRISHTI
+
+DRISHTI does not use “AI” as a single undifferentiated score. TabFM and TimesFM have separate, aggregate public-safety tasks:
+
+| Foundation model | DRISHTI task | Why it is used | Execution and governance |
+|---|---|---|---|
+| **Google TabFM v1** | Classifies an area's next-quarter workload band and contributes a next-period district risk class | Designed for small-to-medium tabular problems and can use in-context examples without updating the published foundation weights | Real weights are loaded only in the protected GPU worker; licence marker and artifact digest are verified; a requested TabFM job fails closed if CUDA or weights are unavailable |
+| **Google TimesFM 2.5—200M** | Forecasts a per-district crime-count trajectory and uncertainty band | Provides a foundation-model time-series layer without training a district-specific neural network from scratch | Runs behind the same governed forecast contract, locally when explicitly available or through the protected asynchronous CUDA endpoint; a non-TimesFM fallback cannot be labelled as real TimesFM |
+
+The current forecast inventory reports:
+
+- **TabFM:** 32 district predictions with a 30-day layer.
+- **TimesFM 2.5:** 32 district predictions with a 92-day layer.
+- **Near-repeat:** 150 event predictions with a 14-day layer.
+- **ST-GNN:** 32 district predictions with a 30-day layer.
+- **Fusion:** 32 district predictions with a 30-day layer.
+
+![DRISHTI governed multi-model forecast stack](docs/assets/benchmarks/model-stack-overview.svg)
+
+TabFM and TimesFM weights are never fine-tuned automatically from a newly uploaded FIR or a single case. Model promotion requires leakage checks, baseline comparison, provenance and human approval.
+
 ### Reproducible prediction envelope
 
 Every governed prediction is designed to include:
@@ -923,6 +944,71 @@ The emergency workspace presents multi-hazard situation awareness, forecast risk
 ---
 
 ## Prototype performance report and benchmarking
+
+### Visual ML benchmark dashboard
+
+The following charts use measured prototype outputs captured on 26 July 2026. They intentionally distinguish three states:
+
+- **measured serving result:** a model was evaluated on the recorded split;
+- **registered/used layer:** the layer has governed forecast records in the current inventory;
+- **GPU acceptance pending:** real weights are wired and fail closed, but no comparable GPU metric is claimed until that acceptance run is recorded.
+
+#### TabFM workload task compared with conventional ML baselines
+
+The aggregate workload-band dataset contains 576 district-quarter rows, ten non-protected features and a time-based split of 352 training, 96 validation and 128 test rows. The chart shows the measured held-out scores for the current serving contract and transparent baselines. It also makes the real TabFM GPU status explicit instead of inventing a bar.
+
+![TabFM workload model comparison](docs/assets/benchmarks/workload-model-comparison.svg)
+
+| Evaluated model | Accuracy | Macro-F1 | QWK | ECE | Interpretation |
+|---|---:|---:|---:|---:|---|
+| Prior-period baseline | **0.6484** | **0.5998** | **0.5639** | 0.1516 | Strong transparent comparator on this persistent synthetic series |
+| Histogram Gradient Boosting | 0.4922 | 0.4856 | 0.3891 | 0.4487 | Conventional trained tabular model |
+| Current in-context serving model | 0.4141 | 0.4003 | 0.3317 | **0.1469** | Deterministic CPU fallback used when foundation weights are unavailable |
+| Majority-class baseline | 0.1016 | 0.0461 | 0.0000 | 0.1541 | Minimum sanity baseline |
+| **Google TabFM v1** | — | — | — | — | Real GPU path is implemented and used for governed jobs; recorded CPU benchmark deferred the 3.3 GB weights, so comparable accuracy remains an explicit acceptance gate |
+
+**What this result means:** the current fallback does not beat the strong prior-period baseline. DRISHTI therefore does not auto-promote it. TabFM must be evaluated on the identical time/geo split on the real CUDA path before the model registry can mark it active. This is the intended governance behaviour, not a hidden failure.
+
+#### TimesFM trajectory layer compared with forecasting baselines
+
+The leakage-safe rolling-origin benchmark evaluates six walk-forward origins across 32 districts, producing 192 held-out district-month predictions. Lower MAE, RMSE and WAPE are better.
+
+![TimesFM trajectory backtest comparison](docs/assets/benchmarks/timesfm-backtest-comparison.svg)
+
+| Forecast candidate | MAE ↓ | RMSE ↓ | WAPE ↓ | sMAPE ↓ | 80% interval coverage |
+|---|---:|---:|---:|---:|---:|
+| **TimesFM-compatible serving forecaster** | **6.327** | **8.406** | **0.1132** | **14.49%** | 0.6094 |
+| Moving average—3 periods | 6.813 | 9.415 | 0.1219 | 14.60% | **0.8333** |
+| Seasonal naive | 7.698 | 10.018 | 0.1377 | 17.51% | 0.7760 |
+
+Measured skill:
+
+- **+17.81% MAE skill**, **+16.09% RMSE skill** and **+17.79% WAPE skill** versus seasonal naive.
+- **+7.13% MAE skill**, **+10.72% RMSE skill** and **+7.14% WAPE skill** versus moving average.
+- `beats_all_baselines = true` for point-error metrics.
+
+> [!CAUTION]
+> The measured backtest above currently executes `drishti-timesfm-seasonal`, the fast TimesFM-compatible statistical serving forecaster. The real `drishti-timesfm-2.5-200m` layer is separately registered and currently contains 32 district predictions over a 92-day horizon. DRISHTI does not present the fallback benchmark as proof of the real foundation model; TimesFM 2.5 must retain its own model-version and backtest provenance.
+
+#### Why the model stack is stronger than choosing one model
+
+| Model/layer | Best at | Known limitation | How DRISHTI uses it safely |
+|---|---|---|---|
+| TabFM | Aggregate tabular workload/risk bands with limited labelled context | Heavy real weights and GPU requirement; still needs identical-split acceptance score | Protected GPU path, artifact verification, no silent fallback, human promotion |
+| TimesFM | Longer-horizon univariate count trajectories | Temporal model alone cannot capture street-level spatial diffusion | Produces district trajectory and uncertainty; kept separate from spatial layers |
+| ST-GNN | Spatial-temporal influence between adjacent districts | More complex, graph-sensitive and harder to explain alone | Adds neighbour structure as one inspectable layer |
+| Near-repeat | Short-horizon local recurrence after an event | Narrow time/space mechanism, not a general trend model | Produces fast 14-day event alerts |
+| KDE/Hawkes/statistical baselines | Transparent hotspot and recurrence structure | Lower representational capacity | Remain visible comparators and safe CPU fallbacks |
+| Fusion | Combines validated evidence from multiple layers | Can amplify a bad layer if governance is weak | Includes only validated layers and records why a layer was excluded |
+
+**Reproduce the read-only benchmark evidence:**
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8000/workload/evaluation?foundation_kind=served&refresh=false"
+Invoke-RestMethod "http://127.0.0.1:8000/workload/benchmarks"
+Invoke-RestMethod "http://127.0.0.1:8000/forecast/backtest?horizon=1&n_origins=6&per_head=false&persist=false"
+Invoke-RestMethod "http://127.0.0.1:8000/forecast/layers"
+```
 
 ### Validation dashboard
 

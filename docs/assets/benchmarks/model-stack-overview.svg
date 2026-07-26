@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">DRISHTI governed multi-model forecast stack</title>
+  <desc id="desc">A visual comparison of TabFM, TimesFM, near-repeat, ST-GNN and fusion forecast layers, including prediction count and horizon.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset="0.55" stop-color="#11183a"/>
+      <stop offset="1" stop-color="#17102f"/>
+    </linearGradient>
+    <linearGradient id="tabfm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="timesfm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="repeat" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fb7185"/>
+      <stop offset="1" stop-color="#e11d48"/>
+    </linearGradient>
+    <linearGradient id="stgnn" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="fusion" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="650" rx="28" fill="url(#bg)"/>
+  <circle cx="1070" cy="90" r="180" fill="#7c3aed" opacity=".08"/>
+  <circle cx="90" cy="610" r="220" fill="#06b6d4" opacity=".07"/>
+
+  <text x="60" y="62" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="700">DRISHTI governed multi-model forecast stack</text>
+  <text x="60" y="94" fill="#a5b4fc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">Measured layer inventory • synthetic environment • every output remains evidence-backed and human-reviewed</text>
+
+  <rect x="60" y="125" width="1080" height="82" rx="18" fill="#111c34" stroke="#334155" filter="url(#shadow)"/>
+  <text x="88" y="158" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="600">COMMON GOVERNED INPUT</text>
+  <text x="88" y="184" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="700">Immutable feature snapshot</text>
+  <path d="M325 166 H1064" stroke="#475569" stroke-width="2" stroke-dasharray="5 7"/>
+  <text x="790" y="158" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">scope • as-of time • source hash • model version</text>
+  <text x="790" y="184" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">No person-level re-scoring</text>
+
+  <!-- TabFM -->
+  <g transform="translate(60,237)">
+    <rect width="208" height="248" rx="20" fill="#0d2036" stroke="#22d3ee" stroke-opacity=".55" filter="url(#shadow)"/>
+    <rect x="18" y="18" width="62" height="28" rx="14" fill="#083344"/>
+    <text x="49" y="37" text-anchor="middle" fill="#67e8f9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">TABULAR</text>
+    <text x="18" y="79" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="25" font-weight="800">TabFM</text>
+    <text x="18" y="104" fill="#93c5fd" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Google TabFM v1</text>
+    <text x="18" y="134" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">District workload band</text>
+    <text x="18" y="155" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">+ next-period risk class</text>
+    <rect x="18" y="177" width="172" height="9" rx="4.5" fill="#1e293b"/>
+    <rect x="18" y="177" width="56" height="9" rx="4.5" fill="url(#tabfm)"/>
+    <text x="18" y="209" fill="#67e8f9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800">32</text>
+    <text x="49" y="209" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12">district predictions</text>
+    <text x="18" y="232" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700">30-day layer</text>
+  </g>
+
+  <!-- TimesFM -->
+  <g transform="translate(278,237)">
+    <rect width="208" height="248" rx="20" fill="#181532" stroke="#a78bfa" stroke-opacity=".65" filter="url(#shadow)"/>
+    <rect x="18" y="18" width="78" height="28" rx="14" fill="#2e1065"/>
+    <text x="57" y="37" text-anchor="middle" fill="#c4b5fd" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">TEMPORAL</text>
+    <text x="18" y="79" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="25" font-weight="800">TimesFM</text>
+    <text x="18" y="104" fill="#c4b5fd" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Google TimesFM 2.5</text>
+    <text x="18" y="134" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Crime-count trajectory</text>
+    <text x="18" y="155" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">+ uncertainty fan chart</text>
+    <rect x="18" y="177" width="172" height="9" rx="4.5" fill="#1e293b"/>
+    <rect x="18" y="177" width="172" height="9" rx="4.5" fill="url(#timesfm)"/>
+    <text x="18" y="209" fill="#c4b5fd" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800">32</text>
+    <text x="49" y="209" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12">district predictions</text>
+    <text x="18" y="232" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700">92-day layer</text>
+  </g>
+
+  <!-- Near repeat -->
+  <g transform="translate(496,237)">
+    <rect width="208" height="248" rx="20" fill="#291427" stroke="#fb7185" stroke-opacity=".55" filter="url(#shadow)"/>
+    <rect x="18" y="18" width="88" height="28" rx="14" fill="#4c0519"/>
+    <text x="62" y="37" text-anchor="middle" fill="#fda4af" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">EVENT-DRIVEN</text>
+    <text x="18" y="79" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="800">Near-repeat</text>
+    <text x="18" y="104" fill="#fda4af" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Space-time trigger</text>
+    <text x="18" y="134" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Local recurrence risk</text>
+    <text x="18" y="155" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">after a new incident</text>
+    <rect x="18" y="177" width="172" height="9" rx="4.5" fill="#1e293b"/>
+    <rect x="18" y="177" width="26" height="9" rx="4.5" fill="url(#repeat)"/>
+    <text x="18" y="209" fill="#fda4af" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800">150</text>
+    <text x="55" y="209" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12">event predictions</text>
+    <text x="18" y="232" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700">14-day layer</text>
+  </g>
+
+  <!-- ST-GNN -->
+  <g transform="translate(714,237)">
+    <rect width="208" height="248" rx="20" fill="#0d2925" stroke="#34d399" stroke-opacity=".55" filter="url(#shadow)"/>
+    <rect x="18" y="18" width="69" height="28" rx="14" fill="#022c22"/>
+    <text x="52" y="37" text-anchor="middle" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">GRAPH</text>
+    <text x="18" y="79" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="25" font-weight="800">ST-GNN</text>
+    <text x="18" y="104" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Spatial-temporal graph</text>
+    <text x="18" y="134" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Neighbour influence</text>
+    <text x="18" y="155" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">+ district adjacency</text>
+    <rect x="18" y="177" width="172" height="9" rx="4.5" fill="#1e293b"/>
+    <rect x="18" y="177" width="56" height="9" rx="4.5" fill="url(#stgnn)"/>
+    <text x="18" y="209" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800">32</text>
+    <text x="49" y="209" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12">district predictions</text>
+    <text x="18" y="232" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700">30-day layer</text>
+  </g>
+
+  <!-- Fusion -->
+  <g transform="translate(932,237)">
+    <rect width="208" height="248" rx="20" fill="#2d2011" stroke="#fbbf24" stroke-opacity=".6" filter="url(#shadow)"/>
+    <rect x="18" y="18" width="78" height="28" rx="14" fill="#451a03"/>
+    <text x="57" y="37" text-anchor="middle" fill="#fde68a" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700">ENSEMBLE</text>
+    <text x="18" y="79" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="25" font-weight="800">Fusion</text>
+    <text x="18" y="104" fill="#fde68a" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Inspectable stack</text>
+    <text x="18" y="134" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">Combines validated</text>
+    <text x="18" y="155" fill="#cbd5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">model layers</text>
+    <rect x="18" y="177" width="172" height="9" rx="4.5" fill="#1e293b"/>
+    <rect x="18" y="177" width="56" height="9" rx="4.5" fill="url(#fusion)"/>
+    <text x="18" y="209" fill="#fde68a" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800">32</text>
+    <text x="49" y="209" fill="#94a3b8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12">district predictions</text>
+    <text x="18" y="232" fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700">30-day layer</text>
+  </g>
+
+  <path d="M164 505 V535 H1036 V505" fill="none" stroke="#64748b" stroke-width="2"/>
+  <path d="M600 535 V559" stroke="#fbbf24" stroke-width="3"/>
+  <rect x="250" y="558" width="700" height="58" rx="18" fill="#171f34" stroke="#fbbf24" stroke-opacity=".55"/>
+  <text x="600" y="582" text-anchor="middle" fill="#fde68a" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700">GOVERNED EVIDENCE ENVELOPE</text>
+  <text x="600" y="603" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13">model + version + feature snapshot + horizon + confidence + explanation → human review</text>
+</svg>
