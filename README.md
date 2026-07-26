@@ -34,8 +34,8 @@
 | Required item | Link | Submission status |
 |---|---|---|
 | **Deployed Solution Link—Zoho Catalyst** | **[https://drishti-frvfpunc.onslate.in/](https://drishti-frvfpunc.onslate.in/)** | ✅ Official evaluation deployment; HTTP 200 verified on 26 July 2026 |
-| **GitHub Public Repository** | [https://github.com/prajwalbr0304/DRISHTI](https://github.com/prajwalbr0304/DRISHTI) | ⚠️ Repository URL is configured, but an anonymous request returned 404 on 26 July 2026. Change repository visibility to **Public** before final submission. |
-| **Demo Video—3 minutes** | **TBD—replace this line with the public video URL before submission** | ⏳ The cinematic hero video is part of the product, but a public three-minute walkthrough URL has not yet been added. |
+| **GitHub Public Repository** | [https://github.com/prajwalbr0304/DRISHTI](https://github.com/prajwalbr0304/DRISHTI) | ✅ Public repository |
+| **Demo Video—3 minutes** | [https://youtu.be/cp27iqfYYyA](https://youtu.be/cp27iqfYYyA) | ✅ Public demo video |
 
 > [!IMPORTANT]
 > The evaluation link above is the Zoho Catalyst Slate deployment. DRISHTI must be evaluated using that link. Do not substitute a deployment on another hosting platform.
@@ -74,8 +74,7 @@
 25. [Catalyst deployment model](#catalyst-deployment-model)
 26. [Future development](#future-development)
 27. [Known constraints](#known-constraints)
-28. [Three-minute demo script](#three-minute-demo-script)
-29. [Final submission checklist](#final-submission-checklist)
+28. [Final submission checklist](#final-submission-checklist)
 
 ---
 
@@ -1722,7 +1721,6 @@ The repository includes separate AppSail build/deploy and Data Store import runb
 - Add Web Vitals and p50/p95/p99 API telemetry.
 - Complete keyboard-only and screen-reader audits.
 - Add larger graph/map stress datasets and recovery tests.
-- Publish the repository and three-minute demo link.
 - Add an in-product build/version panel for evaluation traceability.
 
 ### Medium term—operational readiness
@@ -1751,33 +1749,11 @@ The repository includes separate AppSail build/deploy and Data Store import runb
 ## Known constraints
 
 - The prototype uses synthetic records and synthetic role identities.
-- Anonymous access to the configured GitHub URL returned 404 at documentation time; repository visibility must be corrected.
-- A public three-minute demo-video URL is still required.
 - Catalyst billing data are console-only for the current CLI session.
 - The protected AWS analytics plane is optional and should be used only where Catalyst-native services cannot meet the compute requirement.
 - The main JavaScript bundle is rich and should be code-split before broad production use.
 - Development health verification is not equivalent to production load or resilience testing.
 - Model outputs have not been validated on real operational data and must not be used for real enforcement decisions.
-
----
-
-## Three-minute demo script
-
-Use this sequence to record the required public demo:
-
-| Time | Scene | Narration focus |
-|---:|---|---|
-| 0:00–0:20 | Catalyst landing hero | Karnataka operational picture; evidence-backed and human-controlled |
-| 0:20–0:40 | Role selection | Ten roles; identity, jurisdiction and scope |
-| 0:40–1:00 | Command Center | Workload, alerts, hotspots, freshness and role relevance |
-| 1:00–1:25 | Case Explorer → case `100239` | Search, complete case file and connected records |
-| 1:25–1:55 | Send to Investigation Board | Governed expansion, 14 nodes/13 links, source snapshot, sticky/frame/text |
-| 1:55–2:20 | Map & Hotspots | Karnataka incidents, point popup, hotspot/forecast/patrol/fullscreen |
-| 2:20–2:40 | Network / Ask DRISHTI | Explain a connection and show cited, scoped analysis |
-| 2:40–2:55 | Emergency Response | Shared human-controlled operational model |
-| 2:55–3:00 | Closing | Catalyst deployment link, USP and responsible-use boundary |
-
-Before publishing, remove browser bookmarks, personal extensions, private account details and local-only URLs from the recording.
 
 ---
 
@@ -1802,8 +1778,8 @@ Before publishing, remove browser bookmarks, personal extensions, private accoun
 - [x] Future development.
 - [x] Local run, test and build instructions.
 - [x] Official Catalyst deployed solution link.
-- [ ] Make the GitHub repository publicly accessible and verify from an incognito window.
-- [ ] Upload the three-minute demo and replace the placeholder link.
+- [x] Make the GitHub repository publicly accessible.
+- [x] Publish the three-minute demo video: [https://youtu.be/cp27iqfYYyA](https://youtu.be/cp27iqfYYyA).
 - [ ] Perform one final incognito walkthrough of the Catalyst URL.
 
 ---
