@@ -28,16 +28,18 @@ from . import v2common as C
 C.register("CanonicalPerson", [
     "CanonicalPersonID", "PublicRef", "DisplayLabel", "IsUnknown",
     "PrimaryGenderID", "ApproxBirthYear", "IsJuvenile", "ResolutionStatus",
-    "MergedIntoCanonicalPersonID", "Attributes",
+    "MergedIntoCanonicalPersonID", "Attributes", "IsSynthetic",
 ])
 C.register("CanonicalOrganisation", [
     "CanonicalOrganisationID", "PublicRef", "Name", "OrgType", "Attributes",
 ])
 C.register("CanonicalEntity", [
     "CanonicalEntityID", "EntityKind", "CanonicalPersonID",
-    "CanonicalOrganisationID", "PublicRef", "Label", "Attributes",
+    "CanonicalOrganisationID", "PublicRef", "Label", "Attributes", "IsSynthetic",
 ])
-C.register("PersonAlias", ["CanonicalPersonID", "AliasName", "AliasType"])
+C.register("PersonAlias", [
+    "CanonicalPersonID", "AliasName", "AliasType", "SourceRecordID", "IsSynthetic",
+])
 C.register("PersonIdentifier",
            ["CanonicalPersonID", "IdentifierType", "IdentifierValue", "Sensitivity"])
 C.register("PersonContact",
@@ -70,13 +72,13 @@ class IdentityBuilder:
         w.add("CanonicalPerson", (
             cpid, C.person_ref(cpid), None if is_unknown else label, is_unknown,
             gender, birth_year, juvenile, "canonical", None,
-            Json(attributes or {}),
+            Json(attributes or {}), True,
         ))
         # every person is also a canonical entity node
         eid = w.next_id("CanonicalEntity")
         w.add("CanonicalEntity", (
             eid, "person", cpid, None, C.entity_ref(eid),
-            None if is_unknown else label, Json({}),
+            None if is_unknown else label, Json({}), True,
         ))
         w.person_entity[cpid] = eid
         if gender is not None:
@@ -102,7 +104,7 @@ class IdentityBuilder:
               (oid, C.org_ref(oid), name, org_type, Json(attributes or {})))
         eid = w.next_id("CanonicalEntity")
         w.add("CanonicalEntity",
-              (eid, "organisation", None, oid, C.entity_ref(eid), name, Json({})))
+              (eid, "organisation", None, oid, C.entity_ref(eid), name, Json({}), True))
         w.org_entity[oid] = eid
         return oid
 
@@ -112,12 +114,13 @@ class IdentityBuilder:
         w = self.w
         eid = w.next_id("CanonicalEntity")
         w.add("CanonicalEntity",
-              (eid, kind, None, None, C.entity_ref(eid), label, Json(attributes or {})))
+              (eid, kind, None, None, C.entity_ref(eid), label,
+               Json(attributes or {}), True))
         return eid
 
     # -- attributes ----------------------------------------------------------
     def add_alias(self, cpid: int, alias_name: str, alias_type: str = "alias") -> None:
-        self.w.add("PersonAlias", (cpid, alias_name, alias_type))
+        self.w.add("PersonAlias", (cpid, alias_name, alias_type, None, True))
 
     def add_identifier(self, cpid: int, id_type: str, value: str,
                        sensitivity: str = "restricted") -> None:

@@ -1035,6 +1035,41 @@ export interface CaseTimelineEntry {
   label: string;
   detail?: string | null;
 }
+export interface CaseCurrentVersion {
+  case_version_id: number;
+  version_no: number;
+  status_code: string;
+  record_origin: string;
+  is_synthetic: boolean;
+  excluded_from_derived_analytics: boolean;
+  source_cutoff?: string | null;
+  official_references: Record<string, unknown>;
+  reference_mapping: Record<string, unknown>;
+  location: Record<string, unknown>;
+  change_reason?: string | null;
+}
+export interface CaseSourceSummary {
+  source_record_id: number;
+  external_ref?: string | null;
+  record_kind?: string | null;
+  source_system_code?: string | null;
+  source_system_name?: string | null;
+  public_source_id?: string | null;
+  title?: string | null;
+  publisher?: string | null;
+  published_date?: string | null;
+  source_url?: string | null;
+  authenticity?: string | null;
+  presentation_use?: string | null;
+  rights_and_handling?: string | null;
+  last_checked?: string | null;
+}
+export interface CaseNotice {
+  code: "PENDING_TRIAL" | "ALLEGATION_NOT_FINDING" | "PUBLIC_SOURCE_REFERENCE" | string;
+  severity: "warning" | "info" | string;
+  title: string;
+  message: string;
+}
 export interface CaseDetailResponse {
   core: CaseCore;
   sections: CaseSectionRow[];
@@ -1045,6 +1080,9 @@ export interface CaseDetailResponse {
   arrests: CaseArrest[];
   chargesheets: CaseChargesheet[];
   timeline: CaseTimelineEntry[];
+  current_version?: CaseCurrentVersion | null;
+  sources?: CaseSourceSummary[];
+  notices?: CaseNotice[];
 }
 
 export interface CaseNetworkNode {
@@ -1829,6 +1867,7 @@ export interface EvItem {
   uploader_actor?: string | null;
   confidentiality: string;
   state: string; // draft | uploading | available | failed | archived
+  is_synthetic: boolean;
   manual_metadata: Record<string, unknown>;
   captured_at?: string | null;
   received_at?: string | null;
@@ -1852,6 +1891,7 @@ export interface EvListItem {
   synthetic_reference?: string | null;
   source_label?: string | null;
   state: string;
+  is_synthetic: boolean;
   language?: string | null;
   tags: string[];
   version_no?: number | null;

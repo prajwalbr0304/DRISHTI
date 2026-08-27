@@ -125,9 +125,13 @@ def _detail(conn, cpid: int) -> S.PersonDetail:
         addresses = [S.AddressOut(person_address_id=int(x[0]), district_id=x[1], address_text=x[2],
                                   latitude=x[3], longitude=x[4], sensitivity=x[5]) for x in cur.fetchall()]
         cur.execute(
-            'SELECT r."CasePartyRoleID", r."CaseMasterID", cm."CrimeNo", r."RoleType",'
-            ' r."IsUnknownParty", r."PartyLabel", r."SequenceNo" '
+            'SELECT r."CasePartyRoleID", r."CaseMasterID", '
+            'COALESCE(NULLIF(cv.attrs #>> \'{official_references,police_crime_no}\', \'\'), '
+            'cm."CrimeNo"), r."RoleType", r."IsUnknownParty", r."PartyLabel", r."SequenceNo" '
             'FROM "CasePartyRole" r LEFT JOIN "CaseMaster" cm ON cm."CaseMasterID"=r."CaseMasterID" '
+            'LEFT JOIN LATERAL (SELECT cv0."SnapshotAttributes" AS attrs FROM "CaseVersion" cv0 '
+            'WHERE cv0."CaseMasterID"=r."CaseMasterID" AND cv0."IsCurrent"=TRUE '
+            'ORDER BY cv0."VersionNo" DESC LIMIT 1) cv ON TRUE '
             'WHERE r."CanonicalPersonID"=%s ORDER BY r."CasePartyRoleID" LIMIT 200', (cpid,))
         roles = [S.CaseRoleOut(case_party_role_id=int(x[0]), case_master_id=int(x[1]), crime_no=x[2],
                                role_type=x[3], is_unknown=bool(x[4]), party_label=x[5], sequence_no=x[6])

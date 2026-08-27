@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Archive, ArchiveRestore, Download, Eye, FileText, History, Link2, Loader2, Pencil, Unlink,
+  Archive, ArchiveRestore, Download, ExternalLink, Eye, FileText, History, Link2, Loader2, Pencil, Unlink,
 } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
@@ -110,6 +110,7 @@ export function EvidenceDetailsDialog({
               <div className="flex items-center gap-2">
                 <Badge variant="neutral" className="capitalize">{prettyType(item.evidence_type)}</Badge>
                 <Badge variant={stateBadgeVariant(item.state)}>{EV_STATE_LABEL[item.state] ?? item.state}</Badge>
+                {!item.is_synthetic && <Badge variant="primary">Public-source · non-synthetic</Badge>}
                 {item.confidentiality !== "demo_normal" && (
                   <Badge variant="high">{prettyType(item.confidentiality)}</Badge>
                 )}
@@ -199,6 +200,10 @@ export function EvidenceDetailsDialog({
                 )}
               </section>
 
+              {!item.is_synthetic && (
+                <PublicReferenceMetadata metadata={item.manual_metadata} />
+              )}
+
               {/* Links */}
               <section>
                 <h4 className="mb-1 flex items-center gap-1.5 text-13 font-semibold text-content">
@@ -285,6 +290,60 @@ export function EvidenceDetailsDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function PublicReferenceMetadata({ metadata }: { metadata: Record<string, unknown> }) {
+  const sourceUrl = safeUrl(metadata.external_reference_url);
+  const assetUrl = safeUrl(metadata.remote_asset_url);
+  const notCaseEvidence = metadata.not_case_evidence === true;
+  const rows = [
+    ["Source ID", textMeta(metadata.public_source_id)],
+    ["Publisher", textMeta(metadata.publisher)],
+    ["Publication date", textMeta(metadata.publication_date)],
+    ["Authenticity", textMeta(metadata.authenticity)],
+    ["Presentation use", textMeta(metadata.presentation_use)],
+    ["Rights & handling", textMeta(metadata.rights_and_handling)],
+    ["Caveat", textMeta(metadata.notes)],
+  ].filter((row): row is [string, string] => row[1] != null);
+
+  return (
+    <section className="rounded-card border border-hairline bg-surface-2/40 p-3">
+      <h4 className="text-13 font-semibold text-content">Public-reference provenance</h4>
+      {notCaseEvidence && (
+        <p className="mt-1 text-12 font-medium text-severity-medium">
+          Presentation/source context only — this item is explicitly not case evidence.
+        </p>
+      )}
+      <dl className="mt-2 grid grid-cols-1 gap-2 text-12 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <Meta key={label} k={label} v={value} span={label.length > 16} />
+        ))}
+      </dl>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sourceUrl && (
+          <a href={sourceUrl} target="_blank" rel="noreferrer"
+             className="inline-flex items-center gap-1 text-12 font-medium text-primary hover:underline">
+            Open attributed source <ExternalLink className="size-3" />
+          </a>
+        )}
+        {assetUrl && (
+          <a href={assetUrl} target="_blank" rel="noreferrer"
+             className="inline-flex items-center gap-1 text-12 font-medium text-primary hover:underline">
+            Open publisher-hosted asset <ExternalLink className="size-3" />
+          </a>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function textMeta(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function safeUrl(value: unknown): string | null {
+  const url = textMeta(value);
+  return url?.startsWith("https://") ? url : null;
 }
 
 function Meta({ k, v, span }: { k: string; v?: string | null; span?: boolean }) {

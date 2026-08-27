@@ -186,6 +186,31 @@ export function CaseFile() {
           }
         />
 
+        {detail && (detail.notices?.length ?? 0) > 0 && (
+          <div className="mb-4 space-y-2" aria-label="Case safeguards">
+            {detail.notices?.map((notice) => {
+              const NoticeIcon = notice.severity === "warning" ? AlertTriangle : BookOpen;
+              return (
+                <div
+                  key={notice.code}
+                  className={cn(
+                    "flex items-start gap-2 rounded-card border px-3 py-2 text-12",
+                    notice.severity === "warning"
+                      ? "border-severity-medium/40 bg-severity-medium/5 text-content"
+                      : "border-hairline bg-surface-2/40 text-content-dim",
+                  )}
+                >
+                  <NoticeIcon className="mt-0.5 size-4 shrink-0" />
+                  <div>
+                    <div className="font-semibold">{notice.title}</div>
+                    <p className="mt-0.5 leading-relaxed">{notice.message}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {q.isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-48 w-full" />

@@ -23,7 +23,7 @@ C.register("EvidenceItem", [
     "EvidenceItemID", "CaseMasterID", "SourceSystemID", "SourceRecordID",
     "EvidenceType", "Category", "Title", "Description", "SyntheticReference",
     "Language", "Tags", "UploaderActor", "Confidentiality", "State",
-    "ManualMetadata", "CapturedAt", "ReceivedAt", "UploadedAt",
+    "ManualMetadata", "CapturedAt", "ReceivedAt", "UploadedAt", "IsSynthetic",
 ])
 C.register("EvidenceObject", [
     "EvidenceObjectID", "EvidenceItemID", "StorageKey", "StorageStatus",
@@ -127,7 +127,7 @@ def build_case_evidence(world: C.World, writer: EvidenceWriter, *, case_id: int,
             item_id, case_id, source_system_id, source_record_id, etype, category,
             title, f"Synthetic {category} for demo case.", ref, "en",
             Arr(tags), uploader, "demo_normal", "available", Json(meta),
-            _ts(captured), _ts(captured), _ts(captured + dt.timedelta(hours=2)),
+            _ts(captured), _ts(captured), _ts(captured + dt.timedelta(hours=2)), True,
         ))
         w.add("EvidenceActivityEvent",
               (item_id, "created", uploader, Json({"synthetic": True})))

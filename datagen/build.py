@@ -20,6 +20,7 @@ from . import boundaries as B
 from . import cases
 from . import case_events as CE
 from . import court_outcomes as CO
+from . import curated_cases as CURATED
 from . import digital as DIG
 from . import evidence as EV
 from . import external_context as EC
@@ -135,7 +136,7 @@ def build_fixture(cfg, ctx, *, mode: str, run_key: str, write_files: bool,
         ("DIGITAL_EXPORT", "CDR/device/chat export", "digital_export"),
     ]:
         sid = world.next_id("SourceSystem")
-        world.add("SourceSystem", (sid, code, name, kind, f"Synthetic {name}."))
+        world.add("SourceSystem", (sid, code, name, kind, f"Synthetic {name}.", True))
         world.source_system[code] = sid
     fir_sys = world.source_system["FIR_FORM"]
 
@@ -159,22 +160,40 @@ def build_fixture(cfg, ctx, *, mode: str, run_key: str, write_files: bool,
                          for i, name in enumerate(ref.CASE_STATUSES)}
     crimeno = _CrimeNoV2()
 
-    n = len(plans)
-    for i, p in enumerate(plans):
+    if not plans:
+        raise RuntimeError("At least one case slot is required for the curated public-source record")
+    curated_case_id = int(plans[-1][cases.F_ID])
+    if curated_case_id != int(cfg.n_firs):
+        raise RuntimeError(
+            f"Reserved curated case slot {curated_case_id} does not match target {cfg.n_firs}"
+        )
+    synthetic_plans = plans[:-1]
+    n = len(synthetic_plans)
+    for i, p in enumerate(synthetic_plans):
         _build_one_case(world, ib, evwriter, p, ctx, cfg, mode, i, n,
                         status_id_by_name, crimeno, obs_window_days)
         if (i + 1) % 20000 == 0:
-            log(f"  built {i + 1:,}/{n:,} cases")
+            log(f"  built {i + 1:,}/{n:,} synthetic cases")
 
-    # repeat-offender coverage: a canonical person appearing in >1 case
+    # All derived layers are intentionally complete before the named public case
+    # is appended. This keeps real people and allegations out of synthetic graph,
+    # feature, label, and data-quality training fixtures.
     repeat = sum(1 for c in world.person_case_count.values() if c > 1)
     world.cover("repeat_offender_multi_case", repeat)
     log(f"  repeat offenders across >1 case: {repeat:,}")
 
     _build_graph(world, log)
     LB.build_features_and_labels(world)
-    sample_cases = [pp[cases.F_ID] for pp in plans[:25]]
+    sample_cases = [pp[cases.F_ID] for pp in synthetic_plans[:25]]
     QS.build_quality_scenarios(world, ib, sample_cases)
+
+    CURATED.build_renukaswamy_case(
+        world,
+        case_id=curated_case_id,
+        status_id_by_name=status_id_by_name,
+    )
+    log(f"  appended curated public-source case: CaseMasterID={curated_case_id}")
+
     manifest = evwriter.flush_manifest()
     if manifest:
         log(f"  evidence fixture manifest: {manifest}")
@@ -304,7 +323,7 @@ def _build_one_case(world, ib, evwriter, p, ctx, cfg, mode, i, n,
     src_id = world.next_id("SourceRecord")
     world.add("SourceRecord", (
         src_id, world.source_system["FIR_FORM"], crime_no, "case",
-        Json({"crime_no": crime_no, "kind": kind}), None, 1, None, "committed"))
+        Json({"crime_no": crime_no, "kind": kind}), None, 1, None, "committed", True))
     world.add("CaseSource", (case_id, world.source_system["FIR_FORM"], src_id,
                              crime_no, "manual_form"))
 

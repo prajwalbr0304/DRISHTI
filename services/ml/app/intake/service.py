@@ -896,6 +896,11 @@ def _add_case_event(conn, case_master_id: int, event_type: str,
     if cv is None:
         raise IntakeNotFound(f"No current CaseVersion for case {case_master_id}.")
     case_version_id, category, from_status, snapshot = int(cv[0]), cv[1], cv[2], (cv[3] or {})
+    if snapshot.get("record_origin") == "public_source_curated":
+        raise IntakeConflict(
+            "Public-source curated procedure is read-only; update the reviewed "
+            "source-qualified snapshot rather than applying an operational lifecycle action."
+        )
     kind = _infer_kind(conn, case_master_id, category, snapshot)
 
     with conn.cursor() as cur:

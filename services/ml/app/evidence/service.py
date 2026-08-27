@@ -126,7 +126,16 @@ def _crime_no(conn, case_id: Optional[int]) -> Optional[str]:
     if not case_id:
         return None
     with conn.cursor() as cur:
-        cur.execute('SELECT "CrimeNo" FROM "CaseMaster" WHERE "CaseMasterID"=%s', (case_id,))
+        cur.execute(
+            'SELECT COALESCE(NULLIF(cv.attrs #>> '
+            "'{official_references,police_crime_no}', ''), cm.\"CrimeNo\") "
+            'FROM "CaseMaster" cm LEFT JOIN LATERAL ('
+            'SELECT cv0."SnapshotAttributes" AS attrs FROM "CaseVersion" cv0 '
+            'WHERE cv0."CaseMasterID"=cm."CaseMasterID" AND cv0."IsCurrent"=TRUE '
+            'ORDER BY cv0."VersionNo" DESC LIMIT 1) cv ON TRUE '
+            'WHERE cm."CaseMasterID"=%s',
+            (case_id,),
+        )
         r = cur.fetchone()
     return r[0] if r else None
 
@@ -167,7 +176,7 @@ _ITEM_COLS = (
     '"EvidenceItemID","CaseMasterID","SourceSystemID","SourceRecordID","EvidenceType",'
     '"Category","Title","Description","SyntheticReference","Language","Tags","UploaderActor",'
     '"Confidentiality","State","ManualMetadata","CapturedAt","ReceivedAt","UploadedAt",'
-    '"CreatedAt","UpdatedAt"'
+    '"CreatedAt","UpdatedAt","IsSynthetic"'
 )
 
 
@@ -175,6 +184,31 @@ def _item_row(conn, item_id: int) -> Optional[tuple]:
     with conn.cursor() as cur:
         cur.execute(f'SELECT {_ITEM_COLS} FROM "EvidenceItem" WHERE "EvidenceItemID"=%s', (item_id,))
         return cur.fetchone()
+
+
+def _is_curated_reference(row: tuple) -> bool:
+    metadata = row[14] if isinstance(row[14], dict) else {}
+    return (
+        row[20] is False
+        and metadata.get("record_origin") == "public_source_curated"
+        and metadata.get("metadata_only") is True
+    )
+
+
+def _require_mutable_reference(row: tuple, action: str) -> None:
+    if _is_curated_reference(row):
+        raise EvidenceConflict(
+            "Public-source curated references are read-only. "
+            f"Cannot {action}; add a separate sourced annotation instead."
+        )
+
+
+def _require_file_backed(row: tuple) -> None:
+    metadata = row[14] if isinstance(row[14], dict) else {}
+    if metadata.get("metadata_only") is True or metadata.get("file_backed") is False:
+        raise EvidenceConflict(
+            "This is a metadata-only external reference; no native file may be attached."
+        )
 
 
 def _objects(conn, item_id: int) -> list[EvidenceObjectOut]:
@@ -247,14 +281,16 @@ def _serialize_item(conn, item_id: int) -> EvidenceItemOut:
     if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
     (eid, case_id, ssid, _srid, etype, category, title, desc, ref, lang, tags,
-     uploader, conf, state, meta, cap, recv, up, created, updated) = row
+     uploader, conf, state, meta, cap, recv, up, created, updated, is_synthetic) = row
     objects = _objects(conn, item_id)
     current = next((o for o in objects if o.is_current), None)
     return EvidenceItemOut(
         evidence_item_id=int(eid), case_master_id=case_id, crime_no=_crime_no(conn, case_id),
         source_system_id=ssid, evidence_type=etype, category=category, title=title,
         description=desc, synthetic_reference=ref, language=lang, tags=list(tags or []),
-        uploader_actor=uploader, confidentiality=conf, state=state, manual_metadata=meta or {},
+        uploader_actor=uploader, confidentiality=conf, state=state,
+        is_synthetic=bool(is_synthetic), is_read_only=_is_curated_reference(row),
+        manual_metadata=meta or {},
         captured_at=_s(cap), received_at=_s(recv), uploaded_at=_s(up),
         created_at=_s(created), updated_at=_s(updated),
         current_object=current, objects=objects, versions=_versions(conn, item_id),
@@ -358,6 +394,7 @@ def _update_metadata(conn, item_id: int, patch: EvidenceMetadataUpdate) -> None:
     row = _item_row(conn, item_id)
     if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "edit its source-qualified metadata")
     if row[13] == "archived":
         raise EvidenceConflict("Archived evidence cannot be edited. Restore it first.")
     if patch.evidence_type is not None and patch.evidence_type not in ALLOWED_EVIDENCE_TYPES:
@@ -409,6 +446,8 @@ def _issue_upload_url(conn, item_id: int, req: UploadUrlRequest, gw: S3Gateway) 
     row = _item_row(conn, item_id)
     if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "attach a file")
+    _require_file_backed(row)
     if row[13] == "archived":
         raise EvidenceConflict("Archived evidence cannot receive a new upload.")
     _validate_upload(req.file_name, req.mime_type, req.size_bytes)
@@ -443,6 +482,8 @@ def _complete_upload(conn, item_id: int, req: CompleteUploadRequest,
     row = _item_row(conn, item_id)
     if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "complete a file upload")
+    _require_file_backed(row)
     if row[13] == "archived":
         raise EvidenceConflict("Archived evidence cannot be completed.")
     s = get_settings()
@@ -580,8 +621,10 @@ def _download_url(conn, item_id: int, version_no: Optional[int],
 # Link / unlink / archive / restore
 # ---------------------------------------------------------------------------
 def _link(conn, item_id: int, req: LinkRequest) -> None:
-    if _item_row(conn, item_id) is None:
+    row = _item_row(conn, item_id)
+    if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "change its governed links")
     if not req.case_id and not req.canonical_entity_id:
         raise EvidenceValidationError("Provide a case_id or canonical_entity_id to link.")
     with conn.cursor() as cur:
@@ -608,8 +651,10 @@ def _link(conn, item_id: int, req: LinkRequest) -> None:
 
 def _unlink(conn, item_id: int, case_id: Optional[int], entity_id: Optional[int],
             actor: Optional[str]) -> None:
-    if _item_row(conn, item_id) is None:
+    row = _item_row(conn, item_id)
+    if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "change its governed links")
     if not case_id and not entity_id:
         raise EvidenceValidationError("Provide a case_id or canonical_entity_id to unlink.")
     with conn.cursor() as cur:
@@ -629,6 +674,7 @@ def _archive(conn, item_id: int, req: ArchiveRequest) -> None:
     row = _item_row(conn, item_id)
     if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "archive it")
     if row[13] == "archived":
         raise EvidenceConflict("Evidence item is already archived.")
     with conn.cursor() as cur:
@@ -642,6 +688,7 @@ def _restore(conn, item_id: int, actor: Optional[str]) -> None:
     row = _item_row(conn, item_id)
     if row is None:
         raise EvidenceNotFound(f"Evidence item {item_id} not found.")
+    _require_mutable_reference(row, "restore it")
     if row[13] != "archived":
         raise EvidenceConflict("Only an archived item can be restored.")
     # Restore to 'available' if it has a current object, else 'draft'.
@@ -695,7 +742,8 @@ def _list(conn, *, case_id: Optional[int], evidence_type: Optional[str],
             f'SELECT ei."EvidenceItemID", ei."CaseMasterID", ei."EvidenceType", ei."Category",'
             f' ei."Title", ei."SyntheticReference", ei."State", ei."Language", ei."Tags",'
             f' ei."CapturedAt", ei."CreatedAt", ei."UpdatedAt", ss."Code",'
-            f' obj."VersionNo", obj."Sha256", obj."FileName", obj."MimeType", obj."SizeBytes" '
+            f' obj."VersionNo", obj."Sha256", obj."FileName", obj."MimeType", obj."SizeBytes",'
+            f' ei."IsSynthetic", ei."ManualMetadata" '
             f'FROM "EvidenceItem" ei '
             f'LEFT JOIN "SourceSystem" ss ON ss."SourceSystemID" = ei."SourceSystemID" '
             f'LEFT JOIN LATERAL (SELECT "VersionNo","Sha256","FileName","MimeType","SizeBytes" '
@@ -708,7 +756,13 @@ def _list(conn, *, case_id: Optional[int], evidence_type: Optional[str],
         evidence_item_id=int(r[0]), case_master_id=r[1], evidence_type=r[2], category=r[3],
         title=r[4], synthetic_reference=r[5], state=r[6], language=r[7], tags=list(r[8] or []),
         captured_at=_s(r[9]), created_at=_s(r[10]), updated_at=_s(r[11]), source_label=r[12],
-        version_no=r[13], sha256=r[14], file_name=r[15], mime_type=r[16], size_bytes=r[17])
+        version_no=r[13], sha256=r[14], file_name=r[15], mime_type=r[16], size_bytes=r[17],
+        is_synthetic=bool(r[18]),
+        is_read_only=(
+            not bool(r[18]) and isinstance(r[19], dict)
+            and r[19].get("record_origin") == "public_source_curated"
+            and r[19].get("metadata_only") is True
+        ))
         for r in rows]
     return EvidenceListResponse(items=items, total=total, page=page, page_size=page_size,
                                 by_state=by_state)
@@ -784,7 +838,8 @@ def _reset_case(conn, case_id: int, actor: Optional[str], gw: Optional[S3Gateway
         cur.execute(
             'SELECT o."StorageKey" FROM "EvidenceObject" o '
             'JOIN "EvidenceItem" ei ON ei."EvidenceItemID"=o."EvidenceItemID" '
-            'WHERE ei."CaseMasterID"=%s AND o."StorageKey" IS NOT NULL', (case_id,))
+            'WHERE ei."CaseMasterID"=%s AND ei."IsSynthetic"=TRUE '
+            'AND o."StorageKey" IS NOT NULL', (case_id,))
         keys = [r[0] for r in cur.fetchall()]
 
     deleted_objs = 0
@@ -797,7 +852,8 @@ def _reset_case(conn, case_id: int, actor: Optional[str], gw: Optional[S3Gateway
                 except Exception:  # noqa: BLE001 — best effort on synthetic demo objects
                     pass
     with conn.cursor() as cur:
-        cur.execute('DELETE FROM "EvidenceItem" WHERE "CaseMasterID"=%s', (case_id,))
+        cur.execute('DELETE FROM "EvidenceItem" WHERE "CaseMasterID"=%s '
+                    'AND "IsSynthetic"=TRUE', (case_id,))
         removed = cur.rowcount
     audit.record(audit.Action.DELETE, "evidence_case_reset", case_id, actor=actor, conn=conn,
                  detail={"items_deleted": removed, "objects_deleted": deleted_objs})

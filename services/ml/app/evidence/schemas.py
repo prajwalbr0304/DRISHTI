@@ -199,6 +199,8 @@ class EvidenceItemOut(BaseModel):
     uploader_actor: Optional[str] = None
     confidentiality: str
     state: str
+    is_synthetic: bool = True
+    is_read_only: bool = False
     manual_metadata: dict[str, Any] = Field(default_factory=dict)
     captured_at: Optional[str] = None
     received_at: Optional[str] = None
@@ -223,6 +225,8 @@ class EvidenceListItem(BaseModel):
     synthetic_reference: Optional[str] = None
     source_label: Optional[str] = None
     state: str
+    is_synthetic: bool = True
+    is_read_only: bool = False
     language: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     version_no: Optional[int] = None

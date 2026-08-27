@@ -30,32 +30,55 @@ _LIST_FROM = '''
     LEFT JOIN "CrimeSubHead"     csh ON csh."CrimeSubHeadID" = cm."CrimeMinorHeadID"
     LEFT JOIN "GravityOffence"   grv ON grv."GravityOffenceID" = cm."GravityOffenceID"
     LEFT JOIN "CaseStatusMaster" st  ON st."CaseStatusID"    = cm."CaseStatusID"
+    LEFT JOIN LATERAL (
+        SELECT cv0."SnapshotAttributes" AS attrs
+        FROM "CaseVersion" cv0
+        WHERE cv0."CaseMasterID"=cm."CaseMasterID" AND cv0."IsCurrent"=TRUE
+        ORDER BY cv0."VersionNo" DESC LIMIT 1
+    ) cv ON TRUE
 '''
 
 _LIST_COLS = [
-    "case_id", "crime_no", "case_no", "registered_date", "status_id", "status",
-    "crime_group", "crime_subhead", "gravity", "district_id", "district",
-    "station_id", "station", "latitude", "longitude", "brief_facts",
+    "case_id", "crime_no", "internal_crime_no", "case_no", "registered_date",
+    "status_id", "status", "crime_group", "crime_subhead", "gravity",
+    "district_id", "district", "station_id", "station", "latitude", "longitude",
+    "brief_facts", "record_origin", "is_synthetic", "reference_mapping_kind",
+    "location_label", "location_precision", "not_exact_incident_scene",
+    "location_uncertainty_radius_m", "location_attribution",
     "victim_count", "accused_count", "has_arrest", "has_chargesheet",
 ]
 
 _LIST_SELECT = '''
-    SELECT cm."CaseMasterID"        AS case_id,
-           cm."CrimeNo"             AS crime_no,
-           cm."CaseNo"              AS case_no,
+    SELECT cm."CaseMasterID" AS case_id,
+           COALESCE(NULLIF(cv.attrs #>> '{official_references,police_crime_no}', ''),
+                    cm."CrimeNo") AS crime_no,
+           cm."CrimeNo" AS internal_crime_no,
+           cm."CaseNo" AS case_no,
            cm."CrimeRegisteredDate" AS registered_date,
-           cm."CaseStatusID"        AS status_id,
-           st."CaseStatusName"      AS status,
-           ch."CrimeGroupName"      AS crime_group,
-           csh."CrimeHeadName"      AS crime_subhead,
-           grv."LookupValue"        AS gravity,
-           d."DistrictID"           AS district_id,
-           d."DistrictName"         AS district,
-           cm."PoliceStationID"     AS station_id,
-           u."UnitName"             AS station,
-           cm."latitude"            AS latitude,
-           cm."longitude"           AS longitude,
+           cm."CaseStatusID" AS status_id,
+           st."CaseStatusName" AS status,
+           ch."CrimeGroupName" AS crime_group,
+           csh."CrimeHeadName" AS crime_subhead,
+           grv."LookupValue" AS gravity,
+           d."DistrictID" AS district_id,
+           d."DistrictName" AS district,
+           cm."PoliceStationID" AS station_id,
+           CASE WHEN cv.attrs #>> '{reference_mapping,kind}' = 'proxy'
+                THEN NULLIF(cv.attrs #>> '{reference_mapping,public_station_label}', '')
+                ELSE u."UnitName" END AS station,
+           cm."latitude" AS latitude,
+           cm."longitude" AS longitude,
            LEFT(cm."BriefFacts", 240) AS brief_facts,
+           COALESCE(NULLIF(cv.attrs->>'record_origin', ''), 'synthetic_fixture') AS record_origin,
+           COALESCE((cv.attrs->>'is_synthetic')::boolean, TRUE) AS is_synthetic,
+           cv.attrs #>> '{reference_mapping,kind}' AS reference_mapping_kind,
+           cv.attrs #>> '{location,label}' AS location_label,
+           cv.attrs #>> '{location,precision}' AS location_precision,
+           COALESCE((cv.attrs #>> '{location,not_exact_incident_scene}')::boolean,
+                    FALSE) AS not_exact_incident_scene,
+           NULLIF(cv.attrs #>> '{location,uncertainty_radius_m}', '')::int
+                AS location_uncertainty_radius_m,
+           cv.attrs #>> '{location,attribution}' AS location_attribution,
            (SELECT COUNT(*) FROM "Victim"  v  WHERE v."CaseMasterID" = cm."CaseMasterID")  AS victim_count,
            (SELECT COUNT(*) FROM "Accused" a  WHERE a."CaseMasterID" = cm."CaseMasterID")  AS accused_count,
            EXISTS(SELECT 1 FROM "ArrestSurrender"    ar WHERE ar."CaseMasterID" = cm."CaseMasterID") AS has_arrest,
@@ -63,13 +86,19 @@ _LIST_SELECT = '''
 ''' + _LIST_FROM
 
 
-def _build_filters(f: dict) -> tuple[str, list]:
+def _build_filters(f: dict, *, analytics_only: bool = False) -> tuple[str, list]:
     clauses: list[str] = []
     params: list[Any] = []
     if f.get("district_id"):
         clauses.append('d."DistrictID" = %s'); params.append(f["district_id"])
     if f.get("station_id"):
-        clauses.append('cm."PoliceStationID" = %s'); params.append(f["station_id"])
+        # A deterministic fixture proxy is not an operational station
+        # assignment and must never satisfy station-level filtering.
+        clauses.append(
+            'cm."PoliceStationID" = %s AND '
+            'COALESCE(cv.attrs #>> \'{reference_mapping,kind}\', \'\') <> \'proxy\''
+        )
+        params.append(f["station_id"])
     if f.get("major_head_id"):
         clauses.append('cm."CrimeMajorHeadID" = %s'); params.append(f["major_head_id"])
     if f.get("minor_head_id"):
@@ -88,8 +117,44 @@ def _build_filters(f: dict) -> tuple[str, list]:
         clauses.append('EXISTS(SELECT 1 FROM "ChargesheetDetails" cs WHERE cs."CaseMasterID" = cm."CaseMasterID")')
     if f.get("q"):
         like = f"%{f['q'].strip()}%"
-        clauses.append('(cm."CrimeNo" ILIKE %s OR cm."CaseNo" ILIKE %s OR cm."BriefFacts" ILIKE %s)')
-        params.extend([like, like, like])
+        clauses.append(
+            '''(
+                concat_ws(' ', cm."CrimeNo", cm."CaseNo", cm."BriefFacts",
+                    cv.attrs #>> '{official_references,police_crime_no}',
+                    cv.attrs #>> '{official_references,committal_case_no}',
+                    cv.attrs #>> '{official_references,sessions_case_no}') ILIKE %s
+                OR EXISTS (
+                    SELECT 1 FROM "CasePartyRole" cpr
+                    LEFT JOIN "CanonicalPerson" cp
+                      ON cp."CanonicalPersonID"=cpr."CanonicalPersonID"
+                    LEFT JOIN "PersonAlias" pa
+                      ON pa."CanonicalPersonID"=cpr."CanonicalPersonID"
+                    WHERE cpr."CaseMasterID"=cm."CaseMasterID"
+                      AND concat_ws(' ', cpr."PartyLabel", cp."DisplayLabel",
+                                    cp."PublicRef", pa."AliasName") ILIKE %s
+                )
+                OR EXISTS (
+                    SELECT 1 FROM "CaseSource" cs
+                    JOIN "SourceRecord" sr ON sr."SourceRecordID"=cs."SourceRecordID"
+                    WHERE cs."CaseMasterID"=cm."CaseMasterID"
+                      AND sr."Payload"->>'record_origin'='public_source_curated'
+                      AND COALESCE(sr."Payload"->>'availability_only', 'false') <> 'true'
+                      AND concat_ws(' ', sr."ExternalRef", sr."Payload"->>'id',
+                                    sr."Payload"->>'title', sr."Payload"->>'publisher',
+                                    sr."Payload"->>'official_crime_reference') ILIKE %s
+                )
+                OR EXISTS (
+                    SELECT 1 FROM "EvidenceItem" ei
+                    WHERE ei."CaseMasterID"=cm."CaseMasterID"
+                      AND concat_ws(' ', ei."Title", ei."Description",
+                                    ei."SyntheticReference",
+                                    array_to_string(ei."Tags", ' ')) ILIKE %s
+                )
+            )'''
+        )
+        params.extend([like, like, like, like])
+    if analytics_only:
+        clauses.append(casedata.analytics_eligible_sql("cm"))
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     return where, params
 
@@ -187,7 +252,7 @@ def caseload_summary(filters: dict) -> dict:
     via its current status, so the stage counts sum to ``total``. Also returns
     the raw per-status breakdown (for tooltips) and open/disposed splits.
     """
-    where, params = _build_filters(filters)
+    where, params = _build_filters(filters, analytics_only=True)
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -256,6 +321,7 @@ def case_detail(case_id: int) -> Optional[dict]:
             if core is None:
                 return None
             children = casedata.fetch_case_children(cur, case_id)
+            provenance = casedata.fetch_case_provenance(cur, case_id)
     sections = casedata.section_labels(children.get("sections", []))
     return {
         "core": core,
@@ -267,6 +333,7 @@ def case_detail(case_id: int) -> Optional[dict]:
         "arrests": children.get("arrests", []),
         "chargesheets": children.get("chargesheets", []),
         "timeline": _timeline(core, children),
+        **provenance,
     }
 
 

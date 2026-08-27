@@ -86,7 +86,8 @@ class LeadsResponse(BaseModel):
 
 class CaseListItem(BaseModel):
     case_id: int
-    crime_no: Optional[str] = None
+    crime_no: Optional[str] = None                 # presentation-safe public reference
+    internal_crime_no: Optional[str] = None        # deterministic fixture key, when different
     case_no: Optional[str] = None
     registered_date: Optional[str] = None
     status_id: Optional[int] = None
@@ -97,10 +98,18 @@ class CaseListItem(BaseModel):
     district_id: Optional[int] = None
     district: Optional[str] = None
     station_id: Optional[int] = None
-    station: Optional[str] = None
+    station: Optional[str] = None                  # proxy-safe display label
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     brief_facts: Optional[str] = None
+    record_origin: str = "synthetic_fixture"
+    is_synthetic: bool = True
+    reference_mapping_kind: Optional[str] = None
+    location_label: Optional[str] = None
+    location_precision: Optional[str] = None
+    not_exact_incident_scene: bool = False
+    location_uncertainty_radius_m: Optional[int] = None
+    location_attribution: Optional[str] = None
     victim_count: int = 0
     accused_count: int = 0
     has_arrest: bool = False
@@ -152,7 +161,8 @@ class CaseloadResponse(BaseModel):
 
 class CaseCore(BaseModel):
     case_id: int
-    crime_no: Optional[str] = None
+    crime_no: Optional[str] = None                 # presentation-safe public reference
+    internal_crime_no: Optional[str] = None        # deterministic fixture key, when different
     registered_date: Optional[str] = None
     incident_from: Optional[str] = None
     incident_to: Optional[str] = None
@@ -169,8 +179,16 @@ class CaseCore(BaseModel):
     status: Optional[str] = None
     district_id: Optional[int] = None
     district: Optional[str] = None
-    station: Optional[str] = None
-    io_name: Optional[str] = None
+    station: Optional[str] = None                  # proxy-safe display label
+    io_name: Optional[str] = None                  # suppressed when the FK is a proxy
+    record_origin: str = "synthetic_fixture"
+    is_synthetic: bool = True
+    reference_mapping_kind: Optional[str] = None
+    location_label: Optional[str] = None
+    location_precision: Optional[str] = None
+    not_exact_incident_scene: bool = False
+    location_uncertainty_radius_m: Optional[int] = None
+    location_attribution: Optional[str] = None
 
 
 class CasePerson(BaseModel):
@@ -208,6 +226,45 @@ class TimelineEntry(BaseModel):
     detail: Optional[str] = None
 
 
+class CaseCurrentVersion(BaseModel):
+    case_version_id: int
+    version_no: int
+    status_code: str
+    record_origin: str
+    is_synthetic: bool = True
+    read_only: bool = False
+    excluded_from_derived_analytics: bool = False
+    source_cutoff: Optional[str] = None
+    official_references: dict[str, Any] = {}
+    reference_mapping: dict[str, Any] = {}
+    location: dict[str, Any] = {}
+    change_reason: Optional[str] = None
+
+
+class CaseSourceSummary(BaseModel):
+    source_record_id: int
+    external_ref: Optional[str] = None
+    record_kind: Optional[str] = None
+    source_system_code: Optional[str] = None
+    source_system_name: Optional[str] = None
+    public_source_id: Optional[str] = None
+    title: Optional[str] = None
+    publisher: Optional[str] = None
+    published_date: Optional[str] = None
+    source_url: Optional[str] = None
+    authenticity: Optional[str] = None
+    presentation_use: Optional[str] = None
+    rights_and_handling: Optional[str] = None
+    last_checked: Optional[str] = None
+
+
+class CaseNotice(BaseModel):
+    code: str
+    severity: str
+    title: str
+    message: str
+
+
 class CaseDetailResponse(BaseModel):
     core: CaseCore
     sections: list[CaseSectionRow]
@@ -218,6 +275,9 @@ class CaseDetailResponse(BaseModel):
     arrests: list[CaseArrest]
     chargesheets: list[CaseChargesheet]
     timeline: list[TimelineEntry]
+    current_version: Optional[CaseCurrentVersion] = None
+    sources: list[CaseSourceSummary] = []
+    notices: list[CaseNotice] = []
 
 
 class CaseNetworkNode(BaseModel):

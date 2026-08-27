@@ -19,10 +19,12 @@ from .identity import IdentityBuilder
 from . import v2common as C
 
 # source + ingestion staging columns (also used by build.py for provenance)
-C.register("SourceSystem", ["SourceSystemID", "Code", "Name", "Kind", "Description"])
+C.register("SourceSystem", [
+    "SourceSystemID", "Code", "Name", "Kind", "Description", "IsSynthetic",
+])
 C.register("SourceRecord", [
     "SourceRecordID", "SourceSystemID", "ExternalRef", "RecordKind", "Payload",
-    "ContentHash", "Version", "SupersededBySourceRecordID", "Status",
+    "ContentHash", "Version", "SupersededBySourceRecordID", "Status", "IsSynthetic",
 ])
 C.register("IngestionJob", [
     "IngestionJobID", "SourceSystemID", "JobKind", "IdempotencyKey", "Status",
@@ -75,7 +77,7 @@ def build_quality_scenarios(world: C.World, ib: IdentityBuilder,
     def src(ext, payload, chash, status):
         sid = w.next_id("SourceRecord")
         w.add("SourceRecord",
-              (sid, src_sys, ext, "case", Json(payload), chash, 1, None, status))
+              (sid, src_sys, ext, "case", Json(payload), chash, 1, None, status, True))
         return sid
 
     for k in range(n_each):
@@ -120,7 +122,7 @@ def build_quality_scenarios(world: C.World, ib: IdentityBuilder,
         r_src = w.next_id("SourceRecord")
         w.add("SourceRecord", (r_src, src_sys, f"EXT-{k}-LATE", "case",
                                Json({"retracted": True}), _sha(f"LATE{k}-r"), 2, late_src,
-                               "retracted"))
+                               "retracted", True))
         w.add("DataQualityIssue", ("late_retracted_source", "warning", r_src, job_id, c0, None,
                                    Json({"supersedes": late_src}), "resolved"))
         w.cover("quality_late_retracted_source")
@@ -146,7 +148,7 @@ def build_quality_scenarios(world: C.World, ib: IdentityBuilder,
         loser_id = w.next_id("CanonicalPerson")
         w.add("CanonicalPerson", (
             loser_id, C.person_ref(loser_id), name, False, 1, 1988, False,
-            "merged", p_main, Json({"role_class": "quality_alias_dup"})))
+            "merged", p_main, Json({"role_class": "quality_alias_dup"}), True))
         ib.add_resolution_candidate(
             p_main, loser_id, "deterministic", 0.97, status="accepted",
             features={"phone_match": True, "alias_match": True},
@@ -169,7 +171,7 @@ def build_quality_scenarios(world: C.World, ib: IdentityBuilder,
             "Quality probe document", "duplicate + corrupt file scenario",
             C.synth_token("EV", dq_item), "en", Arr(["synthetic", "quality"]),
             "system", "demo_normal", "failed", Json({"quality": True}),
-            None, None, None,
+            None, None, None, True,
         ))
         corrupt_hash = _sha(f"corrupt-{dq_item}")
         obj_c = w.next_id("EvidenceObject")

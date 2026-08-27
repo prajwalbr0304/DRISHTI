@@ -15,6 +15,7 @@ Safety rules enforced server-side (Phase 7 DoD):
 """
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -443,6 +444,37 @@ def _list_labs(conn, cid: int, role: Optional[str]) -> S.LabResultListResponse:
 # ===========================================================================
 # COURT / BAIL / DISPOSITION / OUTCOME
 # ===========================================================================
+def _curated_procedural_policy(conn, cid: int) -> tuple[bool, Optional[str]]:
+    """Return whether generic procedural writes are barred for this case.
+
+    Public-source snapshots are regenerated from reviewed sources; allowing an
+    operational UI action to append a judgment or advance status would silently
+    convert an attributed presentation record into an unsourced legal claim.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "SnapshotAttributes" FROM "CaseVersion" '
+            'WHERE "CaseMasterID"=%s AND "IsCurrent"=TRUE '
+            'ORDER BY "VersionNo" DESC LIMIT 1',
+            (cid,),
+        )
+        row = cur.fetchone()
+    attrs = row[0] if row and isinstance(row[0], dict) else {}
+    read_only = attrs.get("record_origin") == "public_source_curated"
+    reason = (
+        "Public-source curated procedure is read-only; update the checked-in "
+        "sources and create a reviewed source-qualified version instead."
+        if read_only else None
+    )
+    return read_only, reason
+
+
+def _require_procedural_write(conn, cid: int) -> None:
+    read_only, reason = _curated_procedural_policy(conn, cid)
+    if read_only:
+        raise CaseworkConflict(reason or "This case is read-only.")
+
+
 def _court_prior_types(conn, cid: int) -> set[str]:
     with conn.cursor() as cur:
         cur.execute('SELECT DISTINCT "EventType" FROM "CourtEvent" WHERE "CaseMasterID"=%s', (cid,))
@@ -463,6 +495,7 @@ def _has_chargesheet(conn, cid: int, court_types: set[str]) -> bool:
 
 def _add_court_event(conn, cid: int, req: S.CourtEventInput, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if req.event_type not in COURT_EVENT_TYPES:
         raise CaseworkValidationError(f"Unknown court event type '{req.event_type}'.")
     court_types = _court_prior_types(conn, cid)
@@ -496,6 +529,7 @@ def _add_court_event(conn, cid: int, req: S.CourtEventInput, role: Optional[str]
 
 def _add_bail(conn, cid: int, req: S.BailInput, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if req.status not in BAIL_STATUSES:
         raise CaseworkValidationError(f"Unknown bail status '{req.status}'.")
     if req.court_id is not None and _court_name(conn, req.court_id) is None:
@@ -514,6 +548,7 @@ def _add_bail(conn, cid: int, req: S.BailInput, role: Optional[str]) -> int:
 
 def _add_disposition(conn, cid: int, req: S.DispositionInput, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if req.disposition_type not in DISPOSITION_TYPES:
         raise CaseworkValidationError(f"Unknown disposition type '{req.disposition_type}'.")
     if req.disposition_type in DISPOSITION_NEEDS_JUDGMENT:
@@ -560,6 +595,7 @@ def _terminal_case_event_id(conn, cid: int) -> Optional[int]:
 
 def _add_outcome(conn, cid: int, req: S.OutcomeInput, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if not _has_final_event(conn, cid):
         raise CaseworkConflict(
             "No verified final event yet (a final disposition or a judgment). "
@@ -589,10 +625,23 @@ def _court_events(conn, cid: int) -> list[S.CourtEventOut]:
                     'WHERE "CaseMasterID"=%s ORDER BY COALESCE("OccurredAt","ScheduledAt","CreatedAt"), '
                     '"CourtEventID"', (cid,))
         rows = cur.fetchall()
-    return [S.CourtEventOut(
-        court_event_id=int(r[0]), case_master_id=int(r[1]), court_id=r[2],
-        court_name=_court_name(conn, r[2]), event_type=r[3], scheduled_at=_s(r[4]),
-        occurred_at=_s(r[5]), outcome=r[6], detail=r[7] or {}, created_at=_s(r[8])) for r in rows]
+    out: list[S.CourtEventOut] = []
+    for r in rows:
+        detail = r[7] if isinstance(r[7], dict) else {}
+        proxy = detail.get("reference_mapping") == "proxy"
+        sourced_label = detail.get("public_court_label") or detail.get("reported_court_label")
+        court_name = sourced_label if proxy else _court_name(conn, r[2])
+        reference_kind = (
+            "public_source" if proxy and sourced_label
+            else "unasserted" if proxy
+            else "operational_reference"
+        )
+        out.append(S.CourtEventOut(
+            court_event_id=int(r[0]), case_master_id=int(r[1]), court_id=r[2],
+            court_name=court_name, court_reference_kind=reference_kind,
+            event_type=r[3], scheduled_at=_s(r[4]), occurred_at=_s(r[5]),
+            outcome=r[6], detail=detail, created_at=_s(r[8])))
+    return out
 
 
 def _bail_events(conn, cid: int) -> list[S.BailOut]:
@@ -658,8 +707,10 @@ def _legacy_status_name(conn, cid: int) -> Optional[str]:
 
 def _current_version(conn, cid: int):
     with conn.cursor() as cur:
-        cur.execute('SELECT "CaseVersionID","CaseCategoryCode","StatusCode" FROM "CaseVersion" '
-                    'WHERE "CaseMasterID"=%s AND "IsCurrent" LIMIT 1', (cid,))
+        cur.execute('SELECT "CaseVersionID","CaseCategoryCode","StatusCode",'
+                    '"SnapshotAttributes" FROM "CaseVersion" '
+                    'WHERE "CaseMasterID"=%s AND "IsCurrent" '
+                    'ORDER BY "VersionNo" DESC LIMIT 1', (cid,))
         return cur.fetchone()
 
 
@@ -672,9 +723,18 @@ def _prior_event_types(conn, cid: int) -> list[str]:
 def _lifecycle_view(conn, cid: int) -> S.CourtLifecycleView:
     _require_case(conn, cid)
     cv = _current_version(conn, cid)
+    read_only = False
+    read_only_reason = None
     if cv is not None:
         category, current_status = cv[1], cv[2]
         has_version = True
+        attrs = cv[3] if isinstance(cv[3], dict) else {}
+        read_only = attrs.get("record_origin") == "public_source_curated"
+        if read_only:
+            read_only_reason = (
+                "Public-source curated procedure is presentation-only and can be "
+                "updated only through a reviewed source-qualified version."
+            )
     else:
         category = _legacy_category(conn, cid) or "FIR"
         legacy_name = _legacy_status_name(conn, cid)
@@ -682,23 +742,26 @@ def _lifecycle_view(conn, cid: int) -> S.CourtLifecycleView:
         has_version = False
     legacy_status = wf.STATUS_TO_LEGACY.get(current_status)
     priors = _prior_event_types(conn, cid)
-    # allowed transitions from the seeded state machine, applicable to current status
+    # Source-curated procedural claims are read-only. Other cases expose allowed
+    # transitions from the seeded state machine for their current status.
     transitions = []
-    for t in wf.load_transitions(conn, category):
-        if t["from_status"] in (None, "", current_status):
-            transitions.append(S.TransitionMeta(
-                event_type=t["event_type"], label=wf.EVENT_LABELS.get(t["event_type"], t["event_type"]),
-                from_status=t["from_status"], to_status=t["to_status"],
-                requires_prior_event=t["requires_prior_event"], is_terminal=bool(t["is_terminal"]),
-                description=t["description"]))
+    if not read_only:
+        for t in wf.load_transitions(conn, category):
+            if t["from_status"] in (None, "", current_status):
+                transitions.append(S.TransitionMeta(
+                    event_type=t["event_type"], label=wf.EVENT_LABELS.get(t["event_type"], t["event_type"]),
+                    from_status=t["from_status"], to_status=t["to_status"],
+                    requires_prior_event=t["requires_prior_event"], is_terminal=bool(t["is_terminal"]),
+                    description=t["description"]))
     has_final = _has_final_event(conn, cid)
     return S.CourtLifecycleView(
         case_master_id=cid, category=category, current_status=current_status,
         current_status_label=wf.STATUS_LABELS.get(current_status), legacy_status=legacy_status,
-        has_case_version=has_version, prior_event_types=priors, allowed_transitions=transitions,
+        has_case_version=has_version, read_only=read_only, read_only_reason=read_only_reason,
+        prior_event_types=priors, allowed_transitions=transitions,
         court_events=_court_events(conn, cid), bail_events=_bail_events(conn, cid),
         dispositions=_dispositions(conn, cid), outcomes=_outcomes(conn, cid),
-        has_final_disposition=has_final, can_record_outcome=has_final)
+        has_final_disposition=has_final, can_record_outcome=(has_final and not read_only))
 
 
 # ---------------------------------------------------------------------------
@@ -753,6 +816,7 @@ def _ensure_case_version(conn, cid: int) -> bool:
 def _add_lifecycle_event(conn, cid: int, event_type: str, occurred_at: Optional[str],
                          actor_role: Optional[str], payload: dict) -> S.LifecycleEventResult:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     bootstrapped = _ensure_case_version(conn, cid)
     try:
         res = intake_service._add_case_event(conn, cid, event_type, occurred_at, actor_role, payload)
@@ -773,68 +837,120 @@ def _timeline(conn, cid: int) -> S.TimelineResponse:
     _require_case(conn, cid)
     entries: list[S.TimelineEntry] = []
     event_backed = False
+    case_event_types: set[str] = set()
+    case_event_keys: set[tuple[str, Optional[str]]] = set()
+    milestone_counts: Counter[tuple[str, Optional[str]]] = Counter()
     with conn.cursor() as cur:
-        # 1. append-only lifecycle events (CaseEvent)
-        cur.execute('SELECT "CaseEventID","EventType","OccurredAt","ToStatus" FROM "CaseEvent" '
-                    'WHERE "CaseMasterID"=%s ORDER BY "SequenceNo"', (cid,))
+        # 1. append-only lifecycle events (CaseEvent). A curated event may carry
+        # a source-qualified display label in Payload; never infer stronger text.
+        cur.execute(
+            'SELECT "CaseEventID","EventType","OccurredAt","ToStatus","Payload" '
+            'FROM "CaseEvent" WHERE "CaseMasterID"=%s ORDER BY "SequenceNo"',
+            (cid,),
+        )
         for r in cur.fetchall():
             event_backed = True
+            payload = r[4] if isinstance(r[4], dict) else {}
+            event_date = _s(r[2])
+            case_event_types.add(r[1])
+            key = (r[1], event_date[:10] if event_date else None)
+            case_event_keys.add(key)
+            milestone_counts[key] += 1
             entries.append(S.TimelineEntry(
-                date=_s(r[2]), kind="lifecycle", type=r[1],
-                label=wf.EVENT_LABELS.get(r[1], r[1]),
-                detail=(wf.STATUS_LABELS.get(r[3]) if r[3] else None), ref_id=int(r[0])))
-        # 2. court events
-        cur.execute('SELECT "CourtEventID","EventType","OccurredAt","ScheduledAt","Outcome" '
-                    'FROM "CourtEvent" WHERE "CaseMasterID"=%s', (cid,))
+                date=event_date, kind="lifecycle", type=r[1],
+                label=payload.get("display_label") or wf.EVENT_LABELS.get(r[1], r[1]),
+                detail=(payload.get("display_detail")
+                        or (wf.STATUS_LABELS.get(r[3]) if r[3] else None)),
+                ref_id=int(r[0])))
+        # 2. court events. Suppress exact type/day duplicates already represented
+        # by a CaseEvent while retaining court-only procedural milestones.
+        cur.execute(
+            'SELECT "CourtEventID","EventType","OccurredAt","ScheduledAt","Outcome","Detail" '
+            'FROM "CourtEvent" WHERE "CaseMasterID"=%s', (cid,))
         for r in cur.fetchall():
             event_backed = True
+            event_date = _s(r[2] or r[3])
+            if (r[1], event_date[:10] if event_date else None) in case_event_keys:
+                continue
+            detail = r[5] if isinstance(r[5], dict) else {}
             entries.append(S.TimelineEntry(
-                date=_s(r[2] or r[3]), kind="court", type=r[1],
-                label=r[1].replace("_", " ").title(), detail=r[4], ref_id=int(r[0])))
-        # 3. statements
+                date=event_date, kind="court", type=r[1],
+                label=detail.get("display_label") or r[1].replace("_", " ").title(),
+                detail=r[4], ref_id=int(r[0])))
+        # 3. bail decisions (including person labels). Cancellation/set-aside
+        # milestones that do not fit BailEvent.Status remain CourtEvents.
+        cur.execute(
+            'SELECT b."BailEventID",b."BailType",b."Status",b."DecidedAt",'
+            'COALESCE(p."DisplayLabel",p."PublicRef") '
+            'FROM "BailEvent" b LEFT JOIN "CanonicalPerson" p '
+            'ON p."CanonicalPersonID"=b."CanonicalPersonID" '
+            'WHERE b."CaseMasterID"=%s', (cid,))
+        for r in cur.fetchall():
+            event_backed = True
+            person = r[4] or "Accused"
+            entries.append(S.TimelineEntry(
+                date=_s(r[3]), kind="bail", type=r[1] or "bail",
+                label=f"{person}: {(r[1] or 'bail').replace('_', ' ')}",
+                detail=r[2], ref_id=int(r[0])))
+        # 4. statements
         cur.execute('SELECT "StatementID","StatementType","RecordedAt" FROM "Statement" '
                     'WHERE "CaseMasterID"=%s', (cid,))
         for r in cur.fetchall():
             entries.append(S.TimelineEntry(
                 date=_s(r[2]), kind="statement", type=r[1],
                 label=f"{r[1].title()} statement", detail=None, ref_id=int(r[0])))
-        # 4. seizures
+        # 5. seizures
         cur.execute('SELECT "SeizureID","SeizureType","SeizedAt" FROM "Seizure" WHERE "CaseMasterID"=%s', (cid,))
         for r in cur.fetchall():
             entries.append(S.TimelineEntry(
                 date=_s(r[2]), kind="seizure", type=r[1], label="Seizure", detail=None, ref_id=int(r[0])))
-        # 5. dispositions
+        # 6. dispositions
         cur.execute('SELECT "CaseDispositionID","DispositionType","DispositionDate","IsFinal" '
                     'FROM "CaseDisposition" WHERE "CaseMasterID"=%s', (cid,))
         for r in cur.fetchall():
             entries.append(S.TimelineEntry(
                 date=_s(r[2]), kind="disposition", type=r[1],
                 label=r[1].replace("_", " ").title(), detail=("final" if r[3] else None), ref_id=int(r[0])))
-        # 6. outcomes
+        # 7. outcomes
         cur.execute('SELECT "OutcomeObservationID","ObservationType","ObservedAt" FROM "OutcomeObservation" '
                     'WHERE "CaseMasterID"=%s', (cid,))
         for r in cur.fetchall():
             entries.append(S.TimelineEntry(
                 date=_s(r[2]), kind="outcome", type=r[1], label="Verified outcome", detail=None, ref_id=int(r[0])))
-        # 7. derived base dates (registration / arrests / chargesheets) so the
-        #    timeline is useful even before any event rows exist.
+        # 8. derived base dates so pre-v2 and partially migrated cases remain
+        # useful. Reconcile per milestone/day instead of using an all-or-nothing
+        # event-backed gate, which used to hide unmatched arrest/chargesheet rows.
         cur.execute('SELECT "CrimeRegisteredDate","CrimeNo" FROM "CaseMaster" WHERE "CaseMasterID"=%s', (cid,))
         cm = cur.fetchone()
-        if cm and cm[0]:
+        if cm and cm[0] and "registered" not in case_event_types:
             entries.append(S.TimelineEntry(date=_s(cm[0]), kind="derived", type="registered",
                                            label="FIR registered", detail=cm[1]))
-        if not event_backed:
-            cur.execute('SELECT "ArrestSurrenderDate" FROM "ArrestSurrender" WHERE "CaseMasterID"=%s '
-                        'AND "ArrestSurrenderDate" IS NOT NULL ORDER BY "ArrestSurrenderDate" LIMIT 5', (cid,))
-            for r in cur.fetchall():
-                entries.append(S.TimelineEntry(date=_s(r[0]), kind="derived", type="arrest",
-                                               label="Arrest / surrender", detail=None))
-            cur.execute('SELECT "csdate","cstype" FROM "ChargesheetDetails" WHERE "CaseMasterID"=%s '
-                        'AND "csdate" IS NOT NULL ORDER BY "csdate" LIMIT 5', (cid,))
-            for r in cur.fetchall():
-                entries.append(S.TimelineEntry(date=_s(r[0]), kind="derived", type="chargesheet",
-                                               label="Chargesheet / final report", detail=_s(r[1])))
-    entries.sort(key=lambda e: (e.date or ""))
+        cur.execute('SELECT "ArrestSurrenderDate","ArrestSurrenderTypeID" '
+                    'FROM "ArrestSurrender" WHERE "CaseMasterID"=%s '
+                    'AND "ArrestSurrenderDate" IS NOT NULL '
+                    'ORDER BY "ArrestSurrenderDate","ArrestSurrenderID" LIMIT 100', (cid,))
+        for r in cur.fetchall():
+            date = _s(r[0])
+            day = date[:10] if date else None
+            expected_type = "surrender" if r[1] == 2 else "arrest"
+            key = (expected_type, day)
+            if milestone_counts[key] > 0:
+                milestone_counts[key] -= 1
+                continue
+            entries.append(S.TimelineEntry(date=date, kind="derived", type=expected_type,
+                                           label="Arrest / surrender", detail=None))
+        cur.execute('SELECT "csdate","cstype" FROM "ChargesheetDetails" '
+                    'WHERE "CaseMasterID"=%s AND "csdate" IS NOT NULL '
+                    'ORDER BY "csdate","CSID" LIMIT 100', (cid,))
+        for r in cur.fetchall():
+            date = _s(r[0])
+            key = ("chargesheet_filed", date[:10] if date else None)
+            if milestone_counts[key] > 0:
+                milestone_counts[key] -= 1
+                continue
+            entries.append(S.TimelineEntry(date=date, kind="derived", type="chargesheet",
+                                           label="Chargesheet / final report", detail=_s(r[1])))
+    entries.sort(key=lambda e: (e.date is None, e.date or ""))
     return S.TimelineResponse(case_master_id=cid, count=len(entries),
                               event_backed=event_backed, entries=entries[:250])
 

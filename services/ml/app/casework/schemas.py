@@ -244,6 +244,7 @@ class CourtEventOut(BaseModel):
     case_master_id: int
     court_id: Optional[int] = None
     court_name: Optional[str] = None
+    court_reference_kind: Optional[str] = None
     event_type: str
     scheduled_at: Optional[str] = None
     occurred_at: Optional[str] = None
@@ -341,6 +342,8 @@ class CourtLifecycleView(BaseModel):
     current_status_label: Optional[str] = None
     legacy_status: Optional[str] = None
     has_case_version: bool = False
+    read_only: bool = False
+    read_only_reason: Optional[str] = None
     prior_event_types: list[str] = Field(default_factory=list)
     allowed_transitions: list[TransitionMeta] = Field(default_factory=list)
     court_events: list[CourtEventOut] = Field(default_factory=list)
