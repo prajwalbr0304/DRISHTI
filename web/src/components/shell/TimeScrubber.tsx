@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 /* ============================================================================
    Global time-scrubber. One window scopes every time-aware widget; the playhead
@@ -44,6 +45,7 @@ export function TimeScrubber() {
   const setPlayhead = useTimeStore((s) => s.setPlayhead);
   const togglePlay = useTimeStore((s) => s.togglePlay);
   const setPlaying = useTimeStore((s) => s.setPlaying);
+  const { t } = useLanguage();
 
   // Play loop — advance the playhead, wrap around at the end.
   useEffect(() => {
@@ -58,7 +60,7 @@ export function TimeScrubber() {
   const label =
     preset === "custom"
       ? `${formatDate(start)} – ${formatDate(end)}`
-      : (PRESETS.find((p) => p.id === preset)?.label ?? "Custom");
+      : t(PRESETS.find((p) => p.id === preset)?.label ?? "Custom");
 
   const headDate = playheadDate(start, end, playhead);
   const scrubbing = playhead < 0.999;
@@ -69,7 +71,7 @@ export function TimeScrubber() {
         <button
           type="button"
           className="flex h-8 items-center gap-2 rounded-control border border-hairline bg-surface-2 px-2.5 text-12 text-content transition-colors hover:border-primary/50"
-          aria-label="Time range"
+          aria-label={t("Time range")}
         >
           <CalendarClock className="size-4 text-content-dim" />
           <span className="font-medium">{label}</span>
@@ -84,19 +86,19 @@ export function TimeScrubber() {
       <PopoverContent align="center" className="w-80">
         <div className="space-y-3">
           <div>
-            <div className="mb-1.5 text-12 font-semibold text-content-dim">Time range</div>
+            <div className="mb-1.5 text-12 font-semibold text-content-dim">{t("Time range")}</div>
             <div className="flex flex-wrap gap-1">
               {PRESETS.map((p) => (
                 <PresetButton
                   key={p.id}
                   active={preset === p.id}
                   onClick={() => setPreset(p.id)}
-                  label={p.label}
+                  label={t(p.label)}
                 />
               ))}
               {preset === "custom" && (
                 <span className="rounded-control bg-primary/15 px-2 py-1 text-12 font-medium text-primary">
-                  Custom
+                  {t("Custom")}
                 </span>
               )}
             </div>
@@ -112,7 +114,7 @@ export function TimeScrubber() {
           {/* Playhead + transport */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-12 font-semibold text-content-dim">Playhead</span>
+              <span className="text-12 font-semibold text-content-dim">{t("Playhead")}</span>
               <span className="tnum text-12 font-medium text-content">{formatDateTime(headDate)}</span>
             </div>
             <Slider
@@ -128,7 +130,7 @@ export function TimeScrubber() {
             <div className="flex items-center gap-1.5">
               <Button variant="secondary" size="sm" onClick={togglePlay} className="gap-1.5">
                 {playing ? <Pause /> : <Play />}
-                {playing ? "Pause" : "Play"}
+                {playing ? t("Pause") : t("Play")}
               </Button>
               <Button
                 variant="ghost"
@@ -139,7 +141,7 @@ export function TimeScrubber() {
                 }}
                 className="gap-1.5"
               >
-                <RotateCcw /> Now
+                <RotateCcw /> {t("Now")}
               </Button>
             </div>
           </div>

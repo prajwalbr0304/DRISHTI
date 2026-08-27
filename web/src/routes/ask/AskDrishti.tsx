@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { Bookmark, History as HistoryIcon, MessageSquareText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/providers/LanguageProvider";
 import { PageHeader } from "@/components/common/PageHeader";
 import { ChatView } from "@/routes/ask/ChatView";
 import { HistoryView } from "@/routes/ask/HistoryView";
@@ -23,6 +24,7 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 export function AskDrishti() {
+  const { t } = useLanguage();
   const [sp, setSp] = useSearchParams();
   const tab = (sp.get("tab") as Tab) ?? "chat";
   const active: Tab = TABS.some((t) => t.key === tab) ? tab : "chat";
@@ -42,14 +44,14 @@ export function AskDrishti() {
 
       {/* Sub-nav */}
       <div className="mb-4 flex flex-wrap gap-1 border-b border-hairline">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const isActive = active === t.key;
+        {TABS.map((tabDef) => {
+          const Icon = tabDef.icon;
+          const isActive = active === tabDef.key;
           return (
             <button
-              key={t.key}
+              key={tabDef.key}
               type="button"
-              onClick={() => setTab(t.key)}
+              onClick={() => setTab(tabDef.key)}
               className={cn(
                 "flex items-center gap-2 border-b-2 px-3 py-2 text-13 font-medium transition-colors",
                 isActive
@@ -58,7 +60,7 @@ export function AskDrishti() {
               )}
             >
               <Icon className="size-4" />
-              {t.label}
+              {t(tabDef.label)}
             </button>
           );
         })}

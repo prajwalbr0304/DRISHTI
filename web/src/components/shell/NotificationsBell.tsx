@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePeekStore } from "@/stores/usePeekStore";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 /* ============================================================================
    Notifications bell — backed by REAL active geo alerts (no notifications
@@ -27,6 +28,7 @@ const SEV_BADGE: Record<AlertSeverity, BadgeProps["variant"]> = {
 
 export function NotificationsBell() {
   const push = usePeekStore((s) => s.push);
+  const { t } = useLanguage();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["alerts", "bell"],
     queryFn: ({ signal }) => api.geo.alerts({ limit: 50 }, signal),
@@ -39,7 +41,7 @@ export function NotificationsBell() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label={`Alerts (${urgent} urgent)`}>
+        <Button variant="ghost" size="icon" className="relative" aria-label={t("Active alerts") + ` (${urgent})`}>
           <Bell />
           {urgent > 0 && (
             <span className="absolute right-1 top-1 grid min-w-[16px] place-items-center rounded-full bg-severity-critical px-1 text-[10px] font-semibold leading-4 text-white tnum">
@@ -50,7 +52,7 @@ export function NotificationsBell() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[26rem] p-0">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2.5">
-          <div className="text-13 font-semibold text-content">Active alerts</div>
+          <div className="text-13 font-semibold text-content">{t("Active alerts")}</div>
           <Badge variant="neutral" className="tnum">
             {alerts.length}
           </Badge>
@@ -71,13 +73,13 @@ export function NotificationsBell() {
                 <AlertTriangle className="size-5 text-severity-high" />
                 <p className="text-12 text-content-dim">{errorMessage(error)}</p>
                 <Button variant="outline" size="sm" onClick={() => refetch()}>
-                  Retry
+                  {t("Retry")}
                 </Button>
               </div>
             )}
 
             {!isLoading && !error && alerts.length === 0 && (
-              <p className="p-6 text-center text-13 text-content-dim">No active alerts.</p>
+              <p className="p-6 text-center text-13 text-content-dim">{t("No active alerts.")}</p>
             )}
 
             {!error &&
@@ -99,6 +101,8 @@ function openAlert(a: AlertFeature, push: ReturnType<typeof usePeekStore.getStat
 }
 
 function AlertRow({ alert, onOpen }: { alert: AlertFeature; onOpen: () => void }) {
+  const { t } = useLanguage();
+
   return (
     <button
       type="button"
@@ -120,7 +124,7 @@ function AlertRow({ alert, onOpen }: { alert: AlertFeature; onOpen: () => void }
         <span className="flex items-start gap-2">
           <span className="text-13 font-medium leading-snug text-content">{alert.title}</span>
           <Badge variant={SEV_BADGE[alert.severity]} className="mt-0.5 shrink-0 capitalize">
-            {alert.severity}
+            {t(alert.severity)}
           </Badge>
         </span>
         {alert.message && <span className="mt-0.5 block text-12 leading-normal text-content-dim">{alert.message}</span>}

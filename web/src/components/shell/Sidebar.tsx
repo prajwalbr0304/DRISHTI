@@ -7,6 +7,7 @@ import { contextForPath, visibleDestinations } from "@/config/destinations";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { WorkspaceSwitcher } from "@/components/shell/WorkspaceSwitcher";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 /* ============================================================================
    Left sidebar — the eight destinations, collapsible to an icon rail. Renders
@@ -17,6 +18,7 @@ export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggle = useUIStore((s) => s.toggleSidebar);
   const { role, isAdmin } = useRole();
+  const { t } = useLanguage();
   const { pathname } = useLocation();
   const context = contextForPath(pathname);
   const destinations = visibleDestinations(role, isAdmin, context);
@@ -39,7 +41,7 @@ export function Sidebar() {
           <div className="min-w-0 leading-tight">
             <div className="truncate text-14 font-semibold tracking-wide text-content">DRISHTI</div>
             <div className="truncate text-12 text-content-dim">
-              {emergency ? "Emergency Response" : "Crime Intelligence"}
+              {emergency ? t("Emergency Response") : t("Crime Intelligence")}
             </div>
           </div>
         )}
@@ -75,13 +77,13 @@ export function Sidebar() {
                     <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-primary" aria-hidden />
                   )}
                   <Icon className={cn("size-[18px] shrink-0", isActive ? "text-primary" : "")} />
-                  {!collapsed && <span className="truncate">{d.label}</span>}
+                  {!collapsed && <span className="truncate">{t(d.label)}</span>}
                 </>
               )}
             </NavLink>
           );
           return collapsed ? (
-            <SimpleTooltip key={d.id} label={d.label} side="right">
+            <SimpleTooltip key={d.id} label={t(d.label)} side="right">
               {link}
             </SimpleTooltip>
           ) : (
@@ -92,16 +94,16 @@ export function Sidebar() {
 
       {/* Collapse control */}
       <div className={cn("border-t border-hairline p-2", collapsed && "flex justify-center")}>
-        <SimpleTooltip label={collapsed ? "Expand sidebar" : "Collapse sidebar"} side="right">
+        <SimpleTooltip label={collapsed ? t("Expand sidebar") : t("Collapse sidebar")} side="right">
           <Button
             variant="ghost"
             size={collapsed ? "icon-sm" : "sm"}
             onClick={toggle}
             className={cn(!collapsed && "w-full justify-start gap-3")}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
           >
             {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-            {!collapsed && <span className="text-13">Collapse</span>}
+            {!collapsed && <span className="text-13">{t("Collapse")}</span>}
           </Button>
         </SimpleTooltip>
       </div>

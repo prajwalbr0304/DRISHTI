@@ -3,6 +3,7 @@ import { ScanEye, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WORKSPACES, contextForPath, type WorkspaceContext } from "@/config/destinations";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 /* ============================================================================
    Workspace context switcher (Prompt 17 §A) — Crime Intelligence | Emergency
@@ -19,18 +20,20 @@ const ICONS: Record<WorkspaceContext, typeof ScanEye> = {
 export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { t } = useLanguage();
   const active = contextForPath(pathname);
 
   if (collapsed) {
     // icon-rail: a single toggle to the OTHER workspace
     const other = WORKSPACES.find((w) => w.id !== active)!;
     const Icon = ICONS[other.id];
+    const label = t(other.label);
     return (
-      <SimpleTooltip label={`Switch to ${other.label}`} side="right">
+      <SimpleTooltip label={t("Switch to {{language}}", { language: label })} side="right">
         <button
           type="button"
           onClick={() => navigate(other.home)}
-          aria-label={`Switch to ${other.label}`}
+          aria-label={t("Switch to {{language}}", { language: label })}
           className="grid size-9 place-items-center rounded-control border border-hairline bg-surface-2 text-content-dim transition-colors hover:text-content"
         >
           <Icon className="size-[18px]" />
@@ -55,7 +58,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
             aria-selected={isActive}
             type="button"
             onClick={() => !isActive && navigate(w.home)}
-            title={w.blurb}
+            title={t(w.blurb)}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2 py-1.5 text-12 font-medium transition-colors",
               isActive
@@ -66,7 +69,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
             )}
           >
             <Icon className="size-3.5 shrink-0" />
-            <span className="truncate">{w.id === "emergency" ? "Emergency" : "Crime"}</span>
+            <span className="truncate">{w.id === "emergency" ? t("Emergency") : t("Crime")}</span>
           </button>
         );
       })}

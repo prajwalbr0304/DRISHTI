@@ -24,6 +24,7 @@ import { useRole } from "@/providers/RoleProvider";
 import { useUIStore } from "@/stores/useUIStore";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { useAskStore } from "@/stores/useAskStore";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 /* ============================================================================
    ⌘K "Ask DRISHTI" — global command palette + omni-search. "Ask" hands the
@@ -43,6 +44,7 @@ export function CommandBar() {
   const commandSeed = useUIStore((s) => s.commandSeed);
   const setCommandSeed = useUIStore((s) => s.setCommandSeed);
   const setAskSeed = useAskStore((s) => s.setPendingSeed);
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
@@ -90,27 +92,27 @@ export function CommandBar() {
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput
-        placeholder="Ask DRISHTI, or jump to a destination or record…"
+        placeholder={t("Ask DRISHTI, or jump to a destination or record…")}
         value={query}
         onValueChange={setQuery}
       />
       <CommandList>
-        <CommandEmpty>No matches. Press Enter to ask DRISHTI.</CommandEmpty>
+        <CommandEmpty>{t("No matches. Press Enter to ask DRISHTI.")}</CommandEmpty>
 
         {trimmed.length > 0 && (
           <>
-            <CommandGroup heading="Ask DRISHTI">
+            <CommandGroup heading={t("Ask DRISHTI")}>
               <CommandItem value={`ask ${trimmed}`} onSelect={askDrishti}>
                 <Sparkles className="text-primary" />
                 <span className="truncate">
-                  Ask: <span className="text-content-dim">“{trimmed}”</span>
+                  {t("Ask:")} <span className="text-content-dim">“{trimmed}”</span>
                 </span>
                 <CommandShortcut>↵</CommandShortcut>
               </CommandItem>
             </CommandGroup>
 
             {recordId !== null && (
-              <CommandGroup heading="Open record">
+              <CommandGroup heading={t("Open record")}>
                 <CommandItem
                   value={`open case ${recordId}`}
                   onSelect={() =>
@@ -118,7 +120,7 @@ export function CommandBar() {
                   }
                 >
                   <FileText />
-                  Open case #{recordId}
+                  {t("Open case #{{id}}", { id: recordId })}
                 </CommandItem>
                 <CommandItem
                   value={`open person entity ${recordId}`}
@@ -129,7 +131,7 @@ export function CommandBar() {
                   }
                 >
                   <User />
-                  Open person / entity #{recordId}
+                  {t("Open person / entity #{{id}}", { id: recordId })}
                 </CommandItem>
               </CommandGroup>
             )}
@@ -137,7 +139,7 @@ export function CommandBar() {
           </>
         )}
 
-        <CommandGroup heading="Go to">
+        <CommandGroup heading={t("Go to")}>
           {destinations.map((d) => {
             const Icon = d.icon;
             return (
@@ -147,8 +149,8 @@ export function CommandBar() {
                 onSelect={() => run(() => navigate(d.path))}
               >
                 <Icon />
-                <span>{d.label}</span>
-                <span className="ml-2 truncate text-12 text-content-dim">{d.description}</span>
+                <span>{t(d.label)}</span>
+                <span className="ml-2 truncate text-12 text-content-dim">{t(d.description)}</span>
                 <ArrowRight className="ml-auto opacity-0 data-[selected=true]:opacity-100" />
               </CommandItem>
             );
@@ -157,14 +159,14 @@ export function CommandBar() {
 
         <CommandSeparator />
 
-        <CommandGroup heading="Quick actions">
+        <CommandGroup heading={t("Quick actions")}>
           <CommandItem value="toggle theme ops desk light dark" onSelect={() => run(toggleTheme)}>
             {theme === "ops" ? <Sun /> : <Moon />}
-            Switch to {theme === "ops" ? "Desk (light)" : "Ops (dark)"} theme
+            {theme === "ops" ? t("Switch to Desk (light)") : t("Switch to Ops (dark)")}
           </CommandItem>
           <CommandItem value="toggle sidebar collapse" onSelect={() => run(toggleSidebar)}>
             <PanelLeft />
-            Toggle sidebar
+            {t("Toggle sidebar")}
           </CommandItem>
         </CommandGroup>
       </CommandList>

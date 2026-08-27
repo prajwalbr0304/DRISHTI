@@ -5,6 +5,7 @@ import App from "@/App";
 import { AuthProvider } from "@/auth";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { RoleProvider } from "@/providers/RoleProvider";
+import { LanguageProvider } from "@/providers/LanguageProvider";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import "@/index.css";
 
@@ -16,11 +17,13 @@ createRoot(document.getElementById("root")!).render(
     <QueryProvider>
       <AuthProvider>
         <RoleProvider>
-          <ThemeProvider>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </ThemeProvider>
+          <LanguageProvider>
+            <ThemeProvider>
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </ThemeProvider>
+          </LanguageProvider>
         </RoleProvider>
       </AuthProvider>
     </QueryProvider>

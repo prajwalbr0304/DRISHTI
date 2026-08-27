@@ -1,0 +1,218 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">DRISHTI Solution Architecture</title>
+  <desc id="desc">A layered architecture diagram showing public-safety users, the Zoho Catalyst trusted operational platform, protected AWS analytics, and cross-cutting governance.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#111111"/>
+    </marker>
+    <marker id="arrow-open" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L9,5 L1,9" fill="none" stroke="#111111" stroke-width="1.5"/>
+    </marker>
+    <style>
+      .title { font: 700 42px Arial, Helvetica, sans-serif; fill: #111111; letter-spacing: 0.8px; }
+      .subtitle { font: 400 20px Arial, Helvetica, sans-serif; fill: #333333; }
+      .section { fill: #ffffff; stroke: #111111; stroke-width: 2.4; rx: 16; }
+      .section-soft { fill: #f7f7f7; stroke: #111111; stroke-width: 2.4; rx: 16; }
+      .section-title { font: 700 20px Arial, Helvetica, sans-serif; fill: #111111; letter-spacing: 1.2px; }
+      .section-note { font: 400 15px Arial, Helvetica, sans-serif; fill: #444444; }
+      .box { fill: #ffffff; stroke: #111111; stroke-width: 2; rx: 10; }
+      .box-soft { fill: #f1f1f1; stroke: #111111; stroke-width: 2; rx: 10; }
+      .box-title { font: 700 19px Arial, Helvetica, sans-serif; fill: #111111; text-anchor: middle; }
+      .box-copy { font: 400 15px Arial, Helvetica, sans-serif; fill: #222222; text-anchor: middle; }
+      .small-title { font: 700 17px Arial, Helvetica, sans-serif; fill: #111111; text-anchor: middle; }
+      .small-copy { font: 400 14px Arial, Helvetica, sans-serif; fill: #222222; text-anchor: middle; }
+      .label { font: 700 14px Arial, Helvetica, sans-serif; fill: #111111; letter-spacing: 0.8px; }
+      .connector { fill: none; stroke: #111111; stroke-width: 2.5; marker-end: url(#arrow); }
+      .connector-open { fill: none; stroke: #111111; stroke-width: 2.2; marker-end: url(#arrow-open); }
+      .connector-dash { fill: none; stroke: #111111; stroke-width: 2; stroke-dasharray: 8 7; marker-end: url(#arrow-open); }
+      .bus { fill: none; stroke: #111111; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#ffffff"/>
+
+  <text x="60" y="58" class="title">DRISHTI SOLUTION ARCHITECTURE</text>
+  <text x="60" y="92" class="subtitle">AI-driven crime analytics and visualization platform - governed, role-scoped and human-controlled</text>
+  <line x1="60" y1="110" x2="1860" y2="110" stroke="#111111" stroke-width="2"/>
+
+  <!-- Public-safety users -->
+  <rect x="60" y="130" width="1800" height="100" class="section-soft"/>
+  <text x="88" y="158" class="section-title">PUBLIC-SAFETY USERS</text>
+  <text x="88" y="184" class="section-note">Role and jurisdiction scope every request</text>
+
+  <rect x="470" y="151" width="300" height="56" class="box"/>
+  <text x="620" y="176" class="small-title">Command roles</text>
+  <text x="620" y="197" class="small-copy">State, range and district</text>
+
+  <rect x="790" y="151" width="300" height="56" class="box"/>
+  <text x="940" y="176" class="small-title">Investigators and analysts</text>
+  <text x="940" y="197" class="small-copy">Cases, evidence and networks</text>
+
+  <rect x="1110" y="151" width="300" height="56" class="box"/>
+  <text x="1260" y="176" class="small-title">Specialist teams</text>
+  <text x="1260" y="197" class="small-copy">Cyber, traffic and emergency</text>
+
+  <rect x="1430" y="151" width="390" height="56" class="box"/>
+  <text x="1625" y="176" class="small-title">System and model administrators</text>
+  <text x="1625" y="197" class="small-copy">Platform governance and operations</text>
+
+  <!-- User-to-platform connection -->
+  <path d="M940 230 L940 273" class="connector"/>
+  <text x="956" y="255" class="label">AUTHENTICATED, ROLE-SCOPED ACCESS</text>
+
+  <!-- Catalyst boundary -->
+  <rect x="60" y="275" width="1240" height="585" class="section"/>
+  <text x="88" y="309" class="section-title">ZOHO CATALYST - TRUSTED OPERATIONAL PLATFORM</text>
+  <text x="88" y="333" class="section-note">Public edge, identity, application runtime and governed operational services</text>
+
+  <!-- Primary request path -->
+  <rect x="90" y="360" width="205" height="88" class="box-soft"/>
+  <text x="192.5" y="389" class="box-title">Slate</text>
+  <text x="192.5" y="415" class="box-copy">React + TypeScript SPA</text>
+  <text x="192.5" y="437" class="box-copy">33 declared routes</text>
+
+  <rect x="320" y="360" width="195" height="88" class="box"/>
+  <text x="417.5" y="389" class="box-title">Authentication</text>
+  <text x="417.5" y="415" class="box-copy">Identity and session</text>
+  <text x="417.5" y="437" class="box-copy">Role selection</text>
+
+  <rect x="540" y="360" width="205" height="88" class="box-soft"/>
+  <text x="642.5" y="389" class="box-title">API Gateway</text>
+  <text x="642.5" y="415" class="box-copy">/api routes and CORS</text>
+  <text x="642.5" y="437" class="box-copy">Edge policy boundary</text>
+
+  <rect x="770" y="360" width="240" height="88" class="box"/>
+  <text x="890" y="389" class="box-title">gateway_api function</text>
+  <text x="890" y="415" class="box-copy">Remove spoofed headers</text>
+  <text x="890" y="437" class="box-copy">Sign role + scope context</text>
+
+  <rect x="1035" y="360" width="235" height="88" class="box-soft"/>
+  <text x="1152.5" y="389" class="box-title">AppSail: drishti-api</text>
+  <text x="1152.5" y="415" class="box-copy">FastAPI domain services</text>
+  <text x="1152.5" y="437" class="box-copy">Policy enforcement</text>
+
+  <path d="M295 404 L312 404" class="connector"/>
+  <path d="M515 404 L532 404" class="connector"/>
+  <path d="M745 404 L762 404" class="connector"/>
+  <path d="M1010 404 L1027 404" class="connector"/>
+
+  <!-- Auth relationship -->
+  <path d="M295 380 C305 350, 310 350, 320 380" class="connector-open"/>
+  <text x="307" y="342" class="label" text-anchor="middle">SESSION</text>
+
+  <!-- Catalyst operational services -->
+  <text x="90" y="493" class="section-title">CATALYST OPERATIONAL SERVICES</text>
+
+  <path d="M1152.5 448 L1152.5 515 L225 515" class="bus"/>
+  <path d="M225 515 L225 535" class="connector-open"/>
+  <path d="M515 515 L515 535" class="connector-open"/>
+  <path d="M805 515 L805 535" class="connector-open"/>
+  <path d="M1095 515 L1095 535" class="connector-open"/>
+
+  <rect x="90" y="535" width="270" height="102" class="box"/>
+  <text x="225" y="566" class="box-title">Data Store</text>
+  <text x="225" y="592" class="box-copy">Curated serving tables</text>
+  <text x="225" y="615" class="box-copy">106 idempotent imports</text>
+
+  <rect x="380" y="535" width="270" height="102" class="box"/>
+  <text x="515" y="566" class="box-title">Stratus</text>
+  <text x="515" y="592" class="box-copy">Reports, artifacts and</text>
+  <text x="515" y="615" class="box-copy">governed objects</text>
+
+  <rect x="670" y="535" width="270" height="102" class="box"/>
+  <text x="805" y="566" class="box-title">Cache</text>
+  <text x="805" y="592" class="box-copy">Safe, short-lived</text>
+  <text x="805" y="615" class="box-copy">operational acceleration</text>
+
+  <rect x="960" y="535" width="270" height="102" class="box"/>
+  <text x="1095" y="566" class="box-title">Signals + Functions</text>
+  <text x="1095" y="592" class="box-copy">Prediction, evidence, data</text>
+  <text x="1095" y="615" class="box-copy">and report events</text>
+
+  <path d="M225 637 L225 660" class="connector-open"/>
+  <path d="M515 637 L515 660" class="connector-open"/>
+  <path d="M805 637 L805 660" class="connector-open"/>
+  <path d="M1095 637 L1095 660" class="connector-open"/>
+
+  <rect x="90" y="660" width="270" height="102" class="box"/>
+  <text x="225" y="691" class="box-title">Cron + Scheduling</text>
+  <text x="225" y="717" class="box-copy">Forecast generation</text>
+  <text x="225" y="740" class="box-copy">and reconciliation</text>
+
+  <rect x="380" y="660" width="270" height="102" class="box"/>
+  <text x="515" y="691" class="box-title">QuickML</text>
+  <text x="515" y="717" class="box-copy">RAG, LLM serving and</text>
+  <text x="515" y="740" class="box-copy">governed ML baseline</text>
+
+  <rect x="670" y="660" width="270" height="102" class="box"/>
+  <text x="805" y="691" class="box-title">Workflows</text>
+  <text x="805" y="717" class="box-copy">Human review and</text>
+  <text x="805" y="740" class="box-copy">lifecycle orchestration</text>
+
+  <rect x="960" y="660" width="270" height="102" class="box"/>
+  <text x="1095" y="691" class="box-title">Pipelines</text>
+  <text x="1095" y="717" class="box-copy">Validate, secure, deploy</text>
+  <text x="1095" y="740" class="box-copy">and smoke test</text>
+
+  <rect x="90" y="790" width="1180" height="46" class="box-soft"/>
+  <text x="680" y="819" class="small-title">Trust rule: no database URL, AWS credential, signing secret or service credential enters the browser bundle.</text>
+
+  <!-- Protected analytics boundary -->
+  <rect x="1330" y="275" width="530" height="585" class="section-soft"/>
+  <text x="1358" y="309" class="section-title">PROTECTED ANALYTICS</text>
+  <text x="1358" y="333" class="section-note">Server-to-server only - no browser access</text>
+
+  <path d="M1270 404 L1382 404" class="connector"/>
+  <text x="1325" y="385" class="label" text-anchor="middle">SIGNED CALL</text>
+
+  <rect x="1390" y="360" width="410" height="88" class="box"/>
+  <text x="1595" y="389" class="box-title">Governed AWS adapter</text>
+  <text x="1595" y="415" class="box-copy">Least-privileged backend access</text>
+  <text x="1595" y="437" class="box-copy">No client credentials</text>
+
+  <path d="M1595 448 L1595 488" class="bus"/>
+  <path d="M1595 488 L1595 510" class="connector-open"/>
+
+  <rect x="1390" y="510" width="410" height="86" class="box"/>
+  <text x="1595" y="539" class="box-title">PostgreSQL + PostGIS + pgvector</text>
+  <text x="1595" y="566" class="box-copy">Historical and analytical store</text>
+  <text x="1595" y="588" class="box-copy">Spatial, vector and graph features</text>
+
+  <path d="M1595 596 L1595 625" class="connector-open"/>
+  <rect x="1390" y="625" width="410" height="86" class="box"/>
+  <text x="1595" y="654" class="box-title">Private Amazon S3</text>
+  <text x="1595" y="681" class="box-copy">Evidence objects and model artifacts</text>
+  <text x="1595" y="703" class="box-copy">Short-lived exact-object URLs</text>
+
+  <path d="M1595 711 L1595 740" class="connector-open"/>
+  <rect x="1390" y="740" width="410" height="86" class="box"/>
+  <text x="1595" y="769" class="box-title">Temporary GPU inference</text>
+  <text x="1595" y="796" class="box-copy">TabFM, TimesFM and ST-GNN</text>
+  <text x="1595" y="818" class="box-copy">Asynchronous, scale-to-zero workloads</text>
+
+  <!-- Cross-cutting governance -->
+  <rect x="60" y="885" width="1800" height="142" class="section"/>
+  <text x="88" y="919" class="section-title">CROSS-CUTTING GOVERNANCE</text>
+  <text x="500" y="919" class="section-note">Applied to every request, record, analytical output and operational decision</text>
+
+  <rect x="90" y="944" width="400" height="58" class="box-soft"/>
+  <text x="290" y="970" class="small-title">Append-only evidence and audit trail</text>
+  <text x="290" y="992" class="small-copy">Source snapshots, actions and changes</text>
+
+  <rect x="510" y="944" width="400" height="58" class="box-soft"/>
+  <text x="710" y="970" class="small-title">Model registry and provenance</text>
+  <text x="710" y="992" class="small-copy">Versions, confidence, limits and backtests</text>
+
+  <rect x="930" y="944" width="400" height="58" class="box-soft"/>
+  <text x="1130" y="970" class="small-title">Jurisdiction and purpose guards</text>
+  <text x="1130" y="992" class="small-copy">Role, scope, rate and payload policies</text>
+
+  <rect x="1350" y="944" width="470" height="58" class="box-soft"/>
+  <text x="1585" y="970" class="small-title">Synthetic data + human-control policy</text>
+  <text x="1585" y="992" class="small-copy">No autonomous enforcement or dispatch</text>
+
+  <path d="M1152 448 L1288 448 L1288 875 L960 875 L960 885" class="connector"/>
+
+  <text x="60" y="1060" class="section-note">Primary operational deployment: Zoho Catalyst | Optional protected analytics: AWS, reachable only through AppSail backend controls</text>
+  <text x="1860" y="1060" class="section-note" text-anchor="end">DRISHTI - Synthetic prototype architecture</text>
+</svg>

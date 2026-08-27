@@ -2,10 +2,12 @@ import { Link, useLocation } from "react-router-dom";
 import { ChevronRight, Home } from "lucide-react";
 import { destinationByPath } from "@/config/destinations";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 /* Breadcrumb bar — reflects the active destination and any sub-path. */
 export function Breadcrumbs() {
   const { pathname } = useLocation();
+  const { t } = useLanguage();
   const dest = destinationByPath(pathname);
   const isHome = pathname === "/command";
 
@@ -32,7 +34,7 @@ export function Breadcrumbs() {
               rest.length ? "text-content-dim hover:text-content" : "text-content",
             )}
           >
-            {dest.label}
+            {t(dest.label)}
           </Link>
         </>
       )}

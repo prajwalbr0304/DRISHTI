@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { useRole } from "@/providers/RoleProvider";
+import { useLanguage } from "@/providers/LanguageProvider";
 import { useUIStore } from "@/stores/useUIStore";
 import { PRESETS, useTimeStore } from "@/stores/useTimeStore";
 import { Badge } from "@/components/ui/badge";
@@ -25,18 +26,19 @@ function greeting() {
 
 export function CommandCenter() {
   const { role, def } = useRole();
+  const { t } = useLanguage();
   const askAbout = useUIStore((s) => s.askAbout);
   const { preset } = useTimeStore();
-  const rangeLabel = preset === "custom" ? "Custom range" : (PRESETS.find((p) => p.id === preset)?.label ?? "");
+  const rangeLabel = preset === "custom" ? t("Custom range") : t(PRESETS.find((p) => p.id === preset)?.label ?? "");
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`${greeting()}, ${def.label}`}
+        title={`${t(greeting())}, ${t(def.label)}`}
         description={def.blurb}
         actions={
           <>
-            <Badge variant="neutral">{def.scope}</Badge>
+            <Badge variant="neutral">{t(def.scope)}</Badge>
             <Badge variant="neutral">{rangeLabel}</Badge>
             <Button
               variant="outline"
@@ -44,7 +46,7 @@ export function CommandCenter() {
               onClick={() => askAbout(`Give me a ${def.label.toLowerCase()} briefing for my scope`)}
             >
               <Sparkles />
-              Ask about this view
+              {t("Ask about this view")}
             </Button>
           </>
         }

@@ -3,6 +3,7 @@ import { Cpu, Fingerprint, Gauge, LineChart, Lock, Radar, Scale, ShieldCheck } f
 import { cn } from "@/lib/utils";
 import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
+import { useLanguage } from "@/providers/LanguageProvider";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ExportViewButton, PrintHeader } from "@/components/common/PrintExport";
@@ -35,6 +36,7 @@ const MODES: { key: Mode; label: string; icon: React.ElementType; aggregate: boo
 
 export function Analytics() {
   const { role } = useRole();
+  const { t } = useLanguage();
   const [sp, setSp] = useSearchParams();
   // Aggregate-only seats see only the aggregate modes. INTERIM: none are.
   const aggregateOnly = !roleCan(role, "case_read");
@@ -61,7 +63,7 @@ export function Analytics() {
           <div className="flex items-center gap-2">
             <Link to="/governance"
               className="inline-flex items-center gap-1.5 rounded-control border border-hairline px-2.5 py-1.5 text-12 font-medium text-content-dim transition-colors hover:text-content">
-              <ShieldCheck className="size-3.5" /> Model governance
+              <ShieldCheck className="size-3.5" /> {t("Model governance")}
             </Link>
             <ExportViewButton />
           </div>
@@ -86,7 +88,7 @@ export function Analytics() {
               )}
             >
               <Icon className="size-4" />
-              {m.label}
+              {t(m.label)}
             </button>
           );
         })}
