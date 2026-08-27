@@ -24,8 +24,8 @@ from .scope import ScopeError
 # Deliberately narrow so specific questions ("brief facts of case 12") don't
 # trigger a full overview.
 _BRIEFING_RE = re.compile(
-    r"\b(briefing|brief me|brief for|overview|sitrep|situation report|"
-    r"situation overview|status report|status update|daily brief)\b"
+    r"\b(briefing|brief me|brief for|dashboard brief|admin dashboard|dashboard overview|"
+    r"overview|sitrep|situation report|situation overview|status report|status update|daily brief)\b"
     r"|for my scope|what'?s happening|whats happening"
     r"|ಬ್ರೀಫಿಂಗ್|ಸಾರಾಂಶ|ಅವಲೋಕನ|ಪರಿಸ್ಥಿತಿ ವರದಿ|ಸ್ಥಿತಿ ವರದಿ",
     re.IGNORECASE,

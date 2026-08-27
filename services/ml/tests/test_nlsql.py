@@ -15,7 +15,7 @@ import json
 
 import pytest
 
-from app.nlsql import engine, executor, glossary, guard, planner, scope
+from app.nlsql import briefing, engine, executor, glossary, guard, planner, scope
 from app.nlsql.planner import FallbackPlanner, LLMPlanner, Turn
 from conftest import requires_db
 
@@ -234,6 +234,36 @@ def test_fallback_command_role_gets_the_case_list():
                                   "dgp_state_command", "en", [])
     assert plan.sql and not scope.is_aggregate(plan.sql)
     scope.enforce_scope(plan.sql, "dgp_state_command")
+
+
+def test_fallback_case_details_by_crime_number():
+    plan = FallbackPlanner().plan(
+        "give me the case details of 100010033202600001",
+        "system_admin",
+        "en",
+        [],
+    )
+    assert plan.intent == "case_details"
+    assert plan.sql and "100010033202600001" in plan.sql
+    assert 'cm."CrimeNo"' in plan.sql and 'cm."BriefFacts"' in plan.sql
+    assert guard.validate_select(plan.sql)
+    scope.enforce_scope(plan.sql, "system_admin")
+
+
+def test_fallback_aggregate_only_case_details_clarifies(aggregate_only_role):
+    plan = FallbackPlanner().plan(
+        "give me the case details of 100010033202600001",
+        aggregate_only_role,
+        "en",
+        [],
+    )
+    assert plan.needs_clarification
+    assert not plan.sql
+
+
+def test_briefing_detects_admin_dashboard_without_case_brief_collision():
+    assert briefing.is_briefing_request("give me the dashboard brief of admin dashboard")
+    assert not briefing.is_briefing_request("brief facts of case 100010033202600001")
 
 
 def test_fallback_multiturn_pronoun_resolution():

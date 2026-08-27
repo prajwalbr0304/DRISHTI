@@ -91,6 +91,10 @@ _PLACE_RE = re.compile(
     re.IGNORECASE,
 )
 _TOP_RE = re.compile(r"(?:\btop\b|ಟಾಪ್)\s*(\d{1,3})", re.IGNORECASE)
+_CASE_REF_RE = re.compile(
+    r"\b(?:case|fir|crime)\s*(?:details?|file|record|number|no\.?|#)?\s*(?:of|for|:)?\s*(\d{6,24})\b",
+    re.IGNORECASE,
+)
 # follow-up cues (EN word-bounded + KN) that make a short turn resolve from memory
 _PRONOUN_RE = re.compile(
     r"\b(there|that|those|them|these|it|its|his|her|their|same|again)\b|(ಅಲ್ಲಿ|ಅದೇ|ಅವರ|ಅವು|ಅದು|ಇದೇ)",
@@ -145,6 +149,9 @@ def _extract(question: str) -> dict:
     m2 = _TOP_RE.search(q)
     if m2:
         out["top_n"] = max(1, min(100, int(m2.group(1))))
+    m3 = _CASE_REF_RE.search(q)
+    if m3:
+        out["case_ref"] = m3.group(1)
     return out
 
 
@@ -184,6 +191,30 @@ class FallbackPlanner:
         ql = question.lower()
         where = _where(f)
         agg_role = requires_aggregate(role)
+
+        if f.get("case_ref"):
+            ref = f["case_ref"]
+            if agg_role:
+                return Plan(
+                    needs_clarification=True,
+                    clarifying_question=(
+                        "This role can only view aggregate results. Ask for case counts by district, crime type or time window."
+                        if language != "kn"
+                        else "ಈ ಪಾತ್ರವು ಸಮಗ್ರ ಫಲಿತಾಂಶಗಳನ್ನು ಮಾತ್ರ ನೋಡಬಹುದು. ಜಿಲ್ಲೆ, ಅಪರಾಧ ಪ್ರಕಾರ ಅಥವಾ ಕಾಲಾವಧಿ ಪ್ರಕಾರ ಪ್ರಕರಣ ಎಣಿಕೆ ಕೇಳಿ."),
+                    intent="case_lookup_denied", confidence=0.35, language=language, filters=f)
+            ref_cond = f'(cm."CrimeNo" = {_lit(ref)} OR cm."CaseNo" = {_lit(ref)}'
+            if len(ref) <= 10:
+                ref_cond += f' OR cm."CaseMasterID" = {int(ref)}'
+            ref_cond += ")"
+            sql = (
+                'SELECT cm."CaseMasterID", cm."CrimeNo", cm."CaseNo", '
+                'cm."CrimeRegisteredDate", d."DistrictName", u."UnitName", '
+                'ch."CrimeGroupName", csh."CrimeHeadName", g."LookupValue" AS "Gravity", '
+                'stt."CaseStatusName", cm."BriefFacts" '
+                f'{_BASE_FROM} WHERE {ref_cond} '
+                'ORDER BY cm."CrimeRegisteredDate" DESC NULLS LAST LIMIT 1'
+            )
+            return Plan(sql=sql, intent="case_details", confidence=0.82, language=language, filters=f)
 
         # intent: top -> trend -> count -> list -> clarify. Cue sets match English,
         # Kannada script and common transliterated (Latin-script Kannada) forms.
