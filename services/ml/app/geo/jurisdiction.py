@@ -246,6 +246,11 @@ def _reassign(conn, case_id: int, to_district_id: Optional[int], actor: Optional
     (cv_id, version_no, category, status, from_district, from_unit,
      lat, lon, snapshot) = cv
     snapshot = snapshot or {}
+    if snapshot.get("record_origin") == "public_source_curated":
+        raise JurisdictionConflict(
+            "Public-source curated location and proxy mappings are read-only; "
+            "update the reviewed source-qualified fixture instead."
+        )
 
     if action == "reassign":
         if to_district_id is None:
