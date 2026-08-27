@@ -88,7 +88,6 @@ class Settings(BaseSettings):
     bedrock_model_id: str = ""
     bedrock_aws_profile: str = ""
     bedrock_timeout_s: float = 30.0
-    bedrock_max_tokens: int = 1200
     # Guarded-executor limits.
     nlsql_statement_timeout_ms: int = 5000      # per-query DB statement timeout
     nlsql_row_cap: int = 200                     # hard cap on rows returned

@@ -55,6 +55,33 @@ def test_planner_source_labels_are_stable():
     assert BedrockPlanner.name == "aws-bedrock"
 
 
+def test_bedrock_planner_does_not_set_app_token_cap(monkeypatch):
+    captured = {}
+
+    class _Client:
+        def converse(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {"text": '{"sql":"SELECT COUNT(*) FROM \\"CaseMaster\\"","confidence":0.9}'}
+                        ]
+                    }
+                }
+            }
+
+    p = BedrockPlanner(Settings(semantic_planner_provider="aws_bedrock",
+                                bedrock_model_id="zai.glm-4.7-flash"))
+    monkeypatch.setattr(p, "_client", lambda: _Client())
+
+    plan = p.plan("how many cases", "crime_analyst", "en", [])
+
+    assert plan.sql == 'SELECT COUNT(*) FROM "CaseMaster"'
+    assert captured["inferenceConfig"] == {"temperature": 0}
+    assert "maxTokens" not in captured["inferenceConfig"]
+
+
 def test_get_planner_returns_an_object_with_a_name():
     # ambient config decides which; whatever it is, it must carry a source label.
     p = get_planner()

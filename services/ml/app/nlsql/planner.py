@@ -488,7 +488,6 @@ class BedrockPlanner:
             messages=convo,
             inferenceConfig={
                 "temperature": 0,
-                "maxTokens": self._s.bedrock_max_tokens,
             },
         )
         content = "".join(
