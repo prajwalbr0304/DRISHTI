@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     #   "" (unset)         -> deterministic offline planner is the primary
     #   "catalyst_quickml" -> Catalyst QuickML LLM Serving (primary, deployed)
     #   "openai_compatible"-> a self-hosted / governed OSS OpenAI-compatible runtime
+    #   "aws_bedrock"      -> Amazon Bedrock Runtime Converse API
     semantic_planner_provider: str = ""
     # Catalyst QuickML LLM Serving endpoint + deployed serving-model id. Both come
     # from server-side env ONLY (never the browser); the key is never logged.
@@ -81,6 +82,13 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_model: str = ""
     llm_timeout_s: float = 30.0
+    # Amazon Bedrock Runtime. In local development, bedrock_aws_profile can point
+    # at an AWS SSO profile. In deployed AWS, leave it blank and use the task role.
+    bedrock_region: str = "us-east-1"
+    bedrock_model_id: str = ""
+    bedrock_aws_profile: str = ""
+    bedrock_timeout_s: float = 30.0
+    bedrock_max_tokens: int = 1200
     # Guarded-executor limits.
     nlsql_statement_timeout_ms: int = 5000      # per-query DB statement timeout
     nlsql_row_cap: int = 200                     # hard cap on rows returned
@@ -231,6 +239,10 @@ class Settings(BaseSettings):
         return bool(self.llm_api_key.strip() and self.llm_base_url.strip()
                     and self.llm_model.strip())
 
+    def bedrock_configured(self) -> bool:
+        """True once an Amazon Bedrock model/profile id is selected."""
+        return bool(self.bedrock_model_id.strip())
+
     def primary_planner_name(self) -> str:
         """The planner that SHOULD serve in the live-ready contract, given config.
         The deterministic offline planner is the honest primary when nothing is
@@ -240,6 +252,8 @@ class Settings(BaseSettings):
             return "catalyst-quickml-llm"
         if provider == "openai_compatible" and self.openai_compatible_configured():
             return "openai-compatible"
+        if provider == "aws_bedrock" and self.bedrock_configured():
+            return "aws-bedrock"
         # Back-compat: bare OpenAI-compatible creds with no explicit provider.
         if not provider and self.openai_compatible_configured():
             return "openai-compatible"

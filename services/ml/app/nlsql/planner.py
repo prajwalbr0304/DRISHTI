@@ -417,6 +417,56 @@ class LLMPlanner:
         return _plan_from_json(content, language, source="openai-compatible")
 
 
+class BedrockPlanner:
+    """Amazon Bedrock Runtime planner using the Converse API.
+
+    Bedrock receives the same data-minimised prompt as the other semantic
+    providers: role-scoped schema, glossary, bounded prior turns and the user
+    question. The SQL it returns is still validated by the read-only guard and
+    role-scope executor before anything runs.
+    """
+    name = "aws-bedrock"
+
+    def __init__(self, settings):
+        self._s = settings
+
+    def _client(self):
+        import boto3
+        from botocore.config import Config
+
+        kwargs = {
+            "region_name": self._s.bedrock_region,
+            "config": Config(read_timeout=self._s.bedrock_timeout_s, connect_timeout=10),
+        }
+        profile = self._s.bedrock_aws_profile.strip()
+        if profile:
+            return boto3.Session(profile_name=profile).client("bedrock-runtime", **kwargs)
+        return boto3.client("bedrock-runtime", **kwargs)
+
+    def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
+        messages = _plan_messages(question, role, history, self._s.nlsql_max_history_turns)
+        system = [{"text": messages[0]["content"]}]
+        convo = [
+            {"role": m["role"], "content": [{"text": m["content"]}]}
+            for m in messages[1:]
+            if m["role"] in ("user", "assistant")
+        ]
+        resp = self._client().converse(
+            modelId=self._s.bedrock_model_id,
+            system=system,
+            messages=convo,
+            inferenceConfig={
+                "temperature": 0,
+                "maxTokens": self._s.bedrock_max_tokens,
+            },
+        )
+        content = "".join(
+            part.get("text", "")
+            for part in resp.get("output", {}).get("message", {}).get("content", [])
+        ).strip()
+        return _plan_from_json(content, language, source="aws-bedrock")
+
+
 _FALLBACK = FallbackPlanner()
 
 
@@ -434,6 +484,8 @@ def get_planner():
         return CatalystQuickMLServingPlanner(s)
     if provider == "openai_compatible" and s.openai_compatible_configured():
         return LLMPlanner(s)
+    if provider == "aws_bedrock" and s.bedrock_configured():
+        return BedrockPlanner(s)
     # Back-compat: bare OpenAI-compatible creds with no explicit provider set.
     if not provider and s.openai_compatible_configured():
         return LLMPlanner(s)

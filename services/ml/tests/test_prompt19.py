@@ -5,8 +5,8 @@ import pytest
 
 from app.config import Settings, get_settings
 from app.nlsql import viz
-from app.nlsql.planner import (CatalystQuickMLServingPlanner, FallbackPlanner,
-                               LLMPlanner, get_planner)
+from app.nlsql.planner import (BedrockPlanner, CatalystQuickMLServingPlanner,
+                               FallbackPlanner, LLMPlanner, get_planner)
 
 
 # ============================ A: scope flags ================================
@@ -35,6 +35,13 @@ def test_primary_planner_name_openai_compatible_when_only_that_configured():
     assert s.primary_planner_name() == "openai-compatible"
 
 
+def test_primary_planner_name_bedrock_when_configured():
+    s = Settings(semantic_planner_provider="aws_bedrock",
+                 bedrock_model_id="anthropic.claude-sonnet-4-6")
+    assert s.bedrock_configured() is True
+    assert s.primary_planner_name() == "aws-bedrock"
+
+
 def test_primary_planner_name_fails_closed_to_deterministic():
     s = Settings(semantic_planner_provider="", llm_api_key="", llm_base_url="", llm_model="",
                  quickml_llm_endpoint="", quickml_llm_model="")
@@ -45,6 +52,7 @@ def test_planner_source_labels_are_stable():
     assert FallbackPlanner.name == "deterministic-fallback"
     assert CatalystQuickMLServingPlanner.name == "catalyst-quickml-llm"
     assert LLMPlanner.name == "openai-compatible"
+    assert BedrockPlanner.name == "aws-bedrock"
 
 
 def test_get_planner_returns_an_object_with_a_name():
