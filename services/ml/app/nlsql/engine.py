@@ -15,6 +15,7 @@ Blocks and DB errors are recorded (audit) but never surface fabricated data.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ from .viz import build_visualization
 _NLSQL_MODEL = ("drishti-nlsql", "nlp", "1.0.0")
 _ROWS_PREVIEW_CAP = 50      # rows sent to the browser for the answer table/chart
 _DEFAULT_OWNER_SUBJECT = "local:engine"
+_LOG = logging.getLogger("drishti.nlsql")
 
 
 class ChatSessionAccessError(RuntimeError):
@@ -104,12 +106,22 @@ def ask(role: str, question: str, language: Optional[str] = None,
     # Fail-closed: when the configured semantic provider is unreachable we drop to
     # the deterministic offline planner and MARK the answer as a degraded/fallback
     # plan — never a silent switch to a commercial API.
-    planner = get_planner()
-    planner_source = getattr(planner, "name", "deterministic-fallback")
+    planner_source = primary_name
     planner_degraded = False
     try:
+        planner = get_planner()
+        planner_source = getattr(planner, "name", primary_name)
         plan = planner.plan(question, role, lang, history)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - provider outage is an explicit fallback
+        # Never log the question, prompt, SQL, credentials, or raw provider
+        # response. The exception class/AWS code is enough to diagnose the
+        # credential, IAM, model-access, throttling, and format failure classes.
+        provider_code = type(exc).__name__
+        response = getattr(exc, "response", None)
+        if isinstance(response, dict):
+            provider_code = str(response.get("Error", {}).get("Code") or provider_code)
+        _LOG.warning("semantic_planner_failed provider=%s error_code=%s",
+                     planner_source, provider_code)
         plan = fallback_planner().plan(question, role, lang, history)
         planner_degraded = planner_source != "deterministic-fallback"
         planner_source = "deterministic-fallback"

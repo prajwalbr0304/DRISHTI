@@ -16,6 +16,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Bedrock is fail-closed to an exact reviewed Chinese-origin identity, so an
+# environment change cannot silently switch DRISHTI to Claude, GPT/OpenAI, or
+# another unapproved provider. Arbitrary endpoint providers are disabled below.
+APPROVED_CHINESE_BEDROCK_MODELS = frozenset({"zai.glm-4.7-flash"})
+
+
+def is_approved_chinese_bedrock_model(model_id: str) -> bool:
+    """Bedrock is restricted to exact reviewed model IDs (fail closed)."""
+    return (model_id or "").strip().lower() in APPROVED_CHINESE_BEDROCK_MODELS
+
 # In local dev the layout is services/ml/app/config.py, so parents[3] is the
 # repo root (…/DRISHTI) which holds the developer .env. In the deployed AppSail
 # container the app lives at /app/app/config.py (no parents[3]) and there is NO
@@ -54,39 +64,40 @@ class Settings(BaseSettings):
     query_voice_enabled: bool = True
     evidence_extraction_enabled: bool = False
 
-    # --- Prompt 19 §B: semantic planner (provider-neutral, fail-closed) ------
-    # The PRIMARY semantic planner in the live-ready contract is Catalyst QuickML
-    # LLM Serving when configured + available for the India-DC project (QuickML
-    # LLM Serving hosts open models, e.g. Qwen 2.5, behind an endpoint — see the
-    # Phase 19 report for capability evidence). There is deliberately NO
-    # hard-coded commercial default model: settings are provider-neutral and the
-    # engine FAILS CLOSED — when no semantic provider is configured, or the
-    # configured provider is unreachable, it uses the deterministic offline
-    # planner, which is LABELLED as a transparent outage fallback in the response
-    # (never a silent switch to an external commercial API).
-    #   "" (unset)         -> deterministic offline planner is the primary
-    #   "catalyst_quickml" -> Catalyst QuickML LLM Serving (primary, deployed)
-    #   "openai_compatible"-> a self-hosted / governed OSS OpenAI-compatible runtime
-    #   "aws_bedrock"      -> Amazon Bedrock Runtime Converse API
+    # --- Prompt 19 §B: semantic planner (Chinese-model-only, fail-closed) ----
+    # Semantic planning is restricted to reviewed Chinese-origin model families.
+    # There is no Claude, GPT/OpenAI, or other commercial-model fallback. The
+    # engine FAILS CLOSED to the labelled deterministic planner when a provider,
+    # model identity, or network path is unavailable; SQL safety never depends on
+    # model cooperation.
+    #   "" (unset)    -> deterministic offline planner is the primary
+    #   "aws_bedrock" -> reviewed Chinese model through Bedrock Converse
+    # Legacy QuickML/OpenAI-compatible selectors are intentionally disabled
+    # because an arbitrary endpoint cannot prove which model it actually serves.
     semantic_planner_provider: str = ""
-    # Catalyst QuickML LLM Serving endpoint + deployed serving-model id. Both come
-    # from server-side env ONLY (never the browser); the key is never logged.
+    # Legacy QuickML serving settings are retained so old environments parse;
+    # the arbitrary endpoint selector is disabled by quickml_llm_configured().
     quickml_llm_endpoint: str = ""
     quickml_llm_model: str = ""
     quickml_llm_api_key: str = ""
     quickml_llm_timeout_s: float = 30.0
-    # Generic OpenAI-compatible provider (self-hosted / governed OSS runtime).
-    # Used ONLY when explicitly configured — provider-neutral, no default endpoint
-    # or model name (the former "gpt-4o-mini" implied production default is gone).
+    # Legacy arbitrary OpenAI-compatible transport settings are retained only so
+    # old environments still parse; selection is disabled by
+    # openai_compatible_configured() and these values are never invoked.
     llm_api_key: str = ""
     llm_base_url: str = ""
     llm_model: str = ""
     llm_timeout_s: float = 30.0
-    # Amazon Bedrock Runtime. In local development, bedrock_aws_profile can point
-    # at an AWS SSO profile. In deployed AWS, leave it blank and use the task role.
-    bedrock_region: str = "us-east-1"
+    # Amazon Bedrock Runtime. Local development may use an AWS SSO profile.
+    # Catalyst AppSail has no AWS credentials; when its signed AWS adapter is
+    # configured, BedrockPlanner routes Converse through that Lambda execution
+    # role instead. GLM 4.7 Flash is available in the adapter's Mumbai region.
+    bedrock_region: str = "ap-south-1"
     bedrock_model_id: str = ""
     bedrock_aws_profile: str = ""
+    # Explicit local-development escape hatch. It stays false in AppSail, where
+    # the signed adapter is mandatory and no AWS credential may be installed.
+    bedrock_direct_sdk_enabled: bool = False
     bedrock_timeout_s: float = 30.0
     # Guarded-executor limits.
     nlsql_statement_timeout_ms: int = 5000      # per-query DB statement timeout
@@ -229,33 +240,39 @@ class Settings(BaseSettings):
         return (self.semantic_planner_provider or "").strip().lower()
 
     def quickml_llm_configured(self) -> bool:
-        """True once a Catalyst QuickML LLM Serving endpoint + model are set."""
-        return bool(self.quickml_llm_endpoint.strip() and self.quickml_llm_model.strip())
+        """Legacy arbitrary QuickML serving endpoints are disabled.
+
+        The deployed semantic path is exact-model Bedrock; a configurable chat
+        completions URL cannot prove the identity of the model behind it.
+        """
+        return False
 
     def openai_compatible_configured(self) -> bool:
-        """True once a self-hosted OpenAI-compatible endpoint + model + key are set.
-        There is NO commercial default endpoint or model name."""
-        return bool(self.llm_api_key.strip() and self.llm_base_url.strip()
-                    and self.llm_model.strip())
+        """The legacy arbitrary OpenAI-compatible transport is disabled.
+
+        Chinese models must use the governed Catalyst QuickML endpoint or the
+        exact-model Bedrock adapter; an arbitrary URL cannot prove model identity.
+        """
+        return False
+
+    def bedrock_model_allowed(self) -> bool:
+        """True only for an exact, reviewed Chinese-origin Bedrock model ID."""
+        return is_approved_chinese_bedrock_model(self.bedrock_model_id)
 
     def bedrock_configured(self) -> bool:
-        """True once an Amazon Bedrock model/profile id is selected."""
-        return bool(self.bedrock_model_id.strip())
+        """True only once an approved Chinese Bedrock model is selected."""
+        return self.bedrock_model_allowed()
 
     def primary_planner_name(self) -> str:
         """The planner that SHOULD serve in the live-ready contract, given config.
         The deterministic offline planner is the honest primary when nothing is
         configured (local/offline demo)."""
         provider = self.semantic_provider()
-        if provider == "catalyst_quickml" and self.quickml_llm_configured():
-            return "catalyst-quickml-llm"
-        if provider == "openai_compatible" and self.openai_compatible_configured():
-            return "openai-compatible"
-        if provider == "aws_bedrock" and self.bedrock_configured():
+        # Preserve the configured intent even when the model is absent/rejected;
+        # the engine then reports a degraded aws-bedrock -> deterministic fallback
+        # instead of disguising a policy/configuration failure as normal offline mode.
+        if provider == "aws_bedrock":
             return "aws-bedrock"
-        # Back-compat: bare OpenAI-compatible creds with no explicit provider.
-        if not provider and self.openai_compatible_configured():
-            return "openai-compatible"
         return "deterministic-fallback"
 
 

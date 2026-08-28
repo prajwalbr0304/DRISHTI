@@ -504,11 +504,12 @@ export interface CapabilitiesVoice {
   voice_query_enabled: boolean;
   /** Browser speech in the current deployment; never presented as Bedrock audio. */
   provider: string;
-  /** Current turn transport, e.g. "browser-continuous-turns". */
-  mode: string;
-  continuous_mode_available: boolean;
+  /** Current turn transport, e.g. "browser-continuous-turns". Absent on older APIs. */
+  mode?: string;
+  /** Older deployments advertise the equivalent through `browser_fallback`. */
+  continuous_mode_available?: boolean;
   /** False for the HTTPS/browser loop; reserved for a future audio relay. */
-  server_audio_streaming: boolean;
+  server_audio_streaming?: boolean;
   zia_voice_available: boolean;
   zia_translation_available: boolean;
   browser_fallback: boolean;

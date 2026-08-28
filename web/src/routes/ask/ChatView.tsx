@@ -46,9 +46,10 @@ export function ChatView() {
     staleTime: 5 * 60 * 1000,
   });
   const voiceCapability = capabilities.data?.voice;
+  const continuousVoiceAvailable =
+    voiceCapability?.continuous_mode_available ?? voiceCapability?.browser_fallback ?? false;
   const voiceModeAvailable =
-    voiceCapability?.voice_query_enabled === true &&
-    voiceCapability.continuous_mode_available === true;
+    voiceCapability?.voice_query_enabled === true && continuousVoiceAvailable;
   const voiceThreshold = voiceCapability?.low_confidence_threshold ?? VOICE_LOW_CONFIDENCE;
   const speechProviderLabel =
     voiceCapability?.provider === "browser-web-speech"
@@ -226,7 +227,6 @@ export function ChatView() {
         open={voiceModeOpen}
         onOpenChange={setVoiceModeOpen}
         language={language}
-        confidenceThreshold={voiceThreshold}
         providerLabel={speechProviderLabel}
         plannerLabel={plannerLabel}
       />

@@ -377,8 +377,25 @@ def _plan_messages(question: str, role: str, history: list[Turn], max_history: i
 
 def _plan_from_json(content: str, language: str, source: str) -> Plan:
     """Parse a semantic planner's JSON reply into a Plan (shared by every
-    provider). The guard + scope layers still validate the SQL independently."""
-    data = json.loads(content)
+    provider). The guard + scope layers still validate the SQL independently.
+
+    Some otherwise compliant models wrap the single JSON object in a Markdown
+    fence. Accept that presentation noise without accepting prose or executable
+    content; ``raw_decode`` still requires a real JSON object.
+    """
+    text = (content or "").strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        if start < 0:
+            raise
+        data, end = json.JSONDecoder().raw_decode(text[start:])
+        trailing = text[start + end:].strip()
+        if trailing and trailing.strip("` \r\n"):
+            raise ValueError("semantic planner returned content after its JSON object")
+    if not isinstance(data, dict):
+        raise ValueError("semantic planner response must be a JSON object")
     sql = data.get("sql")
     return Plan(
         sql=sql if sql else None,
@@ -391,89 +408,54 @@ def _plan_from_json(content: str, language: str, source: str) -> Plan:
 
 
 class CatalystQuickMLServingPlanner:
-    """PRIMARY semantic planner — Catalyst QuickML LLM Serving (India DC).
+    """Legacy provenance label; arbitrary QuickML serving URLs are disabled.
 
-    QuickML LLM Serving hosts a governed open model (e.g. Qwen 2.5 Instruct)
-    behind a deployed endpoint (capability evidence in the Phase 19 report). This
-    adapter posts an OpenAI-compatible chat request carrying only the allow-listed
-    role-scoped schema + glossary + bounded context + data-minimised question, and
-    expects one JSON plan back. Endpoint/model/key are server-side env only; the
-    key is never logged and never reaches the browser. The exact live wire mapping
-    is verified against the deployment in Prompt 23; the offline contract and the
-    fail-closed fallback are proven now.
+    The model identity behind a caller-configurable Chat Completions endpoint
+    cannot be attested, so deployed semantic planning uses exact-model Bedrock.
     """
     name = "catalyst-quickml-llm"
 
     def __init__(self, settings):
         self._s = settings
 
-    def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
-        import httpx  # local import: only needed on the network path
-
-        messages = _plan_messages(question, role, history, self._s.nlsql_max_history_turns)
-        endpoint = self._s.quickml_llm_endpoint.rstrip("/")
-        url = endpoint if endpoint.endswith("/chat/completions") else f"{endpoint}/chat/completions"
-        headers = {"Content-Type": "application/json"}
-        key = self._s.quickml_llm_api_key.strip()
-        if key:
-            headers["Authorization"] = f"Bearer {key}"
-        payload = {
-            "model": self._s.quickml_llm_model,
-            "temperature": 0,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-        }
-        resp = httpx.post(url, headers=headers, json=payload, timeout=self._s.quickml_llm_timeout_s)
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        return _plan_from_json(content, language, source="catalyst-quickml-llm")
+    def plan(self, question: str, role: str, language: str,
+             history: list[Turn]) -> Plan:
+        raise RuntimeError("arbitrary QuickML semantic planning is disabled")
 
 
 # ===========================================================================
 # LLM planner (generic OpenAI-compatible; self-hosted / governed OSS runtime)
 # ===========================================================================
 class LLMPlanner:
-    """A provider-neutral OpenAI-compatible planner for a self-hosted / governed
-    open-source runtime. There is NO commercial default endpoint or model — both
-    must be configured explicitly (Prompt 19 §B.4)."""
+    """Legacy label retained for stored provenance only.
+
+    Arbitrary OpenAI-compatible endpoints are disabled: an endpoint URL and
+    model string cannot prove that a Chinese-origin model is actually serving.
+    """
     name = "openai-compatible"
 
     def __init__(self, settings):
         self._s = settings
 
-    def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
-        import httpx  # local import: only needed on the LLM path
-
-        messages = _plan_messages(question, role, history, self._s.nlsql_max_history_turns)
-        payload = {
-            "model": self._s.llm_model,
-            "temperature": 0,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-        }
-        resp = httpx.post(
-            f"{self._s.llm_base_url.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {self._s.llm_api_key}",
-                     "Content-Type": "application/json"},
-            json=payload, timeout=self._s.llm_timeout_s,
-        )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        return _plan_from_json(content, language, source="openai-compatible")
+    def plan(self, question: str, role: str, language: str,
+             history: list[Turn]) -> Plan:
+        raise RuntimeError("arbitrary OpenAI-compatible semantic planning is disabled")
 
 
 class BedrockPlanner:
     """Amazon Bedrock Runtime planner using the Converse API.
 
-    Bedrock receives the same data-minimised prompt as the other semantic
-    providers: role-scoped schema, glossary, bounded prior turns and the user
-    question. The SQL it returns is still validated by the read-only guard and
-    role-scope executor before anything runs.
+    In Catalyst AppSail, Converse is sent through the already-authenticated AWS
+    adapter so AWS credentials remain inside the Lambda execution role. Local AWS
+    development can still use the normal boto3 profile/default credential chain.
+    Both paths are restricted to the exact reviewed Chinese-model allow-list.
     """
     name = "aws-bedrock"
 
     def __init__(self, settings):
         self._s = settings
+        if not settings.bedrock_model_allowed():
+            raise ValueError("Bedrock model is not in the Chinese-model allow-list")
 
     def _client(self):
         import boto3
@@ -496,18 +478,37 @@ class BedrockPlanner:
             for m in messages[1:]
             if m["role"] in ("user", "assistant")
         ]
-        resp = self._client().converse(
-            modelId=self._s.bedrock_model_id,
-            system=system,
-            messages=convo,
-            inferenceConfig={
-                "temperature": 0,
-            },
-        )
-        content = "".join(
-            part.get("text", "")
-            for part in resp.get("output", {}).get("message", {}).get("content", [])
-        ).strip()
+
+        # AppSail has no AWS IAM identity. Reuse its signed adapter boundary so
+        # the Bedrock permission remains on a least-privilege Lambda role.
+        from ..bedrock_adapter import (SignedHttpsBedrockAdapter,
+                                       bedrock_adapter_configured,
+                                       catalyst_runtime_detected)
+        if bedrock_adapter_configured():
+            content = SignedHttpsBedrockAdapter(
+                timeout_s=self._s.bedrock_timeout_s).converse(
+                    model_id=self._s.bedrock_model_id,
+                    system=system,
+                    messages=convo,
+                    inference_config={"temperature": 0},
+                )
+        else:
+            if catalyst_runtime_detected():
+                raise RuntimeError(
+                    "signed AWS Bedrock adapter is mandatory in Catalyst AppSail")
+            if not self._s.bedrock_direct_sdk_enabled:
+                raise RuntimeError(
+                    "signed AWS Bedrock adapter is required; direct SDK access is disabled")
+            response = self._client().converse(
+                modelId=self._s.bedrock_model_id,
+                system=system,
+                messages=convo,
+                inferenceConfig={"temperature": 0},
+            )
+            content = "".join(
+                part.get("text", "")
+                for part in response.get("output", {}).get("message", {}).get("content", [])
+            ).strip()
         return _plan_from_json(content, language, source="aws-bedrock")
 
 
@@ -515,24 +516,19 @@ _FALLBACK = FallbackPlanner()
 
 
 def get_planner():
-    """Select the semantic planner from provider-neutral settings.
+    """Select a governed Chinese-model semantic planner.
 
-    Primary in the live-ready contract: Catalyst QuickML LLM Serving. Fail-closed:
-    when no provider is configured (local/offline demo) or a configured provider
-    is unreachable, the caller uses the deterministic offline planner, LABELLED as
-    a transparent outage fallback — never a silent switch to a commercial API.
+    The deployed path is exact-model Bedrock through the signed AWS adapter.
+    Legacy QuickML and OpenAI-compatible arbitrary endpoints are intentionally
+    unreachable. Any unavailable or rejected provider is handled by the caller
+    as a labelled, degraded deterministic fallback.
     """
     s = get_settings()
     provider = s.semantic_provider()
-    if provider == "catalyst_quickml" and s.quickml_llm_configured():
-        return CatalystQuickMLServingPlanner(s)
-    if provider == "openai_compatible" and s.openai_compatible_configured():
-        return LLMPlanner(s)
-    if provider == "aws_bedrock" and s.bedrock_configured():
+    if provider == "aws_bedrock":
+        # Construct even when invalid so policy/configuration rejection is
+        # surfaced as a degraded aws-bedrock turn, not hidden as offline mode.
         return BedrockPlanner(s)
-    # Back-compat: bare OpenAI-compatible creds with no explicit provider set.
-    if not provider and s.openai_compatible_configured():
-        return LLMPlanner(s)
     return _FALLBACK
 
 

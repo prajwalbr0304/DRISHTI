@@ -11,7 +11,9 @@ Liveness and readiness are DIFFERENT probes:
        - the Catalyst Data Store operational repository is unreachable;
        - gateway-context enforcement is required but no signing secret is set
          (every request would 401 — the auth plane is broken);
-       - Catalyst Stratus is selected for application objects but not configured.
+       - Catalyst Stratus is selected for application objects but not configured;
+       - the Bedrock planner is selected without its approved model and signed
+         AWS-adapter boundary (or an explicit local direct-SDK opt-in).
 
     AWS RDS is an ADVISORY analytics dependency only: it is probed for visibility
     but its absence NEVER flips readiness (the operational serving path is Data
@@ -121,7 +123,26 @@ def evaluate(
     else:
         checks["object_store"] = "not_required"
 
-    # 4. ADVISORY ONLY: AWS RDS analytics. Probed for visibility, NEVER fails
+    # 4. MANDATORY when Bedrock is selected: the exact approved model and a
+    # credential-safe transport must be configured. AppSail uses the signed AWS
+    # adapter; direct boto3 is allowed only through the explicit local-dev flag.
+    if settings.semantic_provider() == "aws_bedrock":
+        from .bedrock_adapter import catalyst_runtime_detected
+        adapter_configured = bool(
+            os.getenv("DRISHTI_AWS_ADAPTER_URL", "").strip()
+            and os.getenv("DRISHTI_AWS_ADAPTER_SECRET", "").strip())
+        local_direct_allowed = (settings.bedrock_direct_sdk_enabled
+                                and not catalyst_runtime_detected())
+        if settings.bedrock_model_allowed() and (
+                adapter_configured or local_direct_allowed):
+            checks["semantic_planner"] = "ok"
+        else:
+            checks["semantic_planner"] = "misconfigured"
+            ready = False
+    else:
+        checks["semantic_planner"] = "not_required"
+
+    # 5. ADVISORY ONLY: AWS RDS analytics. Probed for visibility, NEVER fails
     #    readiness (the operational plane does not need DATABASE_URL).
     if analytics_ping is None:
         def analytics_ping() -> bool:

@@ -2,7 +2,7 @@
   "_comment": "DRISHTI protected AWS adapter — infrastructure descriptor (Prompt 14 Part F, items 3+5). This is the single reviewed source of the intended AWS plane in front of the custom model workloads. It holds KEYS and NON-SECRET config only; no secret VALUES, no credentials. Placeholders <ACCOUNT_ID>/<REGION>/<VPC_ID>/<...> are filled at provision time by infra/aws/adapter/provision_adapter.py or an operator in the Console/CLI. Region default ap-south-1 (matches the retained AWS corpus).",
   "name": "drishti-aws-adapter",
   "region": "ap-south-1",
-  "topology": "Catalyst AppSail -> app/predict/adapter.py (signed HTTPS client) -> AWS API Gateway (TLS/throttle/size) -> Lambda|ECS adapter (services/aws-adapter) -> SageMaker (async/realtime) | AWS Batch | Batch Transform -> (only where necessary) read-only PostGIS/pgRouting analytics RDS",
+  "topology": "Catalyst AppSail -> signed HTTPS client -> AWS API Gateway (TLS/throttle/size) -> Lambda adapter (services/aws-adapter) -> Z.AI GLM 4.7 Flash on Amazon Bedrock | SageMaker (async/realtime) | AWS Batch | Batch Transform -> (only where necessary) read-only PostGIS/pgRouting analytics RDS",
 
   "api_gateway": {
     "type": "HTTP_API",
@@ -12,6 +12,7 @@
     "routes": [
       { "route_key": "POST /predict", "integration": "lambda:drishti-aws-adapter", "note": "dispatch a validated prediction envelope" },
       { "route_key": "GET /predict/{request_id}", "integration": "lambda:drishti-aws-adapter", "note": "poll a signed result envelope" },
+      { "route_key": "POST /bedrock/converse", "integration": "lambda:drishti-aws-adapter", "note": "signed, text-only NL-to-SQL planning with exact model allow-list: zai.glm-4.7-flash" },
       { "route_key": "GET /ping", "integration": "lambda:drishti-aws-adapter", "note": "health; no signature required" }
     ],
     "payload_max_bytes": 5000000,
@@ -56,7 +57,8 @@
       "DRISHTI_ADAPTER_RATE_PER_MIN",
       "DRISHTI_ADAPTER_MAX_BODY_BYTES",
       "DRISHTI_ADAPTER_CB_FAILURES",
-      "DRISHTI_ADAPTER_CB_RESET_S"
+      "DRISHTI_ADAPTER_CB_RESET_S",
+      "DRISHTI_BEDROCK_MODEL_ID"
     ],
     "_secret_note": "The HMAC secret is delivered by reference (DRISHTI_AWS_ADAPTER_SECRET_ARN -> Secrets Manager) and read at cold start with secretsmanager:GetSecretValue; the raw value is never an env var, never committed, never logged.",
     "execution_role": "arn:aws:iam::<ACCOUNT_ID>:role/drishti-aws-adapter-exec"
@@ -71,6 +73,14 @@
   },
 
   "downstream": {
+    "bedrock": {
+      "provider": "Z.AI",
+      "model_id": "zai.glm-4.7-flash",
+      "region": "ap-south-1",
+      "api": "Converse",
+      "iam_action": "bedrock:InvokeModel",
+      "note": "Exact model allow-list is enforced in AppSail, the adapter request validator, and IAM. No Anthropic/Claude or OpenAI model is permitted."
+    },
     "sagemaker": {
       "endpoints": ["drishti-tabfm", "drishti-timesfm", "drishti-stgnn"],
       "modes": ["sagemaker_async", "sagemaker_realtime", "batch_transform"],

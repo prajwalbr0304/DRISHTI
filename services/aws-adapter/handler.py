@@ -30,6 +30,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Optional
 
+from bedrock import (BedrockRequestError, BedrockUnavailable,
+                      converse as bedrock_converse)
 from dispatch import (BackendUnavailable, DispatchError, ModelDispatcher,
                       get_dispatcher)
 from schema import EnvelopeError, MAX_ENVELOPE_BYTES, parse_and_validate
@@ -158,6 +160,14 @@ def process_request(*, method: str, path: str, headers: dict, raw_body: bytes,
             return _handle_dispatch(raw_body, request_id, cfg, t0)
         if method == "GET" and norm.startswith("/predict/"):
             return _handle_poll(norm.split("/predict/", 1)[1], request_id, cfg, t0)
+        if method == "POST" and norm == "/bedrock/converse":
+            return _handle_bedrock_converse(raw_body, request_id, cfg, t0)
+    except BedrockRequestError:
+        _audit(event="bedrock_bad_request", request_id=request_id)
+        return _err(400, "bad_bedrock_request", request_id)
+    except BedrockUnavailable as exc:
+        _audit(event="bedrock_unavailable", request_id=request_id, error_code=exc.code)
+        return _err(503, f"bedrock_{exc.code}", request_id)
     except BackendUnavailable as exc:
         _audit(event="backend_unavailable", request_id=request_id, detail=str(exc)[:120])
         return _err(503, "backend_unavailable", request_id)
@@ -202,14 +212,34 @@ def _handle_poll(request_id_path: str, request_id: str, cfg: AdapterConfig,
     return 200, signed
 
 
+def _handle_bedrock_converse(raw_body: bytes, request_id: str, cfg: AdapterConfig,
+                             t0: float) -> tuple[int, dict]:
+    try:
+        body = json.loads(raw_body or b"{}")
+    except ValueError:
+        return _err(400, "bad_json", request_id)
+    result = bedrock_converse(body)
+    signed = sign_result(cfg.secret, result)
+    usage = result.get("usage") or {}
+    _audit(
+        event="bedrock_converse",
+        request_id=request_id,
+        model_id=result.get("model_id"),
+        input_tokens=usage.get("input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        latency_ms=int((time.time() - t0) * 1000),
+    )
+    return 200, signed
+
+
 def _normalize_path(path: str) -> str:
     """Strip query string + a leading API Gateway stage segment; keep /predict*."""
     p = (path or "/").split("?", 1)[0]
     if not p.startswith("/"):
         p = "/" + p
-    # Keep only from the last '/predict' or '/ping'/'/health' occurrence so a
-    # stage prefix (e.g. /prod/predict/123) normalises to /predict/123.
-    for anchor in ("/predict", "/ping", "/health"):
+    # Keep only from a known route anchor so an API Gateway stage prefix (for
+    # example /prod/bedrock/converse) normalises to the protected operation.
+    for anchor in ("/bedrock/converse", "/predict", "/ping", "/health"):
         idx = p.find(anchor)
         if idx >= 0:
             return p[idx:]
@@ -268,6 +298,7 @@ def create_app():
     app.add_url_rule("/predict", view_func=_dispatch_flask, methods=["POST"])
     app.add_url_rule("/predict/<path:request_id>", view_func=_dispatch_flask,
                      methods=["GET"])
+    app.add_url_rule("/bedrock/converse", view_func=_dispatch_flask, methods=["POST"])
     return app
 
 

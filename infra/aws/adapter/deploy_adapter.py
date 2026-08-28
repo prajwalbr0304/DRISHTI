@@ -39,6 +39,7 @@ ACCOUNT = _SHARED["account_id"]
 BUCKET = _SHARED["s3"]["bucket"]
 KMS_ARN = _SHARED["kms"]["key_arn"]
 ENDPOINT = _SHARED["sagemaker"]["endpoint_name"]
+BEDROCK_MODEL_ID = "zai.glm-4.7-flash"
 
 FUNCTION = "drishti-aws-adapter"
 ROLE = "drishti-aws-adapter-exec"
@@ -98,6 +99,9 @@ def _role_arn(secret_arn: str, dlq_arn: str) -> str:
             {"Sid": "InvokeAsyncEndpointOnly", "Effect": "Allow",
              "Action": ["sagemaker:InvokeEndpointAsync", "sagemaker:InvokeEndpoint"],
              "Resource": f"arn:aws:sagemaker:{REGION}:{ACCOUNT}:endpoint/{ENDPOINT}"},
+            {"Sid": "InvokeApprovedChineseBedrockModelOnly", "Effect": "Allow",
+             "Action": ["bedrock:InvokeModel"],
+             "Resource": f"arn:aws:bedrock:{REGION}::foundation-model/{BEDROCK_MODEL_ID}"},
             {"Sid": "S3StagingOnly", "Effect": "Allow",
              "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
              "Resource": [f"arn:aws:s3:::{BUCKET}", f"arn:aws:s3:::{BUCKET}/*"]},
@@ -127,7 +131,8 @@ def _role_arn(secret_arn: str, dlq_arn: str) -> str:
 def _zip_source() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name in ("handler.py", "dispatch.py", "signing.py", "schema.py", "circuit.py"):
+        for name in ("handler.py", "dispatch.py", "signing.py", "schema.py", "circuit.py",
+                     "bedrock.py"):
             zf.write(os.path.join(SRC, name), name)
     return buf.getvalue()
 
@@ -141,6 +146,7 @@ def _ensure_lambda(role_arn: str, secret_val: str, dlq_arn: str) -> str:
         "DRISHTI_ADAPTER_S3_STAGING": f"s3://{BUCKET}/async-io",
         "DRISHTI_ADAPTER_MAX_SKEW_S": "300",
         "DRISHTI_ADAPTER_RATE_PER_MIN": "600",
+        "DRISHTI_BEDROCK_MODEL_ID": BEDROCK_MODEL_ID,
     }}
     try:
         lam.get_function(FunctionName=FUNCTION)
@@ -187,7 +193,8 @@ def _ensure_api(fn_arn: str) -> str:
     integ = api.create_integration(
         ApiId=api_id, IntegrationType="AWS_PROXY", IntegrationUri=fn_arn,
         PayloadFormatVersion="2.0", IntegrationMethod="POST")["IntegrationId"]
-    for route in ("POST /predict", "GET /predict/{request_id}", "GET /ping"):
+    for route in ("POST /predict", "GET /predict/{request_id}",
+                  "POST /bedrock/converse", "GET /ping"):
         try:
             api.create_route(ApiId=api_id, RouteKey=route, Target=f"integrations/{integ}")
         except api.exceptions.ConflictException:
@@ -215,7 +222,8 @@ def cmd_deploy(args) -> int:
     fn_arn = _ensure_lambda(role_arn, secret_val, dlq_arn)
     url = _ensure_api(fn_arn)
     out = {"adapter_url": url, "secret_arn": secret_arn, "function_arn": fn_arn,
-           "dlq_arn": dlq_arn, "sm_async_endpoint": ENDPOINT}
+           "dlq_arn": dlq_arn, "sm_async_endpoint": ENDPOINT,
+           "bedrock_model_id": BEDROCK_MODEL_ID}
     print(json.dumps(out, indent=2))
     # persist non-secret wiring for the report + AppSail env (value NOT written here)
     with open(os.path.join(_HERE, "adapter.deployed.json"), "w", encoding="utf-8") as fh:

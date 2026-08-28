@@ -11,8 +11,6 @@ scope layers are pure and fire before any connection):
 Integration (@requires_db) proves valid queries run read-only, the row cap
 holds, answers are grounded + cited + persisted, and multi-turn memory works.
 """
-import json
-
 import pytest
 
 from app.nlsql import briefing, engine, executor, glossary, guard, planner, scope
@@ -277,31 +275,16 @@ def test_fallback_escapes_literals():
     assert planner._lit("O'Brien") == "'O''Brien'"
 
 
-def test_llm_planner_parses_json(monkeypatch):
-    import httpx
-
-    class _Resp:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            payload = {"sql": 'SELECT COUNT(*) FROM "CaseMaster"',
-                       "needs_clarification": False, "confidence": 0.9, "language": "en"}
-            return {"choices": [{"message": {"content": json.dumps(payload)}}]}
-
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: _Resp())
-
+def test_arbitrary_openai_compatible_planner_fails_closed():
     class _S:
-        llm_model = "m"
-        llm_base_url = "http://x/v1"
-        llm_api_key = "k"
+        llm_model = "qwen2.5-14b-instruct"
+        llm_base_url = "https://api.openai.com/v1"
+        llm_api_key = "not-used"
         llm_timeout_s = 5.0
         nlsql_max_history_turns = 6
 
-    plan = LLMPlanner(_S()).plan("count cases", "crime_analyst", "en", [])
-    assert plan.source == "openai-compatible"     # provider-neutral label (Prompt 19 §B)
-    assert plan.sql and guard.validate_select(plan.sql)
-    assert not plan.needs_clarification
+    with pytest.raises(RuntimeError, match="disabled"):
+        LLMPlanner(_S()).plan("count cases", "crime_analyst", "en", [])
 
 
 # ============================ integration (DB) =============================

@@ -12,6 +12,13 @@
       "Resource": "arn:aws:sagemaker:<REGION>:<ACCOUNT_ID>:endpoint/drishti-*"
     },
     {
+      "Sid": "InvokeApprovedChineseBedrockModelOnly",
+      "Effect": "Allow",
+      "Action": [ "bedrock:InvokeModel" ],
+      "Resource": "arn:aws:bedrock:<REGION>::foundation-model/zai.glm-4.7-flash",
+      "_note": "Converse requires bedrock:InvokeModel. This exact Chinese-origin Z.AI model ARN prevents Claude, GPT/OpenAI, or any unreviewed model from being invoked."
+    },
+    {
       "Sid": "CreateAndReadApprovedTransformJobs",
       "Effect": "Allow",
       "Action": [

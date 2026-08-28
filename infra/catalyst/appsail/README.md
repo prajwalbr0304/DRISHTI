@@ -80,6 +80,14 @@ catalyst deploy appsail --name drishti-api --source docker://drishti-api:appsail
   - `DRISHTI_USE_CATALYST_DATASTORE=true`, `DRISHTI_USE_CATALYST_STRATUS=true` +
     the three `DRISHTI_STRATUS_*_BUCKET` names.
   - `DRISHTI_ACCESS_LOG_ENABLED=true` — structured redacted access logs.
+  - `DRISHTI_AWS_ADAPTER_URL` + `DRISHTI_AWS_ADAPTER_SECRET` — required signed
+    server-to-server boundary. The secret is configured in AppSail and AWS
+    Secrets Manager only; it is never committed, logged, or sent to the browser.
+  - `SEMANTIC_PLANNER_PROVIDER=aws_bedrock`,
+    `BEDROCK_MODEL_ID=zai.glm-4.7-flash`, `BEDROCK_REGION=ap-south-1`, and
+    `BEDROCK_DIRECT_SDK_ENABLED=false` — the only approved Bedrock planner.
+    AppSail signs the request to the existing AWS adapter; AWS credentials remain
+    on its Lambda role. Runtime markers also reject any attempted direct-SDK opt-in.
   - **`DATABASE_URL` is NOT set** for the operational CRUD path — it is only ever
     an optional read-only analytics adapter, never required for readiness, and
     never shipped to the browser.

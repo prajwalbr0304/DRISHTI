@@ -123,7 +123,11 @@ Write-Host "keys ONLY (no values in git/logs). See appsail.deploy.json env_var_k
 Write-Host "  required: ZOHO_APPSAIL_SIGNING_SECRET, DRISHTI_REQUIRE_GATEWAY_CONTEXT=true,"
 Write-Host "            DRISHTI_CONTEXT_AUDIENCE=drishti-appsail, DRISHTI_USE_CATALYST_DATASTORE=true,"
 Write-Host "            DRISHTI_STRATUS_EVIDENCE_BUCKET, DRISHTI_STRATUS_IMPORT_BUCKET,"
-Write-Host "            DRISHTI_STRATUS_REPORT_BUCKET"
+Write-Host "            DRISHTI_STRATUS_REPORT_BUCKET, DRISHTI_AWS_ADAPTER_URL,"
+Write-Host "            DRISHTI_AWS_ADAPTER_SECRET, SEMANTIC_PLANNER_PROVIDER=aws_bedrock,"
+Write-Host "            BEDROCK_MODEL_ID=zai.glm-4.7-flash, BEDROCK_REGION=ap-south-1,"
+Write-Host "            BEDROCK_DIRECT_SDK_ENABLED=false"
+Write-Host "  Bedrock uses the signed AWS adapter. Never set AWS access keys on AppSail."
 Write-Host "  do NOT set: DATABASE_URL (the operational CRUD path uses Catalyst Data Store)."
 Write-Host ""
 Write-Host "Then smoke-test the deployed base URL:" -ForegroundColor Cyan

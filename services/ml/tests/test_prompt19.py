@@ -20,24 +20,25 @@ def test_no_commercial_default_model_and_scope_flag_defaults():
 
 
 # ==================== B: provider-neutral planner labelling =================
-def test_primary_planner_name_prefers_quickml_when_configured():
+def test_arbitrary_quickml_provider_is_disabled():
     s = Settings(semantic_planner_provider="catalyst_quickml",
                  quickml_llm_endpoint="https://quickml.example/llm",
                  quickml_llm_model="qwen2.5-14b-instruct")
-    assert s.quickml_llm_configured() is True
-    assert s.primary_planner_name() == "catalyst-quickml-llm"
+    assert s.quickml_llm_configured() is False
+    assert s.primary_planner_name() == "deterministic-fallback"
 
 
-def test_primary_planner_name_openai_compatible_when_only_that_configured():
+def test_arbitrary_openai_compatible_provider_is_disabled():
     s = Settings(semantic_planner_provider="openai_compatible",
-                 llm_api_key="k", llm_base_url="https://oss.example/v1", llm_model="qwen")
-    assert s.openai_compatible_configured() is True
-    assert s.primary_planner_name() == "openai-compatible"
+                 llm_api_key="k", llm_base_url="https://api.openai.com/v1",
+                 llm_model="qwen2.5-14b-instruct")
+    assert s.openai_compatible_configured() is False
+    assert s.primary_planner_name() == "deterministic-fallback"
 
 
 def test_primary_planner_name_bedrock_when_configured():
     s = Settings(semantic_planner_provider="aws_bedrock",
-                 bedrock_model_id="anthropic.claude-sonnet-4-6")
+                 bedrock_model_id="zai.glm-4.7-flash")
     assert s.bedrock_configured() is True
     assert s.primary_planner_name() == "aws-bedrock"
 
@@ -72,7 +73,8 @@ def test_bedrock_planner_does_not_set_app_token_cap(monkeypatch):
             }
 
     p = BedrockPlanner(Settings(semantic_planner_provider="aws_bedrock",
-                                bedrock_model_id="zai.glm-4.7-flash"))
+                                bedrock_model_id="zai.glm-4.7-flash",
+                                bedrock_direct_sdk_enabled=True))
     monkeypatch.setattr(p, "_client", lambda: _Client())
 
     plan = p.plan("how many cases", "crime_analyst", "en", [])

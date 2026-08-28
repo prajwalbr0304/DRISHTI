@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  AudioLines,
-  Loader2,
-  Mic,
-  RotateCcw,
-  SendHorizonal,
-  Square,
-  Volume2,
-} from "lucide-react";
+import { AlertTriangle, AudioLines, Loader2, Mic, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,12 +13,11 @@ import { useAskStore, type AskLang } from "@/stores/useAskStore";
 import { useSpeech, type SpeechFinalResult } from "@/components/ask/useSpeech";
 import { useTts } from "@/components/ask/useTts";
 
-type VoicePhase = "idle" | "listening" | "review" | "thinking" | "speaking" | "error";
+type VoicePhase = "idle" | "listening" | "thinking" | "speaking" | "error";
 
 const STATUS: Record<VoicePhase, string> = {
   idle: "Ready when you are",
   listening: "Listening…",
-  review: "Review what I heard",
   thinking: "Checking DRISHTI…",
   speaking: "Speaking — tap to interrupt",
   error: "Voice mode paused",
@@ -37,14 +27,12 @@ export function VoiceModeDialog({
   open,
   onOpenChange,
   language,
-  confidenceThreshold,
   providerLabel,
   plannerLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   language: AskLang;
-  confidenceThreshold: number;
   providerLabel: string;
   plannerLabel: string;
 }) {
@@ -148,7 +136,7 @@ export function VoiceModeDialog({
   }, [clearRestartTimer]);
 
   const submitTurn = useCallback(
-    async (text: string, resultConfidence: number | null, confirmed: boolean) => {
+    async (text: string, resultConfidence: number | null) => {
       const cleaned = text.trim();
       if (!cleaned || submittingRef.current) return;
       submittingRef.current = true;
@@ -163,7 +151,9 @@ export function VoiceModeDialog({
         voiceMode: true,
         voiceConfidence: resultConfidence ?? undefined,
         voiceLanguage: language,
-        voiceConfirmed: confirmed,
+        // Entering continuous Voice Mode opts into automatic finalized turns.
+        // The transcript still remains visible and interruptible in the dialog.
+        voiceConfirmed: true,
       });
       submittingRef.current = false;
       if (!openRef.current || lifecycle !== lifecycleRef.current) return;
@@ -198,13 +188,8 @@ export function VoiceModeDialog({
     setTranscript(finalResult.text);
     setConfidence(finalResult.confidence);
     setFinalResult(null);
-
-    if (finalResult.confidence != null && finalResult.confidence >= confidenceThreshold) {
-      void submitTurn(finalResult.text, finalResult.confidence, false);
-    } else {
-      setPhase("review");
-    }
-  }, [confidenceThreshold, finalResult, open, submitTurn]);
+    void submitTurn(finalResult.text, finalResult.confidence);
+  }, [finalResult, open, submitTurn]);
 
   useEffect(() => {
     if (!open) return;
@@ -239,14 +224,13 @@ export function VoiceModeDialog({
     }
     if (phase === "listening") {
       stopSpeech();
-      if (transcript.trim()) setPhase("review");
+      if (transcript.trim()) void submitTurn(transcript, confidence);
       else setPhase("idle");
       return;
     }
     if (phase !== "thinking") beginListening();
   };
 
-  const requiresReview = confidence == null || confidence < confidenceThreshold;
   const phaseIcon =
     phase === "thinking" ? (
       <Loader2 className="size-8 animate-spin" />
@@ -320,27 +304,6 @@ export function VoiceModeDialog({
                   <span>{errorMessage}</span>
                 </div>
               )}
-            </div>
-          )}
-
-          {phase === "review" && transcript && (
-            <div className="mt-4 rounded-card bg-severity-high/10 p-3">
-              <div className="flex items-start gap-2 text-12 text-severity-high">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  {requiresReview
-                    ? "Confidence was low or unavailable. Confirm the transcript before DRISHTI runs it."
-                    : "Review the transcript before sending."}
-                </span>
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={beginListening}>
-                  <RotateCcw /> Try again
-                </Button>
-                <Button size="sm" onClick={() => void submitTurn(transcript, confidence, true)}>
-                  <SendHorizonal /> Confirm & send
-                </Button>
-              </div>
             </div>
           )}
 
