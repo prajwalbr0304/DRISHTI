@@ -106,7 +106,7 @@ export function CaseExplorer() {
               <Input
                 value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
-                placeholder="Search crime no. or brief facts…"
+                placeholder="Search case reference, person, alias, source, or facts…"
                 className="h-8 pl-8"
               />
             </div>

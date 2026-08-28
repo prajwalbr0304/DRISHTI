@@ -46,47 +46,62 @@ def _next_window(last_period: str, horizon_days: int):
     return start, start + dt.timedelta(days=horizon_days)
 
 
-def _write(conn, head_id, model_name, version, framework, hyperparams, districts, start, end):
+def _write(conn, head_id, model_name, version, framework, hyperparams, districts, start, end,
+           policy_attestation=None):
+    from ..cases import analytics_policy
+
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
     centroids = feat.district_centroids(conn)
     names = feat.district_names(conn)
     mv_id = models.get_or_create_model_version(
-        conn, model_name, "forecasting", version, framework=framework, hyperparameters=hyperparams)
+        conn, model_name, "forecasting",
+        analytics_policy.policy_model_version(version, attestation), framework=framework,
+        hyperparameters=analytics_policy.stamp(hyperparams, attestation))
     scale = max((d["mean"] for d in districts), default=1.0) or 1.0
     rows, out = [], []
     for r in districts:
         d = r["district_id"]
         lon, lat = centroids.get(d, (None, None))
-        fj = {"layer": "st_gnn", "model": framework, "mean": round(r["mean"], 3),
-              "std": round(r["std"], 3), "lower_p10": round(r["lower"], 3),
-              "upper_p90": round(r["upper"], 3), **r.get("extra", {})}
+        fj = analytics_policy.stamp(
+            {"layer": "st_gnn", "model": framework, "mean": round(r["mean"], 3),
+             "std": round(r["std"], 3), "lower_p10": round(r["lower"], 3),
+             "upper_p90": round(r["upper"], 3), **r.get("extra", {})},
+            attestation)
         rows.append((mv_id, d, head_id, start, end, round(r["mean"], 2),
                      round(min(1.0, r["mean"] / (scale * 1.5)), 5), r["confidence"],
                      Json(fj), lon, lon, lat))
         out.append({"district_id": d, "district": names.get(d), "mean": round(r["mean"], 2),
                     "std": round(r["std"], 2), "lower_p10": round(r["lower"], 2),
                     "upper_p90": round(r["upper"], 2), "confidence": r["confidence"]})
+    analytics_policy.require_supplied_current(conn, attestation, "ST-GNN forecast run")
     with conn.cursor() as cur:
         cur.execute('DELETE FROM "CrimePrediction" WHERE "Features"->>\'layer\'=\'st_gnn\' '
                     'AND "CrimeHeadID" IS NOT DISTINCT FROM %s', (head_id,))
-        execute_values(
-            cur,
-            'INSERT INTO "CrimePrediction" ("ModelVersionID","DistrictID","CrimeHeadID",'
-            '"PredictionStart","PredictionEnd","PredictedCount","Probability","Confidence",'
-            '"Features","geom") VALUES %s',
-            rows,
-            template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                     "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
-            page_size=200)
-        models.log_inference(conn, mv_id, ref_table="CrimePrediction",
-                             inputs={"head_id": head_id, **hyperparams},
-                             outputs={"districts": len(rows), "framework": framework})
-    return {"written": len(rows), "model": framework, "model_version_id": mv_id, "districts": out,
-            "prediction_start": start.isoformat(), "prediction_end": end.isoformat()}
+        if rows:
+            execute_values(
+                cur,
+                'INSERT INTO "CrimePrediction" ("ModelVersionID","DistrictID","CrimeHeadID",'
+                '"PredictionStart","PredictionEnd","PredictedCount","Probability","Confidence",'
+                '"Features","geom") VALUES %s',
+                rows,
+                template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                         "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
+                page_size=200)
+        models.log_inference(
+            conn, mv_id, ref_table="CrimePrediction",
+            inputs=analytics_policy.stamp({"head_id": head_id, **hyperparams}, attestation),
+            outputs={"districts": len(rows), "framework": framework,
+                     "complete_generation": True})
+    return {"written": len(rows), "model": framework, "model_version_id": mv_id,
+            "districts": out,
+            "prediction_start": start.isoformat() if start is not None else None,
+            "prediction_end": end.isoformat() if end is not None else None,
+            "analytics_policy_attestation": attestation.as_dict()}
 
 
 # ---- REAL PyG spatio-temporal GNN (GRU + GCN, MC-dropout uncertainty) ------
 def _run_torch_stgnn(conn, head_id, window, horizon_days, epochs=80, mc_samples=30,
-                     hidden=32, dropout=0.2, seed=42) -> dict:
+                     hidden=32, dropout=0.2, seed=42, policy_attestation=None) -> dict:
     import torch
     import torch.nn as nn
     from torch_geometric.nn import GCNConv
@@ -164,7 +179,8 @@ def _run_torch_stgnn(conn, head_id, window, horizon_days, epochs=80, mc_samples=
                           "extra": {"mc_samples": mc_samples, "neighbours": sorted(adj[d])}})
     return _write(conn, head_id, "drishti-forecast-stgnn", "2.0.0", "pyg-gcn-gru-mcdropout",
                   {"window": window, "hidden": hidden, "dropout": dropout, "epochs": epochs,
-                   "mc_samples": mc_samples, "uncertainty": "mc_dropout"}, districts, start, end)
+                   "mc_samples": mc_samples, "uncertainty": "mc_dropout"}, districts, start, end,
+                  policy_attestation=policy_attestation)
 
 
 # ---- numpy fallback: graph diffusion + temporal ----------------------------
@@ -178,10 +194,15 @@ def _base_forecast(counts, window):
     return nxt, sigma
 
 
-def _run_numpy_stgnn(conn, head_id, window, alpha, diffusion_steps, horizon_days) -> dict:
+def _run_numpy_stgnn(conn, head_id, window, alpha, diffusion_steps, horizon_days,
+                     policy_attestation=None) -> dict:
     adj, ids, series, last_period = _load_series(conn, head_id, window)
+    hyperparameters = {"window": window, "alpha": alpha, "diffusion_steps": diffusion_steps}
     if not ids:
-        return {"written": 0, "districts": []}
+        return _write(
+            conn, head_id, "drishti-forecast-stgnn", "1.0.0",
+            "graph-diffusion-temporal", hyperparameters, [], None, None,
+            policy_attestation=policy_attestation)
     base, sigma_local = {}, {}
     for d in ids:
         base[d], sigma_local[d] = _base_forecast(series[d][1], window)
@@ -204,21 +225,28 @@ def _run_numpy_stgnn(conn, head_id, window, alpha, diffusion_steps, horizon_days
                           "extra": {"spillover_alpha": alpha, "neighbours": neigh,
                                     "neighbour_disagreement": round(disagree, 3)}})
     return _write(conn, head_id, "drishti-forecast-stgnn", "1.0.0", "graph-diffusion-temporal",
-                  {"window": window, "alpha": alpha, "diffusion_steps": diffusion_steps},
-                  districts, start, end)
+                  hyperparameters, districts, start, end,
+                  policy_attestation=policy_attestation)
 
 
 def run_stgnn(conn, head_id: Optional[int] = None, window: int = 12, horizon_days: int = 30,
               alpha: float = 0.3, diffusion_steps: int = 2, epochs: int = 80,
-              mc_samples: int = 30) -> dict:
-    """Real PyG ST-GNN when torch-geometric is available; numpy graph-diffusion otherwise."""
+              mc_samples: int = 30, policy_attestation=None) -> dict:
+    """Real PyG ST-GNN when available; attested numpy diffusion otherwise."""
+    from ..cases import analytics_policy
+
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
     try:
         import torch  # noqa: F401
         import torch_geometric  # noqa: F401
-        return _run_torch_stgnn(conn, head_id, window, horizon_days, epochs=epochs, mc_samples=mc_samples)
+        return _run_torch_stgnn(
+            conn, head_id, window, horizon_days, epochs=epochs, mc_samples=mc_samples,
+            policy_attestation=attestation)
     except Exception as e:  # pragma: no cover - observable, non-silent fallback
         import sys, traceback
         print(f"[stgnn] PyG ST-GNN unavailable ({type(e).__name__}: {e}); "
               "falling back to numpy graph-diffusion.", file=sys.stderr)
         traceback.print_exc()
-        return _run_numpy_stgnn(conn, head_id, window, alpha, diffusion_steps, horizon_days)
+        return _run_numpy_stgnn(
+            conn, head_id, window, alpha, diffusion_steps, horizon_days,
+            policy_attestation=attestation)

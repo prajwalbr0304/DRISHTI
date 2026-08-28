@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import db
+from ..cases import analytics_policy
 from ..contracts import AiResult
 from .schemas import (ContractAuditResponse, ContractRoute, DriftPoint, ExplainResponse,
                       FactorBar, GaugeBars, InferenceAudit, ModelCard, ModelDetailResponse,
@@ -118,14 +119,23 @@ def _explain_risk(conn, rid: int) -> Optional[ExplainResponse]:
 def _explain_prediction(conn, pid: int) -> Optional[ExplainResponse]:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "PredictionID","ModelVersionID","DistrictID","UnitID","CrimeHeadID",'
-            '"PredictionStart"::text,"PredictionEnd"::text,"PredictedCount","Probability",'
-            '"Confidence","Features" FROM "CrimePrediction" WHERE "PredictionID"=%s', (pid,))
+            'SELECT cp."PredictionID",cp."ModelVersionID",cp."DistrictID",cp."UnitID",'
+            'cp."CrimeHeadID",cp."PredictionStart"::text,cp."PredictionEnd"::text,'
+            'cp."PredictedCount",cp."Probability",cp."Confidence",cp."Features",'
+            'mv."Hyperparameters" FROM "CrimePrediction" cp LEFT JOIN "ModelVersion" mv '
+            'ON mv."ModelVersionID"=cp."ModelVersionID" WHERE cp."PredictionID"=%s', (pid,))
         r = cur.fetchone()
     if not r:
         return None
     feats = r[10] or {}
     mv_id = r[1]
+    current = analytics_policy.current_attestation(conn)
+    analytics_policy.require_current(conn, feats, f"CrimePrediction {pid}", current=current)
+    if mv_id is None:
+        raise analytics_policy.DerivedArtifactUnavailable(
+            f"CrimePrediction {pid} has no model-version lineage.")
+    analytics_policy.require_current(
+        conn, r[11], f"CrimePrediction {pid} model", current=current)
     model = _model_info(conn, mv_id)
     inf = _find_inference(conn, mv_id, ref_table="CrimePrediction")
     subject = {"layer": feats.get("layer"), "predicted_count": float(r[7]) if r[7] is not None else None,
@@ -188,16 +198,40 @@ def _explain_summary(conn, sid: int) -> Optional[ExplainResponse]:
 def _explain_alert(conn, aid: int) -> Optional[ExplainResponse]:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "AlertID","AlertType"::text,"Severity"::text,"Title","Message","CaseMasterID",'
-            '"DistrictID","UnitID","EntityID","ModelVersionID","Payload","Status"::text '
-            'FROM "AlertHistory" WHERE "AlertID"=%s', (aid,))
+            'SELECT a."AlertID",a."AlertType"::text,a."Severity"::text,a."Title",a."Message",'
+            'a."CaseMasterID",a."DistrictID",a."UnitID",a."EntityID",a."ModelVersionID",'
+            'a."Payload",a."Status"::text,mv."ModelName",mv."Hyperparameters",'
+            'a."HazardEventID" FROM "AlertHistory" a LEFT JOIN "ModelVersion" mv '
+            'ON mv."ModelVersionID"=a."ModelVersionID" WHERE a."AlertID"=%s', (aid,))
         r = cur.fetchone()
     if not r:
         return None
     mv_id = r[9]
+    payload = r[10] or {}
+    model_name = r[12]
+    current = analytics_policy.current_attestation(conn)
+    is_case_analytics = (
+        model_name in {"drishti-emerging-trend", "drishti-early-warning"}
+        or payload.get("artifact_domain") == "case_analytics"
+    )
+    if is_case_analytics:
+        if payload.get("artifact_domain") != "case_analytics":
+            raise analytics_policy.ArtifactPolicyMismatch(
+                f"AlertHistory {aid} is a legacy case-derived alert without a trusted "
+                "artifact-domain marker.")
+        analytics_policy.require_current(conn, payload, f"AlertHistory {aid}", current=current)
+        analytics_policy.require_current(
+            conn, r[13], f"AlertHistory {aid} model", current=current)
+    elif r[14] is not None or model_name == "drishti-money-aml":
+        pass
+    elif mv_id is None and payload.get("kind") == "board_hypothesis_promotion":
+        pass
+    else:
+        raise analytics_policy.DerivedArtifactUnavailable(
+            f"AlertHistory {aid} has no trusted independent domain or current "
+            "case-analytics attestation; classify or regenerate it before serving.")
     model = _model_info(conn, mv_id)
     inf = _find_inference(conn, mv_id, ref_table="AlertHistory", case_master_id=r[5])
-    payload = r[10] or {}
     subject = {"alert_type": r[1], "severity": r[2], "title": r[3], "message": r[4],
                "status": r[11], "scope": {"case_master_id": r[5], "district_id": r[6],
                                           "unit_id": r[7], "entity_id": r[8]}, "payload": payload}

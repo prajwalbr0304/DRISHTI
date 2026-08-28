@@ -170,6 +170,9 @@ class EvidenceCaseLinkOut(BaseModel):
     evidence_case_link_id: int
     case_master_id: int
     crime_no: Optional[str] = None
+    record_origin: str = "synthetic_fixture"
+    is_synthetic: bool = True
+    reference_mapping_kind: Optional[str] = None
     link_type: str
     created_at: Optional[str] = None
 

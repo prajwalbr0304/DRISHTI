@@ -26,7 +26,10 @@ _STATION_CAP = 25          # bound the per-station breakdown list
 
 
 def _scope_where(unit_id: Optional[int], district_id: Optional[int]) -> tuple[str, list]:
-    clauses, params = [], []
+    from ..cases import casedata
+
+    clauses = [casedata.analytics_eligible_sql("cm")]
+    params = []
     if unit_id is not None:
         clauses.append('cm."PoliceStationID" = %s')
         params.append(int(unit_id))

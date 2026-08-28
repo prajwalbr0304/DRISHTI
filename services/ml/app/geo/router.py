@@ -61,7 +61,12 @@ def hotspots(
     crime_head_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(500, ge=1, le=2000),
 ):
-    return service.hotspots(_parse_bbox(bbox), start, end, crime_head_id, limit)
+    from ..cases import analytics_policy
+
+    try:
+        return service.hotspots(_parse_bbox(bbox), start, end, crime_head_id, limit)
+    except analytics_policy.DerivedArtifactUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/trends", response_model=TrendResponse)
@@ -125,7 +130,12 @@ def alerts(
     bbox: Optional[str] = Query(None, description="minLon,minLat,maxLon,maxLat"),
     limit: int = Query(200, ge=1, le=1000),
 ):
-    return service.active_alerts(_parse_bbox(bbox), severity, alert_type, limit)
+    from ..cases import analytics_policy
+
+    try:
+        return service.active_alerts(_parse_bbox(bbox), severity, alert_type, limit)
+    except analytics_policy.DerivedArtifactUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/coverage")
@@ -134,10 +144,14 @@ def coverage():
     The UI anchors its time window to ``max_date`` so windows land on real data
     instead of the wall clock (the synthetic dataset is historical). Harmless
     aggregate metadata — available to every role."""
+    from ..cases import casedata
+
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute('SELECT MIN("CrimeRegisteredDate")::text, '
-                        'MAX("CrimeRegisteredDate")::text, COUNT(*) FROM "CaseMaster"')
+            cur.execute(
+                'SELECT MIN(cm."CrimeRegisteredDate")::text, '
+                'MAX(cm."CrimeRegisteredDate")::text, COUNT(*) FROM "CaseMaster" cm '
+                f'WHERE {casedata.analytics_eligible_sql("cm")}')
             mn, mx, n = cur.fetchone()
     return {"min_date": mn, "max_date": mx, "total": int(n)}
 

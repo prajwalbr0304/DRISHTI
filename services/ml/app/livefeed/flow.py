@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .. import db
+from ..cases import casedata
 from ..signals import EVENT_CASE_COMMITTED, get_signals
 
 # Open lifecycle statuses (mirror app/performance OPEN_STATUSES).
@@ -64,7 +65,11 @@ class _Ledger:
         with self._lock:
             self._by_key[rec.dedup_key] = rec
             self._order.append(rec.dedup_key)
-            for name in _PROJECTIONS:
+            projection_names = (
+                _PROJECTIONS if rec.status != "success"
+                else tuple(name for name in _PROJECTIONS if name in rec.projections)
+            )
+            for name in projection_names:
                 st = self._proj_state[name]
                 st["last_processed_ts"] = rec.processed_ts
                 st["processed_count"] += 1
@@ -108,27 +113,33 @@ def _fmt(ts) -> Optional[str]:
 def _recompute_projections(conn, case_id: int) -> tuple[Optional[int], dict]:
     """Read-only recompute of the aggregate projections a committed FIR touches.
 
-    Returns (district_id, projections). NEVER writes; never scores a person."""
+    Operational totals stay inclusive. Derived near-repeat analytics are emitted
+    only when the committed source is currently analytics-eligible.
+    Returns (district_id, projections). NEVER writes; never scores a person.
+    """
+    eligible = casedata.analytics_eligible_sql("cm")
     with conn.cursor() as cur:
         cur.execute(
             'SELECT u."DistrictID", cm."PoliceStationID", cm."CrimeMajorHeadID", '
-            '       cm."CrimeRegisteredDate", d."DistrictName" '
+            '       cm."CrimeRegisteredDate", d."DistrictName", '
+            f'       ({eligible}) AS "AnalyticsEligible" '
             'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'LEFT JOIN "District" d ON d."DistrictID"=u."DistrictID" '
             'WHERE cm."CaseMasterID"=%s', (case_id,))
         row = cur.fetchone()
         if not row:
             raise LookupError(f"case {case_id} not found")
-        district_id, station_id, head_id, reg_date, district_name = row
+        district_id, station_id, head_id, reg_date, district_name, source_eligible = row
+        source_eligible = bool(source_eligible)
         open_list = ",".join(["%s"] * len(_OPEN_STATUSES))
 
-        # district statistic: total cases in the district (committed FIR included).
+        # Operational district statistics deliberately include every committed FIR.
         cur.execute(
             'SELECT count(*) FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'WHERE u."DistrictID"=%s', (district_id,))
         district_count = int(cur.fetchone()[0])
 
-        # supervisor workload: active (open) cases in the district.
+        # Operational supervisor workload likewise remains inclusive.
         cur.execute(
             'SELECT count(*) FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'JOIN "CaseStatusMaster" st ON st."CaseStatusID"=cm."CaseStatusID" '
@@ -136,38 +147,44 @@ def _recompute_projections(conn, case_id: int) -> tuple[Optional[int], dict]:
             [district_id] + list(_OPEN_STATUSES))
         active_workload = int(cur.fetchone()[0])
 
-        # near-repeat eligibility: another case of the SAME crime head in the SAME
-        # district within the lookback window before this FIR's registration.
+        # A derived near-repeat projection is suppressed for an excluded source.
+        # Candidate cases are independently rechecked against current policy.
         near_repeat_prior = 0
-        if reg_date is not None:
+        if source_eligible and reg_date is not None and head_id is not None:
             since = reg_date - dt.timedelta(days=_NEAR_REPEAT_DAYS)
             cur.execute(
                 'SELECT count(*) FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
                 'WHERE u."DistrictID"=%s AND cm."CrimeMajorHeadID"=%s '
-                '  AND cm."CrimeRegisteredDate" BETWEEN %s AND %s AND cm."CaseMasterID" <> %s',
-                (district_id, head_id, since, reg_date, case_id))
+                '  AND cm."CrimeRegisteredDate" >= %s AND cm."CrimeRegisteredDate" < %s '
+                f'  AND {eligible}',
+                (district_id, head_id, since, reg_date))
             near_repeat_prior = int(cur.fetchone()[0])
 
     projections = {
         "district_statistic": {
             "district_id": district_id, "district_name": district_name,
             "total_cases": district_count,
-            "note": "Committed FIR is reflected in the district case count.",
+            "note": "Committed FIR is reflected in the inclusive district case count.",
         },
         "supervisor_workload": {
             "district_id": district_id, "station_id": station_id,
             "active_workload": active_workload,
-            "note": "District active workload including the committed FIR (if open).",
+            "note": "Inclusive district active workload (including the committed FIR if open).",
         },
-        "hotspot_near_repeat": {
+        "analytics_policy": {
+            "source_analytics_eligible": source_eligible,
+            "near_repeat_available": source_eligible,
+        },
+    }
+    if source_eligible:
+        projections["hotspot_near_repeat"] = {
             "district_id": district_id, "crime_head_id": head_id,
             "prior_similar_in_window": near_repeat_prior,
             "near_repeat_eligible": near_repeat_prior > 0,
             "window_days": _NEAR_REPEAT_DAYS,
             "note": ("Area/time near-repeat eligibility (same crime head, same "
-                     "district, recent window). Aggregate only — not a person score."),
-        },
-    }
+                     "district, recent eligible cases). Aggregate only — not a person score."),
+        }
     return district_id, projections
 
 
@@ -223,14 +240,22 @@ def project_committed_fir(*, district_id: int, crime_head_id: Optional[int] = No
     persisting anything. Never rescores a person or dispatches."""
     owns = conn is None
     c = conn or db._connect()
+    eligible = casedata.analytics_eligible_sql("cm")
     try:
         with c.cursor() as cur:
+            # Operational total remains inclusive; the analytics clock is based
+            # only on records currently allowed to feed derived outputs.
             cur.execute(
-                'SELECT count(*), max(cm."CrimeRegisteredDate") '
-                'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
+                'SELECT count(*) FROM "CaseMaster" cm '
+                'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
                 'WHERE u."DistrictID"=%s', (district_id,))
-            total, as_of = cur.fetchone()
-            total = int(total or 0)
+            total = int(cur.fetchone()[0] or 0)
+            cur.execute(
+                'SELECT max(cm."CrimeRegisteredDate") FROM "CaseMaster" cm '
+                'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
+                f'WHERE u."DistrictID"=%s AND {eligible}', (district_id,))
+            as_of = cur.fetchone()[0]
+
             open_list = ",".join(["%s"] * len(_OPEN_STATUSES))
             cur.execute(
                 'SELECT count(*) FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
@@ -244,7 +269,8 @@ def project_committed_fir(*, district_id: int, crime_head_id: Optional[int] = No
                 cur.execute(
                     'SELECT count(*) FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
                     'WHERE u."DistrictID"=%s AND cm."CrimeMajorHeadID"=%s '
-                    '  AND cm."CrimeRegisteredDate" BETWEEN %s AND %s',
+                    '  AND cm."CrimeRegisteredDate" BETWEEN %s AND %s '
+                    f'  AND {eligible}',
                     (district_id, crime_head_id, since, as_of))
                 near_repeat_prior = int(cur.fetchone()[0])
     finally:
@@ -254,13 +280,15 @@ def project_committed_fir(*, district_id: int, crime_head_id: Optional[int] = No
     return {
         "district_id": district_id, "station_id": station_id,
         "crime_head_id": crime_head_id, "as_of": _fmt(as_of),
+        "as_of_basis": "latest analytics-eligible registered case date",
         "district_statistic": {"before": total, "after": total + 1, "delta": 1},
         "supervisor_workload": {"before": active, "after": active + 1, "delta": 1,
                                 "note": "A newly committed FIR is an open case."},
         "hotspot_near_repeat": {
             "prior_similar_in_window": near_repeat_prior,
             "near_repeat_eligible_after": near_repeat_prior > 0,
-            "window_days": _NEAR_REPEAT_DAYS},
+            "window_days": _NEAR_REPEAT_DAYS,
+            "note": "Derived from analytics-eligible prior candidates only."},
         "guarantees": {"person_rescored": False, "auto_dispatch": False},
         "note": ("Deterministic projection of a committed FIR's effect on aggregates "
                  "(read-only, not persisted). No person is scored; no staff dispatched."),

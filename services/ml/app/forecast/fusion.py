@@ -20,7 +20,22 @@ DEFAULT_WEIGHTS = {"tabfm": 0.4, "timesfm": 0.3, "st_gnn": 0.3}
 
 
 def fuse(conn, head_id, tabfm_res, timesfm_res, stgnn_res, nearrepeat_res,
-         weights=None, horizon_days: int = 30) -> dict:
+         weights=None, horizon_days: int = 30, policy_attestation=None) -> dict:
+    from ..cases import analytics_policy
+
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
+    for layer_name, layer_result in (
+        ("tabfm", tabfm_res), ("timesfm", timesfm_res),
+        ("st_gnn", stgnn_res), ("near_repeat", nearrepeat_res),
+    ):
+        layer_attestation = analytics_policy.coerce_attestation(
+            layer_result.get("analytics_policy_attestation"))
+        if layer_attestation is None or not analytics_policy.same_attestation(
+                layer_attestation, attestation):
+            raise analytics_policy.ArtifactPolicyMismatch(
+                f"Cannot fuse {layer_name}: its in-memory output does not carry the current "
+                "analytics-policy attestation.")
+
     weights = weights or DEFAULT_WEIGHTS
     centroids = feat.district_centroids(conn)
     names = feat.district_names(conn)
@@ -36,9 +51,13 @@ def fuse(conn, head_id, tabfm_res, timesfm_res, stgnn_res, nearrepeat_res,
             nr_by_d[d] = c
 
     mv_id = models.get_or_create_model_version(
-        conn, "drishti-forecast-fusion", "forecasting", "1.0.0", framework="stacked-inspectable",
-        hyperparameters={"weights": weights, "anchor": "tabfm",
-                         "layers": ["tabfm", "timesfm", "st_gnn", "near_repeat"]})
+        conn, "drishti-forecast-fusion", "forecasting",
+        analytics_policy.policy_model_version("1.0.0", attestation),
+        framework="stacked-inspectable",
+        hyperparameters=analytics_policy.stamp(
+            {"weights": weights, "anchor": "tabfm",
+             "layers": ["tabfm", "timesfm", "st_gnn", "near_repeat"]},
+            attestation))
 
     start = end = None
     rows, out = [], []
@@ -63,11 +82,13 @@ def fuse(conn, head_id, tabfm_res, timesfm_res, stgnn_res, nearrepeat_res,
         fused_count = round(num / den, 2)
         fused_conf = round(conf_sum / len(contribs), 4)
         spike = nr_by_d.get(d)
-        fj = {"layer": "fused", "contributing_models": contribs, "weights": weights,
-              "tabfm_risk_class": t.get("risk_class"), "fused_count": fused_count,
-              "near_term_spike": bool(spike),
-              "near_repeat_top_cell": ({"lat": spike["lat"], "lon": spike["lon"],
-                                        "intensity": spike["intensity"]} if spike else None)}
+        fj = analytics_policy.stamp(
+            {"layer": "fused", "contributing_models": contribs, "weights": weights,
+             "tabfm_risk_class": t.get("risk_class"), "fused_count": fused_count,
+             "near_term_spike": bool(spike),
+             "near_repeat_top_cell": ({"lat": spike["lat"], "lon": spike["lon"],
+                                         "intensity": spike["intensity"]} if spike else None)},
+            attestation)
         lon, lat = centroids.get(d, (None, None))
         # fused window follows TabFM's
         start = tabfm_res.get("prediction_start"); end = tabfm_res.get("prediction_end")
@@ -79,6 +100,7 @@ def fuse(conn, head_id, tabfm_res, timesfm_res, stgnn_res, nearrepeat_res,
                     "contributing_models": [c["layer"] for c in contribs],
                     "near_term_spike": bool(spike)})
 
+    analytics_policy.require_supplied_current(conn, attestation, "forecast fusion run")
     with conn.cursor() as cur:
         cur.execute('DELETE FROM "CrimePrediction" WHERE "Features"->>\'layer\'=\'fused\' '
                     'AND "CrimeHeadID" IS NOT DISTINCT FROM %s', (head_id,))
@@ -92,8 +114,11 @@ def fuse(conn, head_id, tabfm_res, timesfm_res, stgnn_res, nearrepeat_res,
                 template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
                          "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
                 page_size=200)
-        models.log_inference(conn, mv_id, ref_table="CrimePrediction",
-                             inputs={"head_id": head_id, "weights": weights},
-                             outputs={"districts": len(rows)})
+        models.log_inference(
+            conn, mv_id, ref_table="CrimePrediction",
+            inputs=analytics_policy.stamp(
+                {"head_id": head_id, "weights": weights}, attestation),
+            outputs={"districts": len(rows), "complete_generation": True})
     return {"written": len(rows), "model": "stacked-inspectable", "model_version_id": mv_id,
-            "districts": out, "prediction_start": start, "prediction_end": end}
+            "districts": out, "prediction_start": start, "prediction_end": end,
+            "analytics_policy_attestation": attestation.as_dict()}

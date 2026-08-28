@@ -27,9 +27,11 @@ GRID_DEG = 0.0025             # ~275 m grid cell
 
 
 def _recent_points(conn, district_id, head_id, ref: dt.datetime, lookback_days: int):
+    from ..cases import casedata
     from ..geo import geoscope
     where = ['cm."geom" IS NOT NULL', 'cm."IncidentFromDate" IS NOT NULL',
-             'cm."IncidentFromDate" <= %s', 'cm."IncidentFromDate" >= %s']
+             'cm."IncidentFromDate" <= %s', 'cm."IncidentFromDate" >= %s',
+             casedata.analytics_eligible_sql("cm")]
     params = [ref, ref - dt.timedelta(days=lookback_days)]
     joins = ' JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID"'
     if district_id is not None:
@@ -80,7 +82,10 @@ def _intensity_surface(lat, lon, age, sigma_m, tau_days, theta, cells=None):
 
 
 def _ref_date(conn, district_id, head_id):
-    where = ['cm."IncidentFromDate" IS NOT NULL']
+    from ..cases import casedata
+
+    where = ['cm."IncidentFromDate" IS NOT NULL',
+             casedata.analytics_eligible_sql("cm")]
     params = []
     joins = ' JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID"'
     if district_id is not None:
@@ -96,16 +101,22 @@ def _ref_date(conn, district_id, head_id):
 
 def run_near_repeat(conn, head_id: Optional[int] = None, top_cells_per_district: int = 5,
                     sigma_m: float = 500.0, tau_days: float = 7.0, theta: float = 1.0,
-                    lookback_days: int = 30, horizon_days: int = 7) -> dict:
+                    lookback_days: int = 30, horizon_days: int = 7,
+                    policy_attestation=None) -> dict:
+    from ..cases import analytics_policy
+
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
     names = feat.district_names(conn)
     with conn.cursor() as cur:
         cur.execute('SELECT DISTINCT u."DistrictID" FROM "Unit" u WHERE u."DistrictID" IS NOT NULL')
         district_ids = sorted(int(r[0]) for r in cur.fetchall())
 
     mv_id = models.get_or_create_model_version(
-        conn, "drishti-forecast-nearrepeat", "forecasting", "1.0.0", framework="hawkes-etas",
-        hyperparameters={"sigma_m": sigma_m, "tau_days": tau_days, "theta": theta,
-                         "lookback_days": lookback_days, "grid_deg": GRID_DEG})
+        conn, "drishti-forecast-nearrepeat", "forecasting",
+        analytics_policy.policy_model_version("1.0.0", attestation), framework="hawkes-etas",
+        hyperparameters=analytics_policy.stamp(
+            {"sigma_m": sigma_m, "tau_days": tau_days, "theta": theta,
+             "lookback_days": lookback_days, "grid_deg": GRID_DEG}, attestation))
 
     rows, cells_out = [], []
     for d in district_ids:
@@ -124,14 +135,17 @@ def run_near_repeat(conn, head_id: Optional[int] = None, top_cells_per_district:
         for rank, c in enumerate(surface, start=1):
             conf = round(min(1.0, c["intensity"] / imax), 4)
             predicted = round(c["intensity"], 3)
-            fj = {"layer": "near_repeat", "grid_cell": [c["lat"], c["lon"]], "rank": rank,
-                  "intensity": c["intensity"], "contributing_events": c["contributing_events"],
-                  "sigma_m": sigma_m, "tau_days": tau_days, "ref_date": str(ref)[:10]}
+            fj = analytics_policy.stamp(
+                {"layer": "near_repeat", "grid_cell": [c["lat"], c["lon"]], "rank": rank,
+                 "intensity": c["intensity"], "contributing_events": c["contributing_events"],
+                 "sigma_m": sigma_m, "tau_days": tau_days, "ref_date": str(ref)[:10]},
+                attestation)
             rows.append((mv_id, d, head_id, start, end, predicted,
                          round(min(1.0, c["intensity"] / (imax * 1.5)), 5), conf,
                          Json(fj), c["lon"], c["lon"], c["lat"]))
             cells_out.append({"district_id": d, "district": names.get(d), **c, "confidence": conf})
 
+    analytics_policy.require_supplied_current(conn, attestation, "near-repeat forecast run")
     with conn.cursor() as cur:
         cur.execute('DELETE FROM "CrimePrediction" WHERE "Features"->>\'layer\'=\'near_repeat\' '
                     'AND "CrimeHeadID" IS NOT DISTINCT FROM %s', (head_id,))
@@ -145,11 +159,15 @@ def run_near_repeat(conn, head_id: Optional[int] = None, top_cells_per_district:
                 template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
                          "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
                 page_size=300)
-        models.log_inference(conn, mv_id, ref_table="CrimePrediction",
-                             inputs={"head_id": head_id, "sigma_m": sigma_m, "tau_days": tau_days},
-                             outputs={"cells": len(rows)})
+        models.log_inference(
+            conn, mv_id, ref_table="CrimePrediction",
+            inputs=analytics_policy.stamp(
+                {"head_id": head_id, "sigma_m": sigma_m, "tau_days": tau_days},
+                attestation),
+            outputs={"cells": len(rows), "complete_generation": True})
     return {"written": len(rows), "model": "hawkes-etas", "model_version_id": mv_id,
-            "cells": cells_out, "horizon_days": horizon_days}
+            "cells": cells_out, "horizon_days": horizon_days,
+            "analytics_policy_attestation": attestation.as_dict()}
 
 
 def trigger(conn, lat: float, lon: float, when: Optional[dt.datetime] = None,

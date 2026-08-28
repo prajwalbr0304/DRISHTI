@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/* ============================================================================
-   Thin wrapper over the Web Speech API (doc 01 §4.7 voice; §9 graceful
-   degradation). Feature-detected — when the browser lacks SpeechRecognition the
-   composer simply falls back to text. Emits the cumulative transcript for the
-   current utterance so the composer can append it to whatever was typed.
-   ========================================================================== */
-
 interface RecognitionLike {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
   onresult: ((e: SpeechResultEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((e: SpeechErrorEventLike) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -30,6 +23,15 @@ interface SpeechResultItemLike {
 interface SpeechResultEventLike {
   results: ArrayLike<SpeechResultItemLike>;
 }
+interface SpeechErrorEventLike {
+  error?: string;
+}
+
+export interface SpeechFinalResult {
+  text: string;
+  /** Null means the browser did not provide a trustworthy final confidence. */
+  confidence: number | null;
+}
 
 function recognitionCtor(): (new () => RecognitionLike) | null {
   if (typeof window === "undefined") return null;
@@ -40,7 +42,7 @@ function recognitionCtor(): (new () => RecognitionLike) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-/** Map the app language toggle to a BCP-47 locale for the recogniser. */
+/** Map the app language toggle to a BCP-47 locale for the recognizer. */
 export function speechLocale(lang: string): string {
   return lang === "kn" ? "kn-IN" : "en-IN";
 }
@@ -48,82 +50,125 @@ export function speechLocale(lang: string): string {
 export function useSpeech({
   lang,
   onTranscript,
+  onFinal,
+  onError,
+  onEnd,
 }: {
   lang: string;
   onTranscript: (cumulativeText: string) => void;
+  onFinal?: (result: SpeechFinalResult) => void;
+  onError?: (code: string) => void;
+  onEnd?: () => void;
 }) {
   const [supported] = useState(() => recognitionCtor() != null);
   const [listening, setListening] = useState(false);
-  /** confidence of the last FINAL recognition result (null until one arrives). */
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const recRef = useRef<RecognitionLike | null>(null);
-  const cbRef = useRef(onTranscript);
+  const callbacksRef = useRef({ onTranscript, onFinal, onError, onEnd });
+
   useEffect(() => {
-    cbRef.current = onTranscript;
-  }, [onTranscript]);
+    callbacksRef.current = { onTranscript, onFinal, onError, onEnd };
+  }, [onEnd, onError, onFinal, onTranscript]);
+
+  const abort = useCallback(() => {
+    const rec = recRef.current;
+    recRef.current = null;
+    try {
+      rec?.abort();
+    } catch {
+      // Recognition may already have ended.
+    }
+    setListening(false);
+  }, []);
 
   const stop = useCallback(() => {
     try {
       recRef.current?.stop();
     } catch {
-      /* no-op */
+      // Recognition may already have ended.
     }
     setListening(false);
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback((): boolean => {
     const Ctor = recognitionCtor();
-    if (!Ctor) return;
+    if (!Ctor) return false;
+
     try {
       recRef.current?.abort();
     } catch {
-      /* no-op */
+      // Ignore an already-closed previous recognizer.
     }
+
     const rec = new Ctor();
+    let finalDelivered = false;
     rec.lang = speechLocale(lang);
     rec.continuous = false;
     rec.interimResults = true;
     setConfidence(null);
-    rec.onresult = (e) => {
+    setError(null);
+
+    rec.onresult = (event) => {
       let full = "";
-      let finalConf: number | null = null;
-      for (let i = 0; i < e.results.length; i++) {
-        const res = e.results[i];
-        full += res[0]?.transcript ?? "";
-        if (res.isFinal && typeof res[0]?.confidence === "number") finalConf = res[0].confidence;
+      let finalConfidence: number | null = null;
+      let lastResultFinal = false;
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        full += result[0]?.transcript ?? "";
+        lastResultFinal = result.isFinal;
+        const reported = result[0]?.confidence;
+        if (result.isFinal && typeof reported === "number" && reported > 0) {
+          finalConfidence = reported;
+        }
       }
-      cbRef.current(full);
-      // Some engines report confidence 0 for interim; only trust final results.
-      if (finalConf != null && finalConf > 0) setConfidence(finalConf);
+
+      const text = full.trim();
+      callbacksRef.current.onTranscript(text);
+      if (finalConfidence != null) setConfidence(finalConfidence);
+      if (lastResultFinal && text && !finalDelivered) {
+        finalDelivered = true;
+        callbacksRef.current.onFinal?.({ text, confidence: finalConfidence });
+      }
     };
-    rec.onerror = () => setListening(false);
-    rec.onend = () => setListening(false);
+
+    rec.onerror = (event) => {
+      const code = event.error || "speech-recognition-error";
+      setError(code);
+      setListening(false);
+      callbacksRef.current.onError?.(code);
+    };
+    rec.onend = () => {
+      if (recRef.current === rec) recRef.current = null;
+      setListening(false);
+      callbacksRef.current.onEnd?.();
+    };
     recRef.current = rec;
+
     try {
       rec.start();
       setListening(true);
+      return true;
     } catch {
+      recRef.current = null;
+      setError("speech-recognition-start-failed");
       setListening(false);
+      callbacksRef.current.onError?.("speech-recognition-start-failed");
+      return false;
     }
   }, [lang]);
 
-  useEffect(
-    () => () => {
-      try {
-        recRef.current?.abort();
-      } catch {
-        /* no-op */
-      }
-    },
-    [],
-  );
+  useEffect(() => abort, [abort]);
 
   return {
     supported,
     listening,
     confidence,
+    error,
     start,
     stop,
+    abort,
     toggle: () => (listening ? stop() : start()),
   };
 }

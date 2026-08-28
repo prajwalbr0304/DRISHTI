@@ -20,6 +20,7 @@ from typing import Any, Optional
 from psycopg2.extras import Json
 
 from .. import audit, db
+from ..cases import casedata
 from ..roles import ALL_ROLES
 from ..signals import EVENT_REPORT_READY, get_signals
 from ..smartbrowz import get_smartbrowz
@@ -104,33 +105,71 @@ def _snapshot_case_summary(conn, case_id_text: str) -> tuple[dict, list[dict]]:
     except (TypeError, ValueError):
         raise ScopeError("case scope_ref_id must be a CaseMasterID integer.")
     with conn.cursor() as cur:
-        cur.execute(
-            'SELECT c."CaseMasterID", c."CrimeNo", c."CaseNo", c."CrimeRegisteredDate", '
-            'cc."LookupValue", cs."CaseStatusName", u."UnitName", d."DistrictName" '
-            'FROM "CaseMaster" c '
-            'LEFT JOIN "CaseCategory" cc ON cc."CaseCategoryID" = c."CaseCategoryID" '
-            'LEFT JOIN "CaseStatusMaster" cs ON cs."CaseStatusID" = c."CaseStatusID" '
-            'LEFT JOIN "Unit" u ON u."UnitID" = c."PoliceStationID" '
-            'LEFT JOIN "District" d ON d."DistrictID" = u."DistrictID" '
-            'WHERE c."CaseMasterID" = %s', (case_id,))
-        r = cur.fetchone()
-        if not r:
+        core = casedata.fetch_case_core(cur, case_id)
+        if core is None:
             raise SubjectNotFound(f"Case {case_id} not found.")
+        provenance = casedata.fetch_case_provenance(cur, case_id)
+        cur.execute(
+            'SELECT cc."LookupValue", cv."CaseVersionID", cv."VersionNo", '
+            'NULLIF(cv.attrs #>> \'{official_references,committal_case_no}\', \'\'), '
+            'NULLIF(cv.attrs #>> \'{official_references,sessions_case_no}\', \'\') '
+            'FROM "CaseMaster" c '
+            'LEFT JOIN "CaseCategory" cc ON cc."CaseCategoryID"=c."CaseCategoryID" '
+            'LEFT JOIN LATERAL ('
+            'SELECT cv0."CaseVersionID", cv0."VersionNo", '
+            'cv0."SnapshotAttributes" AS attrs FROM "CaseVersion" cv0 '
+            'WHERE cv0."CaseMasterID"=c."CaseMasterID" AND cv0."IsCurrent"=TRUE '
+            'ORDER BY cv0."VersionNo" DESC LIMIT 1) cv ON TRUE '
+            'WHERE c."CaseMasterID"=%s',
+            (case_id,),
+        )
+        version_row = cur.fetchone()
         cur.execute('SELECT (SELECT count(*) FROM "Victim" WHERE "CaseMasterID"=%s), '
                     '(SELECT count(*) FROM "Accused" WHERE "CaseMasterID"=%s), '
                     '(SELECT count(*) FROM "EvidenceItem" WHERE "CaseMasterID"=%s)',
                     (case_id, case_id, case_id))
         vc, ac, ec = cur.fetchone()
+
+    category = version_row[0] if version_row else None
+    version_id = version_row[1] if version_row else None
+    version_no = version_row[2] if version_row else None
+    committal_case_no = version_row[3] if version_row else None
+    sessions_case_no = version_row[4] if version_row else None
+    legal_safeguards = [
+        {
+            "code": notice.get("code"),
+            "title": notice.get("title"),
+            "message": notice.get("message"),
+        }
+        for notice in (provenance.get("notices") or [])
+        if isinstance(notice, dict)
+    ]
     snapshot = {
         "report_kind": "case_summary", "data_as_of": _now_iso(),
-        # Structured fields only — the free-text narrative (BriefFacts) is intentionally omitted.
-        "case": {"case_master_id": int(r[0]), "crime_no": r[1], "case_no": r[2],
-                 "registered_date": _s(r[3]), "category": r[4], "status": r[5],
-                 "unit": r[6], "district": r[7]},
-        "counts": {"victims": int(vc or 0), "accused": int(ac or 0), "evidence_items": int(ec or 0)},
+        # Explicit safe-field allow-list; free text and internal identifiers are omitted.
+        "case": {
+            "crime_no": core["crime_no"],
+            "committal_case_no": committal_case_no,
+            "sessions_case_no": sessions_case_no,
+            "registered_date": core["registered_date"],
+            "category": category,
+            "status": core["status"],
+            "station": core["station"],
+            "district": core["district"],
+            "record_origin": core["record_origin"],
+            "is_synthetic": core["is_synthetic"],
+            "reference_mapping_kind": core["reference_mapping_kind"],
+            "location_label": core["location_label"],
+        },
+        "legal_safeguards": legal_safeguards,
+        "counts": {"victims": int(vc or 0), "accused": int(ac or 0),
+                   "evidence_items": int(ec or 0)},
         "narrative_included": False,
     }
     citations = [{"source": "CaseMaster", "record_id": str(case_id), "version": "current"}]
+    if version_id is not None and version_no is not None:
+        citations.append({"source": "CaseVersion", "record_id": str(version_id),
+                          "version": int(version_no)})
     return snapshot, citations
 
 
@@ -139,10 +178,12 @@ def _snapshot_unit_activity(conn, unit_id_text: str) -> tuple[dict, list[dict]]:
         unit_id = int(unit_id_text)
     except (TypeError, ValueError):
         raise ScopeError("unit scope_ref_id must be a UnitID integer.")
+    eligible = casedata.analytics_eligible_sql("c")
     with conn.cursor() as cur:
         cur.execute('SELECT u."UnitID", u."UnitName", d."DistrictName", count(c."CaseMasterID") '
                     'FROM "Unit" u LEFT JOIN "District" d ON d."DistrictID"=u."DistrictID" '
                     'LEFT JOIN "CaseMaster" c ON c."PoliceStationID"=u."UnitID" '
+                    f'AND {eligible} '
                     'WHERE u."UnitID"=%s GROUP BY u."UnitID", u."UnitName", d."DistrictName"',
                     (unit_id,))
         r = cur.fetchone()
@@ -150,7 +191,8 @@ def _snapshot_unit_activity(conn, unit_id_text: str) -> tuple[dict, list[dict]]:
             raise SubjectNotFound(f"Unit {unit_id} not found.")
         cur.execute('SELECT cs."CaseStatusName", count(*) FROM "CaseMaster" c '
                     'LEFT JOIN "CaseStatusMaster" cs ON cs."CaseStatusID"=c."CaseStatusID" '
-                    'WHERE c."PoliceStationID"=%s GROUP BY cs."CaseStatusName" ORDER BY 2 DESC',
+                    f'WHERE c."PoliceStationID"=%s AND {eligible} '
+                    'GROUP BY cs."CaseStatusName" ORDER BY 2 DESC',
                     (unit_id,))
         breakdown = {(row[0] or "Unspecified"): int(row[1]) for row in cur.fetchall()}
     snapshot = {"report_kind": "unit_activity", "data_as_of": _now_iso(),
@@ -167,6 +209,7 @@ def _snapshot_district_dashboard(conn, district_id_text: str) -> tuple[dict, lis
         district_id = int(district_id_text)
     except (TypeError, ValueError):
         raise ScopeError("district scope_ref_id must be a DistrictID integer.")
+    eligible = casedata.analytics_eligible_sql("c")
     with conn.cursor() as cur:
         cur.execute('SELECT "DistrictName" FROM "District" WHERE "DistrictID"=%s', (district_id,))
         d = cur.fetchone()
@@ -175,12 +218,14 @@ def _snapshot_district_dashboard(conn, district_id_text: str) -> tuple[dict, lis
         cur.execute('SELECT cc."LookupValue", count(*) FROM "CaseMaster" c '
                     'JOIN "Unit" u ON u."UnitID"=c."PoliceStationID" '
                     'LEFT JOIN "CaseCategory" cc ON cc."CaseCategoryID"=c."CaseCategoryID" '
-                    'WHERE u."DistrictID"=%s GROUP BY cc."LookupValue" ORDER BY 2 DESC', (district_id,))
+                    f'WHERE u."DistrictID"=%s AND {eligible} '
+                    'GROUP BY cc."LookupValue" ORDER BY 2 DESC', (district_id,))
         by_category = {(row[0] or "Unspecified"): int(row[1]) for row in cur.fetchall()}
         cur.execute('SELECT cs."CaseStatusName", count(*) FROM "CaseMaster" c '
                     'JOIN "Unit" u ON u."UnitID"=c."PoliceStationID" '
                     'LEFT JOIN "CaseStatusMaster" cs ON cs."CaseStatusID"=c."CaseStatusID" '
-                    'WHERE u."DistrictID"=%s GROUP BY cs."CaseStatusName" ORDER BY 2 DESC', (district_id,))
+                    f'WHERE u."DistrictID"=%s AND {eligible} '
+                    'GROUP BY cs."CaseStatusName" ORDER BY 2 DESC', (district_id,))
         by_status = {(row[0] or "Unspecified"): int(row[1]) for row in cur.fetchall()}
     snapshot = {"report_kind": "district_dashboard", "data_as_of": _now_iso(),
                 "district": {"district_id": district_id, "district_name": d[0]},
@@ -249,6 +294,16 @@ def _render_html(title: str, snapshot: dict, citations: list[dict]) -> str:
     body = json.dumps(snapshot, indent=2, sort_keys=True, default=str)
     cites = "".join(f"<li>{esc(c.get('source'))} · {esc(c.get('record_id'))} "
                     f"(v {esc(c.get('version'))})</li>" for c in citations)
+    safeguards = snapshot.get("legal_safeguards") or []
+    safeguard_items = "".join(
+        f"<li><strong>{esc(item.get('title') or item.get('code') or 'Safeguard')}</strong>: "
+        f"{esc(item.get('message') or '')}</li>"
+        for item in safeguards if isinstance(item, dict)
+    )
+    safeguard_block = (
+        f'<section class="legal"><h2>Legal safeguards</h2><ul>{safeguard_items}</ul></section>'
+        if safeguard_items else ""
+    )
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
       body {{ font-family: system-ui, sans-serif; color: #1a1a1a; }}
       .watermark {{ position: fixed; top: 40%; left: 10%; font-size: 48px;
@@ -256,12 +311,17 @@ def _render_html(title: str, snapshot: dict, citations: list[dict]) -> str:
                     pointer-events: none; }}
       .badge {{ background:#fde; color:#900; padding:4px 8px; border-radius:6px;
                 font-weight:600; display:inline-block; }}
+      .legal {{ background:#fff4e5; border:1px solid #c65d00; border-radius:8px;
+                margin:16px 0; padding:4px 16px; }}
+      .legal h2 {{ color:#7a3600; }}
+      .legal li {{ margin:8px 0; }}
       pre {{ background:#f5f5f5; padding:12px; border-radius:8px; font-size:12px; }}
     </style></head><body>
       <div class="watermark">{esc(WATERMARK)}</div>
       <p class="badge">{esc(WATERMARK)} — Not for operational use</p>
       <h1>{esc(title)}</h1>
       <p>Generated {esc(snapshot.get('data_as_of'))}</p>
+      {safeguard_block}
       <h2>Structured source data</h2>
       <pre>{esc(body)}</pre>
       <h2>Source / version citations</h2>

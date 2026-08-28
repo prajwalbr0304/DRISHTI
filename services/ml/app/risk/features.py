@@ -60,6 +60,8 @@ _LABEL_PERCENTILES = [25, 52, 77, 92]
 
 
 def _district_crime_rate(conn) -> dict[str, float]:
+    from ..cases import casedata
+
     with conn.cursor() as cur:
         cur.execute(
             'SELECT d."DistrictName", COUNT(*)::float / NULLIF(MAX(s."Population"),0) * 100000 '
@@ -67,6 +69,7 @@ def _district_crime_rate(conn) -> dict[str, float]:
             'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
             'LEFT JOIN "SocialIndicator" s ON s."DistrictID"=d."DistrictID" '
+            f'WHERE {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY d."DistrictName"')
         return {r[0]: float(r[1]) if r[1] is not None else 0.0 for r in cur.fetchall()}
 

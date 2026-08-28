@@ -11,6 +11,7 @@ import numpy as np
 from psycopg2.extras import Json, execute_values
 
 from .. import models
+from ..cases import casedata
 from . import trends
 
 
@@ -19,7 +20,9 @@ def _district_centroids(conn) -> dict[int, tuple[float, float]]:
         cur.execute(
             'SELECT u."DistrictID", AVG(cm."longitude"), AVG(cm."latitude") '
             'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID" = cm."PoliceStationID" '
-            'WHERE cm."geom" IS NOT NULL GROUP BY u."DistrictID"'
+            'WHERE cm."geom" IS NOT NULL '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
+            'GROUP BY u."DistrictID"'
         )
         return {int(r[0]): (float(r[1]), float(r[2])) for r in cur.fetchall()}
 
@@ -32,6 +35,7 @@ def _cells(conn):
             'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
             'JOIN "CrimeHead" ch ON ch."CrimeHeadID"=cm."CrimeMajorHeadID" '
+            f'WHERE {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY 1,2,3,4 HAVING COUNT(*) >= 60'
         )
         return cur.fetchall()
@@ -49,12 +53,15 @@ def _severity(z: float) -> str:
 
 def detect_and_write(conn, window: int = 6, threshold_sigma: float = 2.0,
                      recent_months: int = 12, max_alerts: int = 250) -> dict:
-    """Scan every sizable (district, head) cell; write AlertHistory rows for
-    months in the trailing `recent_months` whose count exceeds the trailing
-    `window`-month mean by >= threshold_sigma standard deviations."""
+    """Scan sizable case cells and replace the attested anomaly-alert generation."""
+    from ..cases import analytics_policy
+
+    attestation = analytics_policy.current_attestation(conn)
     mv_id = models.get_or_create_model_version(
-        conn, "drishti-emerging-trend", "anomaly_detection", "1.0.0", framework="numpy",
-        hyperparameters={"window": window, "threshold_sigma": threshold_sigma})
+        conn, "drishti-emerging-trend", "anomaly_detection",
+        analytics_policy.policy_model_version("1.0.0", attestation), framework="numpy",
+        hyperparameters=analytics_policy.stamp(
+            {"window": window, "threshold_sigma": threshold_sigma}, attestation))
     centroids = _district_centroids(conn)
 
     candidates = []
@@ -90,16 +97,27 @@ def detect_and_write(conn, window: int = 6, threshold_sigma: float = 2.0,
         title = f"Emerging {c['gname']} spike — {c['dname']} ({c['period']})"
         msg = (f"{c['count']} cases vs trailing {window}-mo baseline {c['mean']:.0f} "
                f"(+{c['pct']}%), {c['z']:.1f}σ above average.")
-        payload = {"district_id": c["district_id"], "crime_head_id": c["head_id"],
-                   "period": c["period"], "count": c["count"], "baseline_mean": c["mean"],
-                   "baseline_std": c["std"], "z_score": c["z"], "pct_over_baseline": c["pct"],
-                   "window": window, "threshold_sigma": threshold_sigma}
+        payload = analytics_policy.stamp(
+            {"artifact_domain": "case_analytics", "district_id": c["district_id"],
+             "crime_head_id": c["head_id"], "period": c["period"], "count": c["count"],
+             "baseline_mean": c["mean"], "baseline_std": c["std"], "z_score": c["z"],
+             "pct_over_baseline": c["pct"], "window": window,
+             "threshold_sigma": threshold_sigma},
+            attestation)
         # AlertHistory has no CrimeHeadID column; the head lives in Payload.
         rows.append(("anomaly", c["severity"], title, msg, c["district_id"],
                      mv_id, Json(payload), "open", c["lon"], c["lon"], c["lat"]))
 
+    analytics_policy.require_supplied_current(conn, attestation, "anomaly-alert run")
     with conn.cursor() as cur:
-        cur.execute('DELETE FROM "AlertHistory" WHERE "ModelVersionID"=%s AND "AlertType"=\'anomaly\'', (mv_id,))
+        # Replace every generation of this case-derived domain. A new digest uses
+        # a new model row, so deleting only the current ModelVersion would leave
+        # legacy alerts operationally open.
+        cur.execute(
+            'DELETE FROM "AlertHistory" a USING "ModelVersion" mv '
+            'WHERE a."ModelVersionID"=mv."ModelVersionID" '
+            'AND mv."ModelName"=\'drishti-emerging-trend\' '
+            'AND a."AlertType"=\'anomaly\'')
         if rows:
             execute_values(
                 cur,
@@ -113,8 +131,11 @@ def detect_and_write(conn, window: int = 6, threshold_sigma: float = 2.0,
             )
         models.log_inference(
             conn, mv_id,
-            inputs={"window": window, "threshold_sigma": threshold_sigma, "recent_months": recent_months},
-            outputs={"alerts_written": len(rows)}, ref_table="AlertHistory")
+            inputs=analytics_policy.stamp(
+                {"window": window, "threshold_sigma": threshold_sigma,
+                 "recent_months": recent_months}, attestation),
+            outputs={"alerts_written": len(rows), "complete_generation": True},
+            ref_table="AlertHistory")
     by_sev: dict[str, int] = {}
     for c in candidates:
         by_sev[c["severity"]] = by_sev.get(c["severity"], 0) + 1

@@ -50,8 +50,10 @@ DEFAULT_MIN_MONTHLY_AVG = 1.0
 def _load_matrix(conn, head_id: Optional[int], valid_geo_only: bool):
     """Return (periods, {district_id: counts}) monthly, zero-filled on a shared
     axis, excluding out-of-state incidents. One grouped query for all districts."""
+    from ..cases import casedata
     from ..geo import geoscope
-    where = ['cm."CrimeRegisteredDate" IS NOT NULL']
+    where = ['cm."CrimeRegisteredDate" IS NOT NULL',
+             casedata.analytics_eligible_sql("cm")]
     params: list = []
     if head_id is not None:
         where.append('cm."CrimeMajorHeadID" = %s')
@@ -298,11 +300,15 @@ def rolling_origin_backtest(conn, head_id: Optional[int] = None, horizon: int = 
 # Full report: all-head scope + per-head breakdown
 # ---------------------------------------------------------------------------
 def _top_heads(conn, limit: int) -> list[tuple[int, str]]:
+    from ..cases import casedata
+
     with conn.cursor() as cur:
         cur.execute(
             'SELECT cm."CrimeMajorHeadID", ch."CrimeGroupName", COUNT(*) c '
             'FROM "CaseMaster" cm JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
-            'WHERE cm."CrimeMajorHeadID" IS NOT NULL GROUP BY 1,2 ORDER BY c DESC LIMIT %s',
+            'WHERE cm."CrimeMajorHeadID" IS NOT NULL '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
+            'GROUP BY 1,2 ORDER BY c DESC LIMIT %s',
             (limit,))
         return [(int(r[0]), r[1]) for r in cur.fetchall()]
 

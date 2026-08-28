@@ -17,7 +17,9 @@ from typing import Optional
 from psycopg2.extras import Json
 
 from .. import audit, db
+from ..cases import analytics_policy
 from ..contracts import AiResult
+from ..workload import governance_bridge as workload_gb
 from . import builder
 
 # Re-export builder guards so the router can map them uniformly.
@@ -55,6 +57,25 @@ class StaleSnapshot(GovernanceError):
 
 class InvalidState(GovernanceError):
     pass
+
+
+def _require_snapshot_for_execution(conn, snapshot: dict):
+    """Map policy-invalid inputs to the existing 409 execution contract."""
+    try:
+        return analytics_policy.require_current(
+            conn, snapshot.get("source_versions"),
+            f"FeatureSnapshot {snapshot.get('feature_snapshot_id')}")
+    except analytics_policy.DerivedArtifactUnavailable as exc:
+        raise StaleSnapshot(
+            f"FeatureSnapshot {snapshot.get('feature_snapshot_id')} is not attested to the "
+            "current analytics policy; rebuild it before creating or running a prediction."
+        ) from exc
+
+
+def _require_snapshot_for_read(conn, snapshot: dict, current=None):
+    return analytics_policy.require_current(
+        conn, snapshot.get("source_versions"),
+        f"FeatureSnapshot {snapshot.get('feature_snapshot_id')}", current=current)
 
 
 def _s(v) -> Optional[str]:
@@ -170,6 +191,7 @@ def list_snapshots(subject_kind: Optional[str] = None, subject_ref_id: Optional[
     clause = ('WHERE ' + ' AND '.join(where)) if where else ''
     offset = (max(1, page) - 1) * page_size
     with db.ro_conn() as conn:
+        current = analytics_policy.current_attestation(conn)
         with conn.cursor() as cur:
             cur.execute(f'SELECT count(*) FROM "FeatureSnapshot" {clause}', params)
             total = int(cur.fetchone()[0])
@@ -177,6 +199,8 @@ def list_snapshots(subject_kind: Optional[str] = None, subject_ref_id: Optional[
                         'ORDER BY "FeatureSnapshotID" DESC LIMIT %s OFFSET %s',
                         params + [page_size, offset])
             items = [_fs_row(r) for r in cur.fetchall()]
+        for item in items:
+            _require_snapshot_for_read(conn, item, current=current)
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 
@@ -237,13 +261,24 @@ def _model_label(conn, mv_id: Optional[int]) -> Optional[str]:
 def _create_request(conn, model_version_id: int, feature_snapshot_id: int,
                     request_kind: str = "batch", idempotency_key: Optional[str] = None,
                     actor: Optional[str] = None) -> dict:
-    key = idempotency_key or f"auto:{model_version_id}:{feature_snapshot_id}:{request_kind}"
-    # idempotency: an existing request with this key is returned unchanged.
+    snapshot = get_snapshot(conn, feature_snapshot_id)
+    if snapshot is None:
+        raise NotFound(f"FeatureSnapshot {feature_snapshot_id} not found.")
+    attestation = _require_snapshot_for_execution(conn, snapshot)
+    key = idempotency_key or (
+        f"auto:{model_version_id}:{feature_snapshot_id}:{request_kind}:{attestation.sha256}")
+
+    # Validate the requested resources before idempotent reuse. A caller-supplied
+    # key can never resurrect a request bound to an old snapshot or another model.
     with conn.cursor() as cur:
-        cur.execute('SELECT "PredictionRequestID" FROM "PredictionRequest" WHERE "IdempotencyKey"=%s',
-                    (key,))
+        cur.execute(
+            'SELECT "PredictionRequestID","ModelVersionID","FeatureSnapshotID" '
+            'FROM "PredictionRequest" WHERE "IdempotencyKey"=%s', (key,))
         existing = cur.fetchone()
     if existing:
+        if int(existing[1]) != model_version_id or int(existing[2]) != feature_snapshot_id:
+            raise InvalidState(
+                f"Idempotency key {key!r} is already bound to another model or snapshot.")
         req = _load_request(conn, int(existing[0]))
         req["reused"] = True
         return req
@@ -252,16 +287,11 @@ def _create_request(conn, model_version_id: int, feature_snapshot_id: int,
     with conn.cursor() as cur:
         cur.execute('SELECT "ApprovalStatus","FeatureSchemaVersionID" FROM "ModelVersion" '
                     'WHERE "ModelVersionID"=%s', (model_version_id,))
-        m = cur.fetchone()
-        if not m:
-            raise NotFound(f"ModelVersion {model_version_id} not found.")
-        cur.execute('SELECT "FeatureSchemaVersionID" FROM "FeatureSnapshot" '
-                    'WHERE "FeatureSnapshotID"=%s', (feature_snapshot_id,))
-        s = cur.fetchone()
-        if not s:
-            raise NotFound(f"FeatureSnapshot {feature_snapshot_id} not found.")
-    model_approval, model_fsv = m[0], m[1]
-    snapshot_fsv = s[0]
+        model = cur.fetchone()
+    if not model:
+        raise NotFound(f"ModelVersion {model_version_id} not found.")
+    model_approval, model_fsv = model[0], model[1]
+    snapshot_fsv = snapshot["feature_schema_version_id"]
     if model_approval != "approved":
         raise ModelNotApproved(
             f"ModelVersion {model_version_id} is '{model_approval or 'ungoverned'}' — only an "
@@ -277,8 +307,8 @@ def _create_request(conn, model_version_id: int, feature_snapshot_id: int,
                     (model_version_id, feature_snapshot_id, request_kind, key, actor))
         req_id = int(cur.fetchone()[0])
     audit.record(audit.Action.MODEL_RUN, "prediction_request", req_id, actor=actor, conn=conn,
-                 detail={"model_version_id": model_version_id, "feature_snapshot_id": feature_snapshot_id,
-                         "kind": request_kind})
+                 detail={"model_version_id": model_version_id,
+                         "feature_snapshot_id": feature_snapshot_id, "kind": request_kind})
     req = _load_request(conn, req_id)
     req["reused"] = False
     return req
@@ -305,16 +335,17 @@ def _run_request(conn, request_id: int, actor: Optional[str] = None) -> dict:
     req = _load_request(conn, request_id)
     if not req:
         raise NotFound(f"PredictionRequest {request_id} not found.")
+    snap = get_snapshot(conn, int(req["feature_snapshot_id"]))
+    if snap is None:
+        raise NotFound(f"FeatureSnapshot {req['feature_snapshot_id']} not found.")
+    attestation = _require_snapshot_for_execution(conn, snap)
     if req["status"] in ("completed", "reviewed"):
-        # idempotent replay: return the current result, don't recompute.
+        # Idempotent replay is allowed only after revalidating the snapshot.
         res = _current_result(conn, request_id)
         return {"request": _load_request(conn, request_id), "result": res, "reran": False}
     if req["status"] in ("stale", "superseded", "rejected"):
         raise InvalidState(f"Request {request_id} is '{req['status']}' and cannot be run.")
 
-    snap = get_snapshot(conn, int(req["feature_snapshot_id"]))
-    if snap is None:
-        raise NotFound(f"FeatureSnapshot {req['feature_snapshot_id']} not found.")
     if snap["quality_status"] == "stale" or snap["superseded_by_feature_snapshot_id"] is not None:
         with conn.cursor() as cur:
             cur.execute("UPDATE \"PredictionRequest\" SET \"Status\"='stale' WHERE \"PredictionRequestID\"=%s",
@@ -329,7 +360,9 @@ def _run_request(conn, request_id: int, actor: Optional[str] = None) -> dict:
                     (req["model_version_id"],))
         mrow = cur.fetchone()
 
-    output, explanation, confidence, lo, hi = _infer({"name": mrow[0] if mrow else None}, snap["values"])
+    output, explanation, confidence, lo, hi = _infer(
+        {"name": mrow[0] if mrow else None}, snap["values"])
+    explanation = analytics_policy.stamp(explanation, attestation)
     expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=_RESULT_TTL_DAYS)
     with conn.cursor() as cur:
         cur.execute('INSERT INTO "PredictionResult" ("PredictionRequestID","ModelVersionID",'
@@ -473,6 +506,28 @@ def get_prediction_detail(request_id: int) -> Optional[dict]:
         req["model_version_label"] = _model_label(conn, req["model_version_id"])
         result = _current_result(conn, request_id)
         snap = get_snapshot(conn, int(req["feature_snapshot_id"])) if req["feature_snapshot_id"] else None
+        current = analytics_policy.current_attestation(conn)
+        if req["model_version_id"] is None:
+            raise analytics_policy.DerivedArtifactUnavailable(
+                f"PredictionRequest {request_id} has no ModelVersion lineage.")
+        if snap is None:
+            raise analytics_policy.DerivedArtifactUnavailable(
+                f"PredictionRequest {request_id} references a missing FeatureSnapshot.")
+        _require_snapshot_for_read(conn, snap, current=current)
+        if result is not None:
+            if (result["feature_snapshot_id"] is None
+                    or int(result["feature_snapshot_id"]) != int(req["feature_snapshot_id"])):
+                raise analytics_policy.DerivedArtifactUnavailable(
+                    f"PredictionResult {result['prediction_result_id']} is bound to an unexpected "
+                    "FeatureSnapshot.")
+            if (result["model_version_id"] is None
+                    or int(result["model_version_id"]) != int(req["model_version_id"])):
+                raise analytics_policy.DerivedArtifactUnavailable(
+                    f"PredictionResult {result['prediction_result_id']} is bound to an unexpected "
+                    "ModelVersion.")
+            analytics_policy.require_current(
+                conn, result.get("explanation"),
+                f"PredictionResult {result['prediction_result_id']}", current=current)
         with conn.cursor() as cur:
             cur.execute('SELECT "PredictionReviewID","ReviewerActor","Decision","OverrideReason",'
                         '"ReviewedAt" FROM "PredictionReview" pr '
@@ -481,11 +536,45 @@ def get_prediction_detail(request_id: int) -> Optional[dict]:
             reviews = [{"prediction_review_id": int(r[0]), "reviewer_actor": r[1], "decision": r[2],
                         "override_reason": r[3], "reviewed_at": _s(r[4])} for r in cur.fetchall()]
             mv = None
+            model_policy = None
             if req["model_version_id"]:
                 cur.execute(f'SELECT {_MV_COLS} FROM "ModelVersion" WHERE "ModelVersionID"=%s',
                             (req["model_version_id"],))
-                m = cur.fetchone()
-                mv = _mv_row(m) if m else None
+                model_row = cur.fetchone()
+                mv = _mv_row(model_row) if model_row else None
+                cur.execute(
+                    'SELECT "ModelName","Hyperparameters","TrainingDatasetSnapshotID" '
+                    'FROM "ModelVersion" WHERE "ModelVersionID"=%s',
+                    (req["model_version_id"],))
+                model_policy = cur.fetchone()
+        if mv is None or model_policy is None:
+            raise analytics_policy.DerivedArtifactUnavailable(
+                f"PredictionRequest {request_id} references a missing ModelVersion.")
+        if (mv.get("feature_schema_version_id") is None
+                or mv["feature_schema_version_id"] != snap["feature_schema_version_id"]):
+            raise analytics_policy.DerivedArtifactUnavailable(
+                f"PredictionRequest {request_id} has mismatched model/snapshot feature schemas.")
+        if model_policy[0] in {"drishti-forecast-fusion", "drishti-tabfm-workload"}:
+            analytics_policy.require_current(
+                conn, model_policy[1], f"ModelVersion {req['model_version_id']}",
+                current=current)
+        if model_policy[0] == "drishti-tabfm-workload":
+            workload_gb.require_workload_model_identity(
+                model_policy[1], f"Workload ModelVersion {req['model_version_id']}")
+            if model_policy[2] is None:
+                raise analytics_policy.DerivedArtifactUnavailable(
+                    f"Workload ModelVersion {req['model_version_id']} has no training snapshot.")
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT "Exclusions" FROM "TrainingDatasetSnapshot" '
+                    'WHERE "TrainingDatasetSnapshotID"=%s', (model_policy[2],))
+                training_row = cur.fetchone()
+            if not training_row:
+                raise analytics_policy.DerivedArtifactUnavailable(
+                    f"ModelVersion {req['model_version_id']} references a missing training snapshot.")
+            analytics_policy.require_current(
+                conn, training_row[0],
+                f"TrainingDatasetSnapshot {model_policy[2]}", current=current)
         expired = False
         if result and result.get("expires_at"):
             try:
@@ -495,7 +584,7 @@ def get_prediction_detail(request_id: int) -> Optional[dict]:
         is_current = (req["status"] in ("completed", "reviewed") and result is not None
                       and not result["is_stale"] and result["superseded_by_result_id"] is None
                       and not expired)
-        answer = _ai_answer(conn, req, result)
+        answer = _ai_answer(conn, req, result) if is_current else None
     return {"request": req, "result": result, "reviews": reviews, "feature_snapshot": snap,
             "model_version": mv, "is_current": is_current, "answer": answer}
 
@@ -507,6 +596,7 @@ def list_requests(status: Optional[str] = None, page: int = 1, page_size: int = 
     clause = ('WHERE ' + ' AND '.join(where)) if where else ''
     offset = (max(1, page) - 1) * page_size
     with db.ro_conn() as conn:
+        current = analytics_policy.current_attestation(conn)
         with conn.cursor() as cur:
             cur.execute(f'SELECT count(*) FROM "PredictionRequest" pr {clause}', params)
             total = int(cur.fetchone()[0])
@@ -522,6 +612,12 @@ def list_requests(status: Optional[str] = None, page: int = 1, page_size: int = 
                       "status": r[5], "requested_by_actor": r[6], "created_at": _s(r[7]),
                       "model_version_label": (f"{r[8]}@{r[9]}" if r[8] else None)}
                      for r in cur.fetchall()]
+        for item in items:
+            snapshot = get_snapshot(conn, int(item["feature_snapshot_id"]))
+            if snapshot is None:
+                raise analytics_policy.DerivedArtifactUnavailable(
+                    f"PredictionRequest {item['prediction_request_id']} references a missing snapshot.")
+            _require_snapshot_for_read(conn, snapshot, current=current)
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 

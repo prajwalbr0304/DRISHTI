@@ -405,7 +405,7 @@ def _court_event(
         "record_origin": "public_source_curated",
         "is_synthetic": False,
         "reference_mapping": "proxy",
-        "public_trial_court_label": "City Civil and Sessions Court, Bengaluru",
+        "proxy_reference_not_authority": True,
     })
     world.add("CourtEvent", (
         court_event_id, case_id, court_id, event_type, None, occurred_at,
@@ -658,6 +658,8 @@ def build_renukaswamy_case(
             "label": "Pattanagere locality, Bengaluru",
             "precision": "approximate_locality_reference",
             "not_exact_incident_scene": True,
+            "uncertainty_radius_m": 1000,
+            "uncertainty_basis": "display-only locality buffer; not a measured incident uncertainty",
             "source_id": "GEO-001",
             "attribution": "OpenStreetMap contributors, ODbL 1.0",
         },
@@ -1005,7 +1007,10 @@ def build_renukaswamy_case(
         world, case_id=case_id, court_id=court_id, event_type="regular_bail",
         occurred_at="2024-12-13 00:00:00+00", outcome="granted to A1, A2, A6, A7, A11, A12 and A14",
         source_ids=("DOC-002",), source_record_ids=source_record_ids,
-        detail={"person_keys": list(high_court_bail_keys), "later_set_aside": True},
+        detail={
+            "person_keys": list(high_court_bail_keys), "later_set_aside": True,
+            "public_court_label": "Karnataka High Court",
+        },
     )
     for key in high_court_bail_keys:
         world.add("BailEvent", (
@@ -1023,7 +1028,11 @@ def build_renukaswamy_case(
         occurred_at="2024-12-23 00:00:00+00", outcome="granted to A3, A4 and A5",
         source_ids=("DOC-001", "DOC-003", "DOC-004"),
         source_record_ids=source_record_ids,
-        detail={"person_keys": list(trial_court_bail_keys)},
+        detail={
+            "person_keys": list(trial_court_bail_keys),
+            "public_court_label": "Trial court, Bengaluru",
+            "specific_court_label_not_asserted": True,
+        },
     )
     for key in trial_court_bail_keys:
         world.add("BailEvent", (
@@ -1042,6 +1051,7 @@ def build_renukaswamy_case(
         detail={
             "person_keys": list(high_court_bail_keys),
             "decision_scope": "bail only", "not_a_trial_finding": True,
+            "public_court_label": "Supreme Court of India",
         },
     )
     _court_event(
@@ -1051,6 +1061,7 @@ def build_renukaswamy_case(
         detail={
             "date_is_publication_anchor": True,
             "exact_charge_framing_date_not_verified": True,
+            "public_court_label": "City Civil and Sessions Court, Bengaluru",
         },
     )
     _court_event(
@@ -1059,12 +1070,16 @@ def build_renukaswamy_case(
         occurred_at="2026-06-10 00:00:00+00",
         outcome="State petitions rejected for A3/A4 and A5",
         source_ids=("DOC-003", "DOC-004"), source_record_ids=source_record_ids,
+        detail={"public_court_label": "Karnataka High Court"},
     )
     _court_event(
         world, case_id=case_id, court_id=court_id, event_type="hearing",
         occurred_at="2026-08-18 00:00:00+00", outcome="PW-1 procedure decided; trial pending",
         source_ids=("DOC-005",), source_record_ids=source_record_ids,
-        detail={"no_witness_statement_text_stored": True},
+        detail={
+            "no_witness_statement_text_stored": True,
+            "public_court_label": "Karnataka High Court",
+        },
     )
     _court_event(
         world, case_id=case_id, court_id=court_id, event_type="approver_allowed",

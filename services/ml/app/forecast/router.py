@@ -15,6 +15,7 @@ import datetime as dt
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ..cases import analytics_policy
 from . import horizons as horizons_mod
 from . import service
 from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapResponse,
@@ -22,6 +23,15 @@ from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapRes
                       NearRepeatTriggerResponse, ValidationResponse)
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
+
+
+def _serve(call, *args, **kwargs):
+    try:
+        return call(*args, **kwargs)
+    except service.UnknownForecastLayer as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except analytics_policy.DerivedArtifactUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/horizons")
@@ -34,18 +44,18 @@ def forecast_horizons():
 @router.post("/run", response_model=ForecastRunResponse)
 def run(head_id: int | None = Query(None, ge=1, description="crime head to scope, or all"),
         horizon_days: int = Query(30, ge=7, le=90)):
-    return service.run_forecast(head_id=head_id, horizon_days=horizon_days)
+    return _serve(service.run_forecast, head_id=head_id, horizon_days=horizon_days)
 
 
 @router.get("/layers", response_model=LayersResponse)
 def layers():
-    return service.list_layers()
+    return _serve(service.list_layers)
 
 
 @router.get("/district/{district_id}", response_model=DistrictForecastResponse)
 def district(district_id: int, head_id: int | None = Query(None, ge=1),
              layer: str | None = Query(None, description="tabfm|timesfm|near_repeat|st_gnn|fused")):
-    resp = service.district_forecast(district_id, head_id=head_id, layer=layer)
+    resp = _serve(service.district_forecast, district_id, head_id=head_id, layer=layer)
     if resp is None:
         raise HTTPException(status_code=404, detail=f"District {district_id} not found")
     return resp
@@ -59,7 +69,7 @@ def forecast_map(layer: str = Query("fused", description="tabfm|timesfm|near_rep
     bbox = None
     if None not in (min_lon, min_lat, max_lon, max_lat):
         bbox = (min_lon, min_lat, max_lon, max_lat)
-    return service.forecast_map(layer=layer, head_id=head_id, bbox=bbox)
+    return _serve(service.forecast_map, layer=layer, head_id=head_id, bbox=bbox)
 
 
 @router.post("/near-repeat", response_model=NearRepeatTriggerResponse)
@@ -87,8 +97,8 @@ def forecast_backtest(head_id: int | None = Query(None, ge=1),
                       n_origins: int = Query(6, ge=2, le=24),
                       per_head: bool = Query(True),
                       persist: bool = Query(False, description="persist a ForecastBacktest row")):
-    return service.backtest(head_id=head_id, horizon=horizon, n_origins=n_origins,
-                            per_head=per_head, persist=persist)
+    return _serve(service.backtest, head_id=head_id, horizon=horizon, n_origins=n_origins,
+                  per_head=per_head, persist=persist)
 
 
 @router.get("/freshness", response_model=FreshnessResponse)

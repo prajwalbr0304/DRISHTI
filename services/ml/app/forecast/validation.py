@@ -24,6 +24,7 @@ def _add_months(d: dt.date, n: int) -> dt.date:
 
 def forecast_pai(conn, cutoff: dt.date = dt.date(2025, 10, 1), horizon_months: int = 3,
                  lookback_months: int = 12, area_fraction: float = 0.25) -> dict:
+    from ..cases import casedata
     from ..geo import geoscope
     pre_start = _add_months(cutoff, -lookback_months)
     post_end = _add_months(cutoff, horizon_months)
@@ -37,6 +38,7 @@ def forecast_pai(conn, cutoff: dt.date = dt.date(2025, 10, 1), horizon_months: i
             'SELECT u."DistrictID", cm."CrimeMajorHeadID", COUNT(*)::float '
             'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'WHERE cm."CrimeMajorHeadID" IS NOT NULL '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'AND cm."CrimeRegisteredDate" >= %s AND cm."CrimeRegisteredDate" < %s' + geo +
             ' GROUP BY 1,2', [pre_start, cutoff] + geo_args)
         pred = {(int(r[0]), int(r[1])): float(r[2]) / lookback_months * horizon_months
@@ -46,6 +48,7 @@ def forecast_pai(conn, cutoff: dt.date = dt.date(2025, 10, 1), horizon_months: i
             'SELECT u."DistrictID", cm."CrimeMajorHeadID", COUNT(*) '
             'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
             'WHERE cm."CrimeMajorHeadID" IS NOT NULL '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'AND cm."CrimeRegisteredDate" >= %s AND cm."CrimeRegisteredDate" < %s' + geo +
             ' GROUP BY 1,2', [cutoff, post_end] + geo_args)
         actual = {(int(r[0]), int(r[1])): int(r[2]) for r in cur.fetchall()}

@@ -36,7 +36,7 @@ export function OverviewPage({
       <div className="space-y-4 lg:col-span-2">
         <div className="rounded-card border border-hairline bg-surface p-4">
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-            <Fact label="Crime no." value={c.crime_no} mono />
+            <Fact label="Case reference" value={c.crime_no} mono />
             <Fact label="Status" value={c.status} />
             <Fact label="Gravity" value={c.gravity} />
             <Fact label="Crime head" value={c.crime_group} />
@@ -168,11 +168,14 @@ export function OverviewPage({
               <CaseLocationMap
                 latitude={c.latitude as number}
                 longitude={c.longitude as number}
-                label={locationLabel ?? c.station ?? c.district ?? undefined}
+                label={locationLabel ?? c.location_label ?? c.station ?? c.district ?? undefined}
+                approximate={c.not_exact_incident_scene || locationPrecision === "approximate_locality_reference"}
+                uncertaintyRadiusM={c.location_uncertainty_radius_m ?? undefined}
               />
-              {locationPrecision === "approximate_locality_reference" && (
+              {(c.not_exact_incident_scene || locationPrecision === "approximate_locality_reference") && (
                 <p className="mt-2 text-11 leading-relaxed text-content-dim">
                   Approximate Pattanagere locality reference from OpenStreetMap; not the verified shed or exact alleged incident scene.
+                  {c.location_attribution ? ` ${c.location_attribution}.` : ""}
                 </p>
               )}
             </>

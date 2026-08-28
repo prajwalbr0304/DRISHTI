@@ -22,6 +22,38 @@ from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapRes
 
 # Features->>'layer' tag -> human label (order = pipeline order)
 LAYER_ORDER = ["tabfm", "timesfm", "near_repeat", "st_gnn", "fused"]
+_LAYER_MODEL_NAMES = {
+    "tabfm": ["drishti-forecast-tabfm"],
+    "timesfm": ["drishti-timesfm-seasonal", "drishti-timesfm-2.5-200m"],
+    "near_repeat": ["drishti-forecast-nearrepeat"],
+    "st_gnn": ["drishti-forecast-stgnn"],
+    "fused": ["drishti-forecast-fusion"],
+}
+
+
+class UnknownForecastLayer(ValueError):
+    pass
+
+
+def _layer_generation(conn, layer: str, head_id, current):
+    from ..cases import analytics_policy
+
+    names = _LAYER_MODEL_NAMES.get(layer)
+    if names is None:
+        raise UnknownForecastLayer(f"Unknown persisted forecast layer '{layer}'.")
+    return analytics_policy.latest_complete_generation(
+        conn, model_names=names, ref_table="CrimePrediction",
+        artifact=f"forecast layer '{layer}'", scope={"head_id": head_id},
+        current=current)
+
+
+def _validate_prediction_metadata(conn, prediction_id, features, hyperparameters, current) -> None:
+    from ..cases import analytics_policy
+
+    analytics_policy.require_current(
+        conn, features, f"CrimePrediction {prediction_id}", current=current)
+    analytics_policy.require_current(
+        conn, hyperparameters, f"CrimePrediction {prediction_id} model", current=current)
 
 
 # ---- run the whole pipeline ------------------------------------------------
@@ -33,23 +65,39 @@ def _p(msg: str) -> None:
 def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30,
                  persist_governed: bool = True) -> ForecastRunResponse:
     import gc
+
+    from ..cases import analytics_policy
+
     months = max(1, horizon_days // 30)
     with db.rw_conn() as conn:
+        attestation = analytics_policy.current_attestation(conn)
         _p("tabfm layer ...")
-        tab = tabfm_forecast.forecast(conn, head_id=head_id, horizon_days=horizon_days)
+        tab = tabfm_forecast.forecast(
+            conn, head_id=head_id, horizon_days=horizon_days,
+            policy_attestation=attestation)
         gc.collect()
         _p(f"tabfm done ({tab.get('written')} rows); timesfm layer ...")
-        tim = timesfm.forecast_trajectories(conn, head_id=head_id, horizon=max(3, months))
+        tim = timesfm.forecast_trajectories(
+            conn, head_id=head_id, horizon=max(3, months),
+            policy_attestation=attestation)
         gc.collect()
         _p(f"timesfm done ({tim.get('written')} rows, {tim.get('model')}); near-repeat layer ...")
-        nr = nearrepeat.run_near_repeat(conn, head_id=head_id, horizon_days=min(14, horizon_days))
+        nr = nearrepeat.run_near_repeat(
+            conn, head_id=head_id, horizon_days=min(14, horizon_days),
+            policy_attestation=attestation)
         _p(f"near-repeat done ({nr.get('written')} cells); st-gnn layer ...")
-        stg = stgnn.run_stgnn(conn, head_id=head_id, horizon_days=horizon_days)
+        stg = stgnn.run_stgnn(
+            conn, head_id=head_id, horizon_days=horizon_days,
+            policy_attestation=attestation)
         gc.collect()
         _p(f"st-gnn done ({stg.get('written')} rows, {stg.get('model')}); fusion ...")
-        fused = fusion.fuse(conn, head_id, tab, tim, stg, nr, horizon_days=horizon_days)
+        fused = fusion.fuse(
+            conn, head_id, tab, tim, stg, nr, horizon_days=horizon_days,
+            policy_attestation=attestation)
         _p(f"fusion done ({fused.get('written')} rows); early warning ...")
-        ew = earlywarning.run(conn, head_id, tab, fused)
+        ew = earlywarning.run(
+            conn, head_id, tab, fused, policy_attestation=attestation)
+        analytics_policy.require_supplied_current(conn, attestation, "complete forecast run")
         _p(f"early warning done ({ew['alerts_written']} alerts). committing ...")
 
     layers = [
@@ -59,10 +107,8 @@ def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30,
         LayerRun(layer="st_gnn", model=stg.get("model"), model_version_id=stg.get("model_version_id"), written=stg.get("written", 0)),
         LayerRun(layer="fused", model="stacked-inspectable", model_version_id=fused.get("model_version_id"), written=fused.get("written", 0)),
     ]
-    # Persist the fused forecast through the governed FeatureSnapshot ->
-    # PredictionRequest -> PredictionResult contract (Phase 10/11 prerequisite).
-    # Runs in its OWN transaction AFTER the forecast committed, so a governance
-    # hiccup can never roll back the CrimePrediction/AlertHistory writes.
+    # Persist the fused forecast through the governed contract in its own
+    # transaction, but do not downgrade a policy mismatch to an optional warning.
     governed_summary = None
     if persist_governed:
         try:
@@ -71,9 +117,12 @@ def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30,
                     gconn, districts=fused.get("districts", []), head_id=head_id,
                     prediction_start=fused.get("prediction_start"),
                     prediction_end=fused.get("prediction_end"), horizon_days=horizon_days,
-                    model_metrics={"layers_written": {l.layer: l.written for l in layers}})
+                    model_metrics={"layers_written": {l.layer: l.written for l in layers}},
+                    policy_attestation=attestation)
             governed_summary = GovernedPersistence(**gv)
-        except Exception as exc:  # noqa: BLE001 — never let governance break the forecast
+        except analytics_policy.DerivedArtifactUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001 — non-policy governance remains advisory
             _p(f"governed persistence skipped: {type(exc).__name__}: {exc}")
             governed_summary = GovernedPersistence(error=f"{type(exc).__name__}: {exc}")
 
@@ -101,19 +150,49 @@ def run_forecast(head_id: Optional[int] = None, horizon_days: int = 30,
 
 # ---- layer switcher / reads ------------------------------------------------
 def list_layers() -> LayersResponse:
+    from ..cases import analytics_policy
+
     with db.ro_conn() as conn:
+        current = analytics_policy.current_attestation(conn)
+        manifests = {layer: _layer_generation(conn, layer, None, current)
+                     for layer in LAYER_ORDER}
         with conn.cursor() as cur:
             cur.execute(
-                'SELECT cp."Features"->>\'layer\' AS layer, mv."ModelName", cp."ModelVersionID", COUNT(*), '
-                'MAX(EXTRACT(EPOCH FROM (cp."PredictionEnd"-cp."PredictionStart"))/86400)::int '
-                'FROM "CrimePrediction" cp JOIN "ModelVersion" mv ON mv."ModelVersionID"=cp."ModelVersionID" '
-                'WHERE cp."Features" ? \'layer\' '
-                'GROUP BY 1,2,3 ORDER BY 1')
+                'SELECT cp."PredictionID",cp."Features"->>\'layer\' AS layer,mv."ModelName",'
+                'cp."ModelVersionID",'
+                'EXTRACT(EPOCH FROM (cp."PredictionEnd"-cp."PredictionStart"))/86400,'
+                'cp."Features",mv."Hyperparameters" '
+                'FROM "CrimePrediction" cp '
+                'JOIN "ModelVersion" mv ON mv."ModelVersionID"=cp."ModelVersionID" '
+                'WHERE cp."Features" ? \'layer\' AND cp."CrimeHeadID" IS NULL '
+                'ORDER BY cp."PredictionID"')
             rows = cur.fetchall()
-    order = {l: i for i, l in enumerate(LAYER_ORDER)}
-    infos = sorted((LayerInfo(layer=r[0], model_name=r[1], model_version_id=int(r[2]),
-                              predictions=int(r[3]), horizon_days=int(r[4]) if r[4] is not None else None)
-                    for r in rows), key=lambda x: order.get(x.layer, 99))
+        grouped: dict[tuple[str, str, int], dict] = {}
+        for row in rows:
+            if row[1] not in _LAYER_MODEL_NAMES:
+                raise analytics_policy.DerivedArtifactUnavailable(
+                    f"CrimePrediction {row[0]} has unclassified forecast layer {row[1]!r}.")
+            _validate_prediction_metadata(conn, row[0], row[5], row[6], current)
+            key = (row[1], row[2], int(row[3]))
+            item = grouped.setdefault(key, {"count": 0, "horizon": None})
+            item["count"] += 1
+            if row[4] is not None:
+                days = int(row[4])
+                item["horizon"] = max(item["horizon"] or days, days)
+
+    infos = [LayerInfo(layer=layer, model_name=model_name, model_version_id=model_version_id,
+                       predictions=item["count"], horizon_days=item["horizon"])
+             for (layer, model_name, model_version_id), item in grouped.items()]
+    present = {info.layer for info in infos}
+    for layer in LAYER_ORDER:
+        if layer not in present:
+            manifest = manifests[layer]
+            infos.append(LayerInfo(
+                layer=layer, model_name=manifest["model_name"],
+                model_version_id=manifest["model_version_id"], predictions=0,
+                horizon_days=None))
+    order = {layer: i for i, layer in enumerate(LAYER_ORDER)}
+    infos.sort(key=lambda item: order.get(item.layer, 99))
     result = AiResult(
         answer=f"{len(infos)} forecast layer(s) available for inspection.",
         confidence=1.0, source_record_ids=[f"ModelVersion:{i.model_version_id}" for i in infos],
@@ -125,6 +204,8 @@ def list_layers() -> LayersResponse:
 
 def district_forecast(district_id: int, head_id: Optional[int] = None,
                       layer: Optional[str] = None) -> Optional[DistrictForecastResponse]:
+    from ..cases import analytics_policy
+
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute('SELECT "DistrictName" FROM "District" WHERE "DistrictID"=%s', (district_id,))
@@ -132,25 +213,35 @@ def district_forecast(district_id: int, head_id: Optional[int] = None,
             if not row:
                 return None
             dname = row[0]
-            q = ('SELECT DISTINCT ON (cp."Features"->>\'layer\') cp."Features"->>\'layer\', mv."ModelName", '
-                 'cp."PredictedCount", cp."Probability", cp."Confidence", cp."Features", '
-                 'cp."PredictionStart"::text, cp."PredictionEnd"::text '
-                 'FROM "CrimePrediction" cp JOIN "ModelVersion" mv ON mv."ModelVersionID"=cp."ModelVersionID" '
-                 'WHERE cp."DistrictID"=%s AND cp."CrimeHeadID" IS NOT DISTINCT FROM %s AND cp."Features" ? \'layer\'')
-            args = [district_id, head_id]
-            if layer:
-                q += ' AND cp."Features"->>\'layer\'=%s'
-                args.append(layer)
-            q += ' ORDER BY cp."Features"->>\'layer\', cp."PredictionStart" DESC'
+        current = analytics_policy.current_attestation(conn)
+        requested_layers = [layer] if layer else LAYER_ORDER
+        for requested_layer in requested_layers:
+            _layer_generation(conn, requested_layer, head_id, current)
+        q = ('SELECT DISTINCT ON (cp."Features"->>\'layer\') cp."PredictionID",'
+             'cp."Features"->>\'layer\',mv."ModelName",cp."PredictedCount",'
+             'cp."Probability",cp."Confidence",cp."Features",'
+             'cp."PredictionStart"::text,cp."PredictionEnd"::text,mv."Hyperparameters" '
+             'FROM "CrimePrediction" cp '
+             'JOIN "ModelVersion" mv ON mv."ModelVersionID"=cp."ModelVersionID" '
+             'WHERE cp."DistrictID"=%s AND cp."CrimeHeadID" IS NOT DISTINCT FROM %s '
+             'AND cp."Features" ? \'layer\'')
+        args = [district_id, head_id]
+        if layer:
+            q += ' AND cp."Features"->>\'layer\'=%s'
+            args.append(layer)
+        q += ' ORDER BY cp."Features"->>\'layer\', cp."PredictionStart" DESC'
+        with conn.cursor() as cur:
             cur.execute(q, args)
             rows = cur.fetchall()
-    order = {l: i for i, l in enumerate(LAYER_ORDER)}
+        for row in rows:
+            _validate_prediction_metadata(conn, row[0], row[6], row[9], current)
+    order = {name: i for i, name in enumerate(LAYER_ORDER)}
     preds = sorted((LayerPrediction(
-        layer=r[0], model_name=r[1],
-        predicted_count=float(r[2]) if r[2] is not None else None,
-        probability=float(r[3]) if r[3] is not None else None,
-        confidence=float(r[4]) if r[4] is not None else None,
-        features=r[5] or {}, prediction_start=r[6], prediction_end=r[7]) for r in rows),
+        layer=r[1], model_name=r[2],
+        predicted_count=float(r[3]) if r[3] is not None else None,
+        probability=float(r[4]) if r[4] is not None else None,
+        confidence=float(r[5]) if r[5] is not None else None,
+        features=r[6] or {}, prediction_start=r[7], prediction_end=r[8]) for r in rows),
         key=lambda x: order.get(x.layer, 99))
     fused = next((p for p in preds if p.layer == "fused"), None)
     result = AiResult(
@@ -168,10 +259,14 @@ def district_forecast(district_id: int, head_id: Optional[int] = None,
 
 def forecast_map(layer: str = "fused", head_id: Optional[int] = None,
                  bbox: Optional[tuple] = None) -> ForecastMapResponse:
+    from ..cases import analytics_policy
+
     q = ('SELECT cp."PredictionID", cp."DistrictID", ST_Y(cp."geom"), ST_X(cp."geom"), '
          'cp."PredictedCount", cp."Confidence", '
-         'COALESCE(cp."Features"->>\'risk_class\', cp."Features"->>\'tabfm_risk_class\') '
+         'COALESCE(cp."Features"->>\'risk_class\', cp."Features"->>\'tabfm_risk_class\'), '
+         'cp."Features",mv."Hyperparameters" '
          'FROM "CrimePrediction" cp '
+         'JOIN "ModelVersion" mv ON mv."ModelVersionID"=cp."ModelVersionID" '
          'WHERE cp."Features"->>\'layer\'=%s AND cp."CrimeHeadID" IS NOT DISTINCT FROM %s '
          'AND cp."geom" IS NOT NULL')
     args = [layer, head_id]
@@ -180,9 +275,13 @@ def forecast_map(layer: str = "fused", head_id: Optional[int] = None,
         args += list(bbox)
     q += ' ORDER BY cp."PredictedCount" DESC LIMIT 2000'
     with db.ro_conn() as conn:
+        current = analytics_policy.current_attestation(conn)
+        _layer_generation(conn, layer, head_id, current)
         with conn.cursor() as cur:
             cur.execute(q, args)
             rows = cur.fetchall()
+        for row in rows:
+            _validate_prediction_metadata(conn, row[0], row[7], row[8], current)
     cells = [MapCell(prediction_id=int(r[0]), district_id=int(r[1]) if r[1] is not None else None,
                      lat=float(r[2]) if r[2] is not None else None,
                      lon=float(r[3]) if r[3] is not None else None,
@@ -245,15 +344,22 @@ def backtest(head_id: Optional[int] = None, horizon: int = 1, n_origins: int = 6
              per_head: bool = True, persist: bool = True) -> BacktestResponse:
     """Rolling-origin, leakage-safe backtest with geographic holdout, baseline
     comparison and per-dimension error. Optionally persists a ForecastBacktest."""
+    from ..cases import analytics_policy
+
     with db.rw_conn() as conn:
+        attestation = analytics_policy.current_attestation(conn)
         report = backtest_mod.backtest_report(conn, head_id=head_id, horizon=horizon,
                                               n_origins=n_origins, per_head=per_head)
+        analytics_policy.require_supplied_current(conn, attestation, "forecast backtest")
         persisted_id = None
         if persist:
             try:
                 persisted_id = governance_bridge.persist_backtest(
-                    conn, report, head_id=head_id, actor="forecast-batch")
-            except Exception as exc:  # noqa: BLE001 — reporting must not fail on a write hiccup
+                    conn, report, head_id=head_id, actor="forecast-batch",
+                    policy_attestation=attestation)
+            except analytics_policy.DerivedArtifactUnavailable:
+                raise
+            except Exception as exc:  # noqa: BLE001 — non-policy persistence remains advisory
                 _p(f"backtest persistence skipped: {type(exc).__name__}: {exc}")
 
     m = report.get("model") or {}

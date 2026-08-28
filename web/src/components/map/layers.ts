@@ -32,24 +32,43 @@ const SEV_RGB: Record<string, RGB> = {
   info: [148, 163, 184],
 };
 
+function isApproximateLocation(location: {
+  not_exact_incident_scene?: boolean | null;
+  location_precision?: string | null;
+}): boolean {
+  return location.not_exact_incident_scene === true
+    || location.location_precision === "approximate_locality_reference";
+}
+
 /* --- Live Map: individual incident points, coloured by crime type --------- */
 export function pointsScatter(points: PointFeature[], onClick?: (p: PointFeature) => void): Layer {
   return new ScatterplotLayer<PointFeature>({
     id: "incident-points",
     data: points,
     getPosition: (d) => [d.lon, d.lat],
-    getFillColor: (d) => [...hexToRgb(categoryColor(d.crime_group ?? "other")), 200] as [number, number, number, number],
-    getRadius: 40,
+    getFillColor: (d) => [
+      ...hexToRgb(categoryColor(d.crime_group ?? "other")),
+      isApproximateLocation(d) ? 55 : 200,
+    ] as [number, number, number, number],
+    getRadius: (d) => isApproximateLocation(d) ? (d.uncertainty_radius_m ?? 1000) : 40,
     radiusUnits: "meters",
     radiusMinPixels: 4,
-    radiusMaxPixels: 8,
+    radiusMaxPixels: 28,
     stroked: true,
-    getLineColor: [255, 255, 255, 210],
+    getLineColor: (d) => isApproximateLocation(d)
+      ? [...hexToRgb(categoryColor(d.crime_group ?? "other")), 220] as [number, number, number, number]
+      : [255, 255, 255, 210],
     lineWidthUnits: "pixels",
-    getLineWidth: 0.75,
+    getLineWidth: (d) => isApproximateLocation(d) ? 1.5 : 0.75,
     autoHighlight: true,
     highlightColor: [255, 255, 255, 110],
     pickable: true,
+    updateTriggers: {
+      getFillColor: [points.length],
+      getRadius: [points.length],
+      getLineColor: [points.length],
+      getLineWidth: [points.length],
+    },
     onClick: onClick ? (info) => info.object && onClick(info.object as PointFeature) : undefined,
   });
 }
@@ -172,32 +191,52 @@ export function linkTargets(links: CaseLinkNode[], onClick?: (l: CaseLinkNode) =
     id: "link-targets",
     data: links,
     getPosition: (d) => [d.lon, d.lat],
-    getFillColor: [236, 72, 153, 235],
-    getLineColor: [255, 255, 255, 220],
+    getFillColor: (d) => isApproximateLocation(d)
+      ? [236, 72, 153, 45]
+      : [236, 72, 153, 235],
+    getLineColor: (d) => isApproximateLocation(d)
+      ? [236, 72, 153, 230]
+      : [255, 255, 255, 220],
     stroked: true,
+    filled: true,
     lineWidthUnits: "pixels",
-    getLineWidth: 1,
-    getRadius: 6,
-    radiusUnits: "pixels",
+    getLineWidth: (d) => isApproximateLocation(d) ? 1.75 : 1,
+    getRadius: (d) => isApproximateLocation(d) ? (d.uncertainty_radius_m ?? 1000) : 40,
+    radiusUnits: "meters",
     radiusMinPixels: 4,
-    radiusMaxPixels: 8,
+    radiusMaxPixels: 30,
     pickable: true,
     onClick: onClick ? (info) => info.object && onClick(info.object as CaseLinkNode) : undefined,
   });
 }
 
-export function linkSource(source: { lon: number; lat: number }): Layer {
+export function linkSource(source: {
+  lon: number;
+  lat: number;
+  not_exact_incident_scene: boolean;
+  location_precision?: string | null;
+  uncertainty_radius_m?: number | null;
+}): Layer {
   return new ScatterplotLayer({
     id: "link-source",
     data: [source],
-    getPosition: (d: { lon: number; lat: number }) => [d.lon, d.lat],
-    getFillColor: [59, 130, 246, 255],
-    getLineColor: [255, 255, 255, 255],
+    getPosition: (d: typeof source) => [d.lon, d.lat],
+    getFillColor: (d: typeof source) => isApproximateLocation(d)
+      ? [59, 130, 246, 45]
+      : [59, 130, 246, 255],
+    getLineColor: (d: typeof source) => isApproximateLocation(d)
+      ? [59, 130, 246, 235]
+      : [255, 255, 255, 255],
     stroked: true,
+    filled: true,
     lineWidthUnits: "pixels",
-    getLineWidth: 2,
-    getRadius: 10,
-    radiusUnits: "pixels",
+    getLineWidth: (d: typeof source) => isApproximateLocation(d) ? 2 : 1.75,
+    getRadius: (d: typeof source) => isApproximateLocation(d)
+      ? (d.uncertainty_radius_m ?? 1000)
+      : 60,
+    radiusUnits: "meters",
+    radiusMinPixels: 6,
+    radiusMaxPixels: 34,
     pickable: false,
   });
 }

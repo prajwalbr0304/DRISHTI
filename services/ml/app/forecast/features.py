@@ -55,8 +55,9 @@ def district_centroids(conn, valid_geo_only: bool = True) -> dict[int, tuple[flo
     cannot drag a district's forecast centroid off the Karnataka landmass. Safe
     no-op when no boundary is loaded.
     """
+    from ..cases import casedata
     from ..geo import geoscope
-    where = ['cm."geom" IS NOT NULL']
+    where = ['cm."geom" IS NOT NULL', casedata.analytics_eligible_sql("cm")]
     params: list = []
     geoscope.apply_exclusion(conn, where, params, valid_geo_only)
     with conn.cursor() as cur:

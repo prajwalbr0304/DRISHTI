@@ -4,11 +4,12 @@ import { FileDown, MessageSquarePlus, Sparkles } from "lucide-react";
 import { api } from "@/api";
 import { useRole } from "@/providers/RoleProvider";
 import { exportSessionPdf } from "@/lib/exportSessionPdf";
-import { useAskStore } from "@/stores/useAskStore";
+import { useAskStore, VOICE_LOW_CONFIDENCE } from "@/stores/useAskStore";
 import { useSavedQueriesStore } from "@/stores/useSavedQueriesStore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Composer } from "@/components/ask/Composer";
+import { VoiceModeDialog } from "@/components/ask/VoiceModeDialog";
 import { AnswerCard } from "@/components/ask/AnswerCard";
 import { UserBubble } from "@/components/ask/UserBubble";
 import { useTts } from "@/components/ask/useTts";
@@ -38,6 +39,24 @@ export function ChatView() {
   const { role, def } = useRole();
   const { open } = useLoadSession();
   const [exporting, setExporting] = useState(false);
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
+  const capabilities = useQuery({
+    queryKey: ["chat", "capabilities"],
+    queryFn: ({ signal }) => api.chat.capabilities(signal),
+    staleTime: 5 * 60 * 1000,
+  });
+  const voiceCapability = capabilities.data?.voice;
+  const voiceModeAvailable =
+    voiceCapability?.voice_query_enabled === true &&
+    voiceCapability.continuous_mode_available === true;
+  const voiceThreshold = voiceCapability?.low_confidence_threshold ?? VOICE_LOW_CONFIDENCE;
+  const speechProviderLabel =
+    voiceCapability?.provider === "browser-web-speech"
+      ? "Browser speech"
+      : voiceCapability?.provider ?? "Browser speech";
+  const plannerLabel = capabilities.data?.semantic_planner.provider
+    ? `${capabilities.data.semantic_planner.provider} (${capabilities.data.semantic_planner.primary})`
+    : "DRISHTI NL→SQL";
 
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -63,7 +82,8 @@ export function ChatView() {
     const prev = messages[messages.length - 2];
     if (
       last.sender === "assistant" && !last.thinking && !last.error && last.text &&
-      prev?.sender === "user" && prev.spoken && autoSpokenRef.current !== last.id
+      prev?.sender === "user" && prev.spoken && !prev.voiceMode &&
+      autoSpokenRef.current !== last.id
     ) {
       autoSpokenRef.current = last.id;
       speak(last);
@@ -187,9 +207,29 @@ export function ChatView() {
           languageMode={languageMode}
           onLanguageModeChange={setLanguageMode}
           onSaveQuery={(text) => saveQuery(text, language)}
+          onOpenVoiceMode={() => {
+            stopSpeak();
+            setVoiceModeOpen(true);
+          }}
+          voiceModeAvailable={voiceModeAvailable}
+          lowConfidenceThreshold={voiceThreshold}
+          modelLabel={
+            capabilities.data?.semantic_planner.primary
+              ? `NL→SQL · ${capabilities.data.semantic_planner.primary}`
+              : undefined
+          }
           busy={busy}
         />
       </div>
+
+      <VoiceModeDialog
+        open={voiceModeOpen}
+        onOpenChange={setVoiceModeOpen}
+        language={language}
+        confidenceThreshold={voiceThreshold}
+        providerLabel={speechProviderLabel}
+        plannerLabel={plannerLabel}
+      />
     </div>
   );
 }

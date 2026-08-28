@@ -6,9 +6,10 @@ queries through the SAME guarded executor (validate -> scope -> drishti_readonly
 -> row cap) and composes a grounded, cited overview from the ACTUAL returned
 rows. No LLM, no invention: every number traces to a query that really ran.
 
-Panels that a role may not query (scope guard) or that reference a table not yet
-present (e.g. the disaster mirror before migration 023) are skipped gracefully,
-so the briefing degrades to whatever the role can actually see.
+Direct case aggregates are policy-filtered. Persisted artifact inventories whose
+rows cannot prove a current eligible source cohort are deliberately marked
+unavailable rather than counted, so the briefing fails closed against stale
+hotspots, alerts, and forecasts.
 """
 from __future__ import annotations
 
@@ -16,7 +17,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .executor import ExecutionError, execute_select
+from ..cases import casedata
+from .executor import ExecutionError, authorize_case_aggregate, execute_select
 from .guard import GuardError
 from .scope import ScopeError
 
@@ -47,34 +49,38 @@ class BriefingResult:
     ran: int = 0
 
 
-# --- scalar panels: (key, EN label, KN label, sql, source table) ------------
+# Direct CaseMaster panels are derived analytics and therefore use the current
+# policy cohort. Artifact inventories are intentionally unavailable: their stored
+# rows do not carry complete case lineage that can be revalidated today.
+_CASE_ELIGIBLE = casedata.analytics_eligible_sql("cm")
 _SCALAR_PANELS: list[tuple[str, str, str, str, str]] = [
-    ("firs", "FIRs on record", "ದಾಖಲಾದ ಎಫ್‌ಐಆರ್",
-     'SELECT COUNT(*) AS n FROM "CaseMaster"', "CaseMaster"),
-    ("hotspots", "Active hotspots", "ಸಕ್ರಿಯ ಹಾಟ್‌ಸ್ಪಾಟ್‌ಗಳು",
-     'SELECT COUNT(*) AS n FROM "CrimeHotspot" WHERE "IsActive" = true', "CrimeHotspot"),
-    ("alerts", "Alerts on record", "ಎಚ್ಚರಿಕೆಗಳು",
-     'SELECT COUNT(*) AS n FROM "AlertHistory"', "AlertHistory"),
-    ("forecasts", "Forecasts on record", "ಮುನ್ಸೂಚನೆಗಳು",
-     'SELECT COUNT(*) AS n FROM "CrimePrediction"', "CrimePrediction"),
+    ("firs", "Analytics-eligible FIRs", "ವಿಶ್ಲೇಷಣೆಗೆ ಅರ್ಹ ಎಫ್‌ಐಆರ್‌ಗಳು",
+     f'SELECT COUNT(*) AS n FROM "CaseMaster" cm WHERE {_CASE_ELIGIBLE}',
+     "CaseMaster"),
 ]
+
+_UNAVAILABLE_ARTIFACTS = (
+    "hotspots", "alerts", "forecasts",
+)
 
 _TOP_DISTRICTS_SQL = (
     'SELECT d."DistrictName", COUNT(*) AS n FROM "CaseMaster" cm '
     'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
     'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
+    f'WHERE {_CASE_ELIGIBLE} '
     'GROUP BY d."DistrictName" ORDER BY n DESC LIMIT 3'
 )
 _TOP_CRIMES_SQL = (
     'SELECT ch."CrimeGroupName", COUNT(*) AS n FROM "CaseMaster" cm '
     'JOIN "CrimeHead" ch ON ch."CrimeHeadID"=cm."CrimeMajorHeadID" '
+    f'WHERE {_CASE_ELIGIBLE} '
     'GROUP BY ch."CrimeGroupName" ORDER BY n DESC LIMIT 3'
 )
 
 
 def _scalar(role: str, sql: str) -> Optional[Any]:
     try:
-        _, _cols, rows = execute_select(sql, role)
+        _, _cols, rows = execute_select(authorize_case_aggregate(sql), role)
     except (GuardError, ScopeError, ExecutionError):
         return None
     return rows[0][0] if rows and rows[0] else None
@@ -82,7 +88,7 @@ def _scalar(role: str, sql: str) -> Optional[Any]:
 
 def _grouped(role: str, sql: str) -> Optional[list[list[Any]]]:
     try:
-        _, _cols, rows = execute_select(sql, role)
+        _, _cols, rows = execute_select(authorize_case_aggregate(sql), role)
     except (GuardError, ScopeError, ExecutionError):
         return None
     return rows or None
@@ -135,6 +141,15 @@ def build_briefing(role: str, language: str) -> BriefingResult:
         if parts:
             lines.append((f"ಪ್ರಮುಖ ಅಪರಾಧ ಪ್ರಕಾರಗಳು: {parts}." if kn
                           else f"Leading crime types: {parts}."))
+
+    unavailable = ", ".join(_UNAVAILABLE_ARTIFACTS)
+    lines.append(
+        ("• ಹಾಟ್‌ಸ್ಪಾಟ್, ಎಚ್ಚರಿಕೆ ಮತ್ತು ಮುನ್ಸೂಚನೆ ಫಲಕಗಳು ಲಭ್ಯವಿಲ್ಲ: ಸಂಗ್ರಹಿತ "
+         "ಆರ್ಟಿಫ್ಯಾಕ್ಟ್‌ಗಳು ಪ್ರಸ್ತುತ ನೀತಿ-ಅರ್ಹ ಮೂಲ ಪ್ರಕರಣಗಳನ್ನು ಸಾಬೀತುಪಡಿಸುವುದಿಲ್ಲ."
+         if kn else
+         f"• Derived-artifact panels ({unavailable}) are unavailable: stored rows "
+         "cannot prove their current policy-eligible source cohort.")
+    )
 
     return BriefingResult(
         reply="\n".join(lines),

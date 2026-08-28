@@ -117,6 +117,7 @@ def load_area_series(conn, valid_geo_only: bool = True, level: str = "district")
     zero-filled month axis; ``area_parent`` maps each subject to its district (for
     the geographic holdout) — identity for the district level.
     """
+    from ..cases import casedata
     from ..geo import geoscope
 
     if level == "station":
@@ -124,7 +125,8 @@ def load_area_series(conn, valid_geo_only: bool = True, level: str = "district")
     else:
         subject_col, geo_guard = 'u."DistrictID"', 'u."DistrictID" IS NOT NULL'
 
-    where = ['cm."CrimeRegisteredDate" IS NOT NULL', geo_guard]
+    where = ['cm."CrimeRegisteredDate" IS NOT NULL', geo_guard,
+             casedata.analytics_eligible_sql("cm")]
     params: list = []
     geoscope.apply_exclusion(conn, where, params, valid_geo_only)
     reg_sql = (f'SELECT {subject_col}, '
@@ -135,7 +137,8 @@ def load_area_series(conn, valid_geo_only: bool = True, level: str = "district")
         cur.execute(reg_sql, params)
         reg_rows = cur.fetchall()
 
-    cwhere = ['cs."csdate" IS NOT NULL', geo_guard]
+    cwhere = ['cs."csdate" IS NOT NULL', geo_guard,
+              casedata.analytics_eligible_sql("cm")]
     cparams: list = []
     geoscope.apply_exclusion(conn, cwhere, cparams, valid_geo_only)
     cs_sql = (f'SELECT {subject_col}, '

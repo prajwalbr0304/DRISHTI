@@ -178,6 +178,7 @@ def _serialize_statement(conn, sid: int, role: Optional[str]) -> S.StatementOut:
 
 def _create_statement(conn, cid: int, req: S.StatementCreate, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if req.statement_type not in STATEMENT_TYPES:
         raise CaseworkValidationError(f"Unknown statement type '{req.statement_type}'.")
     if req.access_classification not in ACCESS_CLASSIFICATIONS:
@@ -217,10 +218,15 @@ def _create_statement(conn, cid: int, req: S.StatementCreate, role: Optional[str
 
 def _correct_statement(conn, sid: int, req: S.StatementCorrection, role: Optional[str]) -> None:
     with conn.cursor() as cur:
-        cur.execute('SELECT "State","AccessClassification" FROM "Statement" WHERE "StatementID"=%s', (sid,))
+        cur.execute(
+            'SELECT "State","AccessClassification","CaseMasterID" '
+            'FROM "Statement" WHERE "StatementID"=%s',
+            (sid,),
+        )
         r = cur.fetchone()
         if r is None:
             raise CaseworkNotFound(f"Statement {sid} not found.")
+        _require_procedural_write(conn, int(r[2]))
         if r[0] == "reviewed":
             raise CaseworkConflict("A reviewed statement is locked; reopen review before correcting.")
         cur.execute('SELECT COALESCE(MAX("VersionNo"),0), '
@@ -245,9 +251,11 @@ def _correct_statement(conn, sid: int, req: S.StatementCorrection, role: Optiona
 
 def _review_statement(conn, sid: int, req: S.StatementReview) -> None:
     with conn.cursor() as cur:
-        cur.execute('SELECT 1 FROM "Statement" WHERE "StatementID"=%s', (sid,))
-        if cur.fetchone() is None:
+        cur.execute('SELECT "CaseMasterID" FROM "Statement" WHERE "StatementID"=%s', (sid,))
+        row = cur.fetchone()
+        if row is None:
             raise CaseworkNotFound(f"Statement {sid} not found.")
+        _require_procedural_write(conn, int(row[0]))
         cur.execute('UPDATE "Statement" SET "State"=\'reviewed\' WHERE "StatementID"=%s', (sid,))
     audit.record(audit.Action.UPDATE, "statement", sid, actor=req.actor, conn=conn,
                  detail={"action": "review", "note": req.note})
@@ -311,6 +319,7 @@ def _insert_property_item(conn, cid: int, seizure_id: Optional[int], p: S.Proper
 
 def _create_seizure(conn, cid: int, req: S.SeizureCreate, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if req.memo_evidence_item_id is not None:
         with conn.cursor() as cur:
             cur.execute('SELECT 1 FROM "EvidenceItem" WHERE "EvidenceItemID"=%s', (req.memo_evidence_item_id,))
@@ -331,11 +340,12 @@ def _create_seizure(conn, cid: int, req: S.SeizureCreate, role: Optional[str]) -
 
 
 def _change_property_status(conn, pid: int, req: S.PropertyStatusChange) -> None:
-    if req.status not in PROPERTY_STATUSES:
-        raise CaseworkValidationError(f"Unknown property status '{req.status}'.")
     row = _fetch_property_item(conn, pid)
     if row is None:
         raise CaseworkNotFound(f"Property item {pid} not found.")
+    _require_procedural_write(conn, int(row[2]))
+    if req.status not in PROPERTY_STATUSES:
+        raise CaseworkValidationError(f"Unknown property status '{req.status}'.")
     with conn.cursor() as cur:
         cur.execute('UPDATE "PropertyItem" SET "Status"=%s WHERE "PropertyItemID"=%s', (req.status, pid))
     audit.record(audit.Action.UPDATE, "property_item", pid, actor=req.actor, conn=conn,
@@ -388,6 +398,7 @@ _LAB_COLS = ('"LabResultID","CaseMasterID","PropertyItemID","SeizureID","TestTyp
 
 def _create_lab(conn, cid: int, req: S.LabResultInput, role: Optional[str]) -> int:
     _require_case(conn, cid)
+    _require_procedural_write(conn, cid)
     if req.status not in LAB_STATUSES:
         raise CaseworkValidationError(f"Unknown lab status '{req.status}'.")
     if not req.test_type or not req.test_type.strip():
@@ -409,6 +420,13 @@ def _create_lab(conn, cid: int, req: S.LabResultInput, role: Optional[str]) -> i
 
 
 def _update_lab(conn, lid: int, req: S.LabResultUpdate) -> None:
+    with conn.cursor() as cur:
+        cur.execute('SELECT "CaseMasterID" FROM "LabResult" WHERE "LabResultID"=%s', (lid,))
+        row = cur.fetchone()
+    if row is None:
+        raise CaseworkNotFound(f"Lab result {lid} not found.")
+    _require_procedural_write(conn, int(row[0]))
+
     sets, params = [], []
     if req.status is not None:
         if req.status not in LAB_STATUSES:
@@ -1036,6 +1054,7 @@ def add_property_item(cid: int, seizure_id: Optional[int], p: S.PropertyItemInpu
                       role: Optional[str]) -> S.PropertyItemOut:
     with db.rw_conn() as conn:
         _require_case(conn, cid)
+        _require_procedural_write(conn, cid)
         if seizure_id is not None:
             with conn.cursor() as cur:
                 cur.execute('SELECT 1 FROM "Seizure" WHERE "SeizureID"=%s AND "CaseMasterID"=%s',

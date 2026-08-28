@@ -14,8 +14,28 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ..cases import casedata
+
 # Cases shown inline per pattern card (the rest are summarised by the count).
 _CASES_PER_PATTERN = 12
+
+
+def _pattern_lineage_guard(pattern_alias: str = "p") -> str:
+    """Require nonempty case lineage whose entire current cohort is eligible."""
+    if not pattern_alias.replace("_", "").isalnum():
+        raise ValueError("Unsafe SQL alias")
+    eligible = casedata.analytics_eligible_sql("cm_lineage")
+    return (
+        'EXISTS (SELECT 1 FROM "CrimePatternCase" pc_lineage '
+        'JOIN "CaseMaster" cm_lineage '
+        '  ON cm_lineage."CaseMasterID"=pc_lineage."CaseMasterID" '
+        f'WHERE pc_lineage."PatternID"={pattern_alias}."PatternID") '
+        'AND NOT EXISTS (SELECT 1 FROM "CrimePatternCase" pc_lineage '
+        'JOIN "CaseMaster" cm_lineage '
+        '  ON cm_lineage."CaseMasterID"=pc_lineage."CaseMasterID" '
+        f'WHERE pc_lineage."PatternID"={pattern_alias}."PatternID" '
+        f'AND NOT ({eligible}))'
+    )
 
 
 def _pattern_row(r) -> dict:
@@ -54,8 +74,13 @@ def _linked_case_row(r) -> dict:
 
 def compute(conn, pattern_type: Optional[str] = None, crime_head_id: Optional[int] = None,
             limit: int = 60) -> dict:
-    """Return active crime patterns (filtered/ordered) plus their evidencing cases."""
-    clauses = ['p."IsActive" = TRUE']
+    """Return policy-safe active patterns plus their evidencing cases.
+
+    Persisted pattern rows fail closed: inactive rows, empty case lineage, and any
+    lineage containing a currently ineligible case are omitted as stale artifacts.
+    """
+    lineage_guard = _pattern_lineage_guard("p")
+    clauses = ['p."IsActive" = TRUE', lineage_guard]
     params: list = []
     if pattern_type:
         clauses.append('p."PatternType" = %s')
@@ -66,13 +91,21 @@ def compute(conn, pattern_type: Optional[str] = None, crime_head_id: Optional[in
     where = " WHERE " + " AND ".join(clauses)
 
     with conn.cursor() as cur:
-        # 1. the patterns themselves (+ crime head + model version + evidence count)
+        # 1. Patterns and evidence counts. The count repeats the case policy
+        # even though the all-or-nothing lineage guard above already passed.
+        count_eligible = casedata.analytics_eligible_sql("cm_count")
+        linked_count_sql = (
+            '(SELECT COUNT(*) FROM "CrimePatternCase" pc_count '
+            'JOIN "CaseMaster" cm_count '
+            '  ON cm_count."CaseMasterID"=pc_count."CaseMasterID" '
+            'WHERE pc_count."PatternID"=p."PatternID" '
+            f'AND {count_eligible})'
+        )
         cur.execute(
             'SELECT p."PatternID", p."PatternType"::text, p."Name", p."Description", '
             'p."CrimeHeadID", ch."CrimeGroupName", p."ModelVersionID", '
             'mv."ModelName", mv."Version", p."Confidence", p."Attributes", '
-            'p."DetectedAt"::text, p."IsActive", '
-            '(SELECT COUNT(*) FROM "CrimePatternCase" pc WHERE pc."PatternID" = p."PatternID") '
+            'p."DetectedAt"::text, p."IsActive", ' + linked_count_sql + ' '
             'FROM "CrimePattern" p '
             'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = p."CrimeHeadID" '
             'LEFT JOIN "ModelVersion" mv ON mv."ModelVersionID" = p."ModelVersionID"'
@@ -81,8 +114,11 @@ def compute(conn, pattern_type: Optional[str] = None, crime_head_id: Optional[in
             params + [limit])
         patterns = [_pattern_row(r) for r in cur.fetchall()]
 
-        # 2. distinct pattern types present (drives the UI filter), head-scoped
-        type_clauses = ['p."IsActive" = TRUE']
+        # 2. UI facet counts use the same fail-closed artifact cohort.
+        type_clauses = [
+            'p."IsActive" = TRUE',
+            _pattern_lineage_guard("p"),
+        ]
         type_params: list = []
         if crime_head_id is not None:
             type_clauses.append('p."CrimeHeadID" = %s')
@@ -92,24 +128,37 @@ def compute(conn, pattern_type: Optional[str] = None, crime_head_id: Optional[in
             + " AND ".join(type_clauses) + ' GROUP BY 1 ORDER BY 2 DESC', type_params)
         by_type = {row[0]: int(row[1]) for row in cur.fetchall()}
 
-        # 3. evidencing cases for every returned pattern, one round trip, capped
+        # 3. Eligibility is applied before ROW_NUMBER, so excluded links cannot
+        # consume one of the capped evidence-card slots. Official references are
+        # resolved from the current case version for presentation.
         pattern_ids = [p["pattern_id"] for p in patterns]
         if pattern_ids:
+            rank_eligible = casedata.analytics_eligible_sql("cm_rank")
             cur.execute(
                 'WITH ranked AS ('
                 '  SELECT pc."PatternID", pc."CaseMasterID", pc."Relevance", '
                 '         ROW_NUMBER() OVER (PARTITION BY pc."PatternID" '
                 '           ORDER BY pc."Relevance" DESC NULLS LAST, pc."CaseMasterID") AS rn '
-                '  FROM "CrimePatternCase" pc WHERE pc."PatternID" = ANY(%s)) '
+                '  FROM "CrimePatternCase" pc '
+                '  JOIN "CaseMaster" cm_rank ON cm_rank."CaseMasterID"=pc."CaseMasterID" '
+                '  WHERE pc."PatternID" = ANY(%s) AND ' + rank_eligible + ') '
                 'SELECT r."PatternID", r."CaseMasterID", r."Relevance", '
-                '       cm."CrimeNo", cm."CrimeRegisteredDate"::text, '
-                '       ch."CrimeGroupName", st."CaseStatusName", d."DistrictName" '
+                '       COALESCE(NULLIF(cv."SnapshotAttributes" #>> '
+                "                    '{official_references,police_crime_no}', ''), "
+                '                cm."CrimeNo"), '
+                '       cm."CrimeRegisteredDate"::text, ch."CrimeGroupName", '
+                '       st."CaseStatusName", d."DistrictName" '
                 'FROM ranked r '
                 'JOIN "CaseMaster" cm ON cm."CaseMasterID" = r."CaseMasterID" '
                 'LEFT JOIN "Unit" u ON u."UnitID" = cm."PoliceStationID" '
                 'LEFT JOIN "District" d ON d."DistrictID" = u."DistrictID" '
                 'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
                 'LEFT JOIN "CaseStatusMaster" st ON st."CaseStatusID" = cm."CaseStatusID" '
+                'LEFT JOIN LATERAL ('
+                '  SELECT cv0."SnapshotAttributes" FROM "CaseVersion" cv0 '
+                '  WHERE cv0."CaseMasterID"=cm."CaseMasterID" AND cv0."IsCurrent"=TRUE '
+                '  ORDER BY cv0."VersionNo" DESC LIMIT 1'
+                ') cv ON TRUE '
                 'WHERE r.rn <= %s ORDER BY r."PatternID", r.rn',
                 (pattern_ids, _CASES_PER_PATTERN))
             by_pattern: dict[int, list] = {}

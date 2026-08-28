@@ -34,6 +34,12 @@ from .viz import build_visualization
 
 _NLSQL_MODEL = ("drishti-nlsql", "nlp", "1.0.0")
 _ROWS_PREVIEW_CAP = 50      # rows sent to the browser for the answer table/chart
+_DEFAULT_OWNER_SUBJECT = "local:engine"
+
+
+class ChatSessionAccessError(RuntimeError):
+    """An absent, foreign, or differently scoped conversation continuation."""
+
 
 # result id-column -> source table, for record-id citations (the evidence trail).
 _ID_COLS = {
@@ -75,8 +81,12 @@ def detect_language(text: str) -> str:
 
 # --------------------------------------------------------------------------- #
 def ask(role: str, question: str, language: Optional[str] = None,
-        session_id: Optional[int] = None, voice: Optional[dict] = None) -> AskOutcome:
+        session_id: Optional[int] = None, voice: Optional[dict] = None,
+        owner_subject: str = _DEFAULT_OWNER_SUBJECT) -> AskOutcome:
     settings = get_settings()
+    owner_subject = (owner_subject or "").strip()
+    if not owner_subject:
+        raise ChatSessionAccessError("chat owner is required")
     t0 = time.time()
     lang = language or detect_language(question)
     primary_name = settings.primary_planner_name()
@@ -84,9 +94,11 @@ def ask(role: str, question: str, language: Optional[str] = None,
     # --- briefing / overview: compose from several role-scoped aggregates ---
     # (a single SELECT can't answer "give me a briefing for my scope").
     if is_briefing_request(question):
-        return _briefing(role, question, lang, session_id, voice, t0, primary_name)
+        return _briefing(
+            role, question, lang, session_id, voice, t0, primary_name, owner_subject)
 
-    history = _load_history(session_id, settings.nlsql_max_history_turns) if session_id else []
+    history = (_load_history(session_id, settings.nlsql_max_history_turns,
+                             owner_subject, role) if session_id else [])
 
     # --- plan (semantic provider primary, deterministic LABELLED fallback) ---
     # Fail-closed: when the configured semantic provider is unreachable we drop to
@@ -135,7 +147,7 @@ def ask(role: str, question: str, language: Optional[str] = None,
     if plan.needs_clarification or not plan.sql:
         reply = plan.clarifying_question or _clarify_text(lang)
         sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=None,
-                           cites=[], confidence=plan.confidence, kind="clarify", voice=voice,
+                           cites=[], confidence=plan.confidence, kind="clarify", voice=voice, owner_subject=owner_subject,
                            latency_ms=int((time.time() - t0) * 1000), planner_source=planner_source)
         return AskOutcome(session_id=sid, reply=reply, language=lang, sql=None,
                           confidence=round(plan.confidence, 4), needs_clarification=True,
@@ -147,14 +159,14 @@ def ask(role: str, question: str, language: Optional[str] = None,
     except (ScopeError, GuardError) as exc:
         reply = _blocked_text(lang, str(exc))
         sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=plan.sql,
-                           cites=[], confidence=0.0, kind="blocked", voice=voice,
+                           cites=[], confidence=0.0, kind="blocked", voice=voice, owner_subject=owner_subject,
                            latency_ms=int((time.time() - t0) * 1000), planner_source=planner_source)
         return AskOutcome(session_id=sid, reply=reply, language=lang, sql=None,
                           confidence=0.0, blocked=True, model_version=mv, **plabels)
     except ExecutionError as exc:
         reply = _error_text(lang, str(exc))
         sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=plan.sql,
-                           cites=[], confidence=0.3, kind="error", voice=voice,
+                           cites=[], confidence=0.3, kind="error", voice=voice, owner_subject=owner_subject,
                            latency_ms=int((time.time() - t0) * 1000), planner_source=planner_source)
         return AskOutcome(session_id=sid, reply=reply, language=lang, sql=None,
                           confidence=0.3, model_version=mv, **plabels)
@@ -169,7 +181,7 @@ def ask(role: str, question: str, language: Optional[str] = None,
         columns, rows, intent=plan.intent, language=lang, citations=cites,
         confidence=confidence, role=role, row_total=len(rows))
     sid, mv = _persist(session_id, role, lang, question, reply, persisted_sql=cleaned_sql,
-                       cites=cites, confidence=confidence, kind="answer", voice=voice,
+                       cites=cites, confidence=confidence, kind="answer", voice=voice, owner_subject=owner_subject,
                        latency_ms=int((time.time() - t0) * 1000), row_count=len(rows),
                        planner_source=planner_source)
 
@@ -182,14 +194,15 @@ def ask(role: str, question: str, language: Optional[str] = None,
 
 # --------------------------------------------------------------------------- #
 def _briefing(role: str, question: str, lang: str, session_id: Optional[int],
-              voice: Optional[dict], t0: float, primary_name: str) -> AskOutcome:
+              voice: Optional[dict], t0: float, primary_name: str,
+              owner_subject: str) -> AskOutcome:
     """Compose + persist a grounded, cited multi-metric briefing."""
     result = build_briefing(role, lang)
     kind = "answer" if result.ran else "clarify"
     sid, mv = _persist(
         session_id, role, lang, question, result.reply,
         persisted_sql=result.sql_display, cites=result.citations,
-        confidence=result.confidence, kind=kind, voice=voice,
+        confidence=result.confidence, kind=kind, voice=voice, owner_subject=owner_subject,
         latency_ms=int((time.time() - t0) * 1000), row_count=result.ran,
         planner_source="deterministic-briefing")
     cols = ([] if not result.metrics
@@ -207,9 +220,18 @@ def _briefing(role: str, question: str, lang: str, session_id: Optional[int],
 
 
 # --------------------------------------------------------------------------- #
-def _load_history(session_id: int, limit: int) -> list[Turn]:
+def _load_history(session_id: int, limit: int, owner_subject: str,
+                  role: str) -> list[Turn]:
+    """Load memory only after owner and role-snapshot authorization."""
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                'SELECT "Role" FROM "ChatSession" '
+                'WHERE "SessionID"=%s AND "OwnerSubject"=%s',
+                (session_id, owner_subject))
+            session = cur.fetchone()
+            if not session or session[0] != role:
+                raise ChatSessionAccessError("chat session not found")
             cur.execute(
                 'SELECT "Sender"::text, "ContentText" FROM "ChatMessage" '
                 'WHERE "SessionID"=%s ORDER BY "MessageID" DESC LIMIT %s',
@@ -382,9 +404,6 @@ def _error_text(lang: str, reason: str) -> str:
             else f"ಈ ಪ್ರಶ್ನೆಯನ್ನು ನಡೆಸಲಾಗಲಿಲ್ಲ ({reason}). ಬೇರೆ ರೀತಿಯಲ್ಲಿ ಕೇಳಿ.")
 
 
-_LOW_CONF_THRESHOLD = 0.6      # below this a voice transcript is flagged (doc 01 §4.7/§9)
-
-
 def _sql_hash(sql: Optional[str]) -> Optional[str]:
     """SHA-256 of the executed plan/SQL (C6) — a stable, non-sensitive fingerprint
     for the audit trail (the full SQL is already stored on the assistant turn)."""
@@ -395,11 +414,10 @@ def _sql_hash(sql: Optional[str]) -> Optional[str]:
 
 def _persist(session_id: Optional[int], role: str, language: str, question: str,
              reply: str, *, persisted_sql: Optional[str], cites: list[str],
-             confidence: float, kind: str, latency_ms: int,
+             confidence: float, kind: str, latency_ms: int, owner_subject: str,
              row_count: int = 0, voice: Optional[dict] = None,
              planner_source: str = "deterministic-fallback") -> tuple[int, str]:
-    """Write the user + assistant turns (+ audit + optional VoiceTranscript).
-    Returns (session_id, model_label)."""
+    """Atomically authorize the thread and persist both finalized turns."""
     name, mtype, ver = _NLSQL_MODEL
     conf = round(max(0.0, min(1.0, float(confidence))), 5)
     with db.rw_conn() as conn:
@@ -410,30 +428,39 @@ def _persist(session_id: Optional[int], role: str, language: str, question: str,
         with conn.cursor() as cur:
             if session_id is None:
                 cur.execute(
-                    'INSERT INTO "ChatSession" ("UserID","Role","Language","Title") '
-                    'VALUES (NULL,%s,%s,%s) RETURNING "SessionID"',
-                    (role, language, question[:120]))
+                    'INSERT INTO "ChatSession" '
+                    '("UserID","OwnerSubject","Role","Language","Title") '
+                    'VALUES (NULL,%s,%s,%s,%s) RETURNING "SessionID"',
+                    (owner_subject, role, language, question[:120]))
                 session_id = int(cur.fetchone()[0])
+            else:
+                # Recheck inside the write transaction to prevent a foreign or
+                # differently scoped thread from being appended after planning.
+                cur.execute(
+                    'SELECT "Role" FROM "ChatSession" '
+                    'WHERE "SessionID"=%s AND "OwnerSubject"=%s FOR UPDATE',
+                    (session_id, owner_subject))
+                session = cur.fetchone()
+                if not session or session[0] != role:
+                    raise ChatSessionAccessError("chat session not found")
+
             cur.execute(
                 'INSERT INTO "ChatMessage" ("SessionID","Sender","ContentText","Language") '
                 "VALUES (%s,'user',%s,%s) RETURNING \"MessageID\"",
                 (session_id, question, language))
             user_message_id = int(cur.fetchone()[0])
-            # Phase 4: a dictated question persists its transcript + confidence,
-            # flagging low-confidence recognitions for read-back confirmation.
             if voice is not None:
                 vconf = voice.get("confidence")
                 vconf = float(vconf) if vconf is not None else None
-                low = voice.get("is_low_confidence")
-                if low is None:
-                    low = vconf is not None and vconf < _LOW_CONF_THRESHOLD
+                threshold = float(get_settings().voice_low_confidence_threshold)
+                low = vconf is None or vconf < threshold
                 cur.execute(
                     'INSERT INTO "VoiceTranscript" '
                     '("MessageID","RawAudioRef","TranscriptText","Language","Confidence","IsLowConfidence") '
                     "VALUES (%s,NULL,%s,%s,%s,%s)",
                     (user_message_id, voice.get("transcript") or question,
                      voice.get("language") or language,
-                     round(vconf, 5) if vconf is not None else None, bool(low)))
+                     round(vconf, 5) if vconf is not None else None, low))
             cur.execute(
                 'INSERT INTO "ChatMessage" '
                 '("SessionID","Sender","ContentText","Language","GeneratedSQL",'

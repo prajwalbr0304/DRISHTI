@@ -240,13 +240,24 @@ def _versions(conn, item_id: int) -> list[EvidenceVersionOut]:
 def _case_links(conn, item_id: int) -> list[EvidenceCaseLinkOut]:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT l."EvidenceCaseLinkID", l."CaseMasterID", cm."CrimeNo", l."LinkType", l."CreatedAt" '
-            'FROM "EvidenceCaseLink" l LEFT JOIN "CaseMaster" cm ON cm."CaseMasterID"=l."CaseMasterID" '
+            'SELECT l."EvidenceCaseLinkID", l."CaseMasterID", '
+            'COALESCE(NULLIF(cv.attrs #>> \'{official_references,police_crime_no}\', \'\'), '
+            'cm."CrimeNo"), l."LinkType", l."CreatedAt", '
+            'COALESCE(NULLIF(cv.attrs->>\'record_origin\', \'\'), \'synthetic_fixture\'), '
+            'COALESCE((cv.attrs->>\'is_synthetic\')::boolean, TRUE), '
+            'cv.attrs #>> \'{reference_mapping,kind}\' '
+            'FROM "EvidenceCaseLink" l '
+            'LEFT JOIN "CaseMaster" cm ON cm."CaseMasterID"=l."CaseMasterID" '
+            'LEFT JOIN LATERAL (SELECT cv0."SnapshotAttributes" AS attrs '
+            'FROM "CaseVersion" cv0 '
+            'WHERE cv0."CaseMasterID"=cm."CaseMasterID" AND cv0."IsCurrent"=TRUE '
+            'ORDER BY cv0."VersionNo" DESC LIMIT 1) cv ON TRUE '
             'WHERE l."EvidenceItemID"=%s ORDER BY l."EvidenceCaseLinkID"', (item_id,))
         rows = cur.fetchall()
     return [EvidenceCaseLinkOut(
         evidence_case_link_id=int(r[0]), case_master_id=int(r[1]), crime_no=r[2],
-        link_type=r[3], created_at=_s(r[4])) for r in rows]
+        link_type=r[3], created_at=_s(r[4]), record_origin=r[5],
+        is_synthetic=bool(r[6]), reference_mapping_kind=r[7]) for r in rows]
 
 
 def _entity_links(conn, item_id: int) -> list[EvidenceEntityLinkOut]:

@@ -15,7 +15,11 @@ from .schemas import (ChatMessageOut, ChatSessionDetail, ChatSessionSummary,
                       ChatSessionsResponse, VoiceInfo)
 
 
-def list_sessions(limit: int = 50) -> ChatSessionsResponse:
+def list_sessions(owner_subject: str, limit: int = 50) -> ChatSessionsResponse:
+    """List only threads owned by the verified caller.
+
+    Legacy rows with a NULL OwnerSubject intentionally remain private.
+    """
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -33,9 +37,10 @@ def list_sessions(limit: int = 50) -> ChatSessionsResponse:
                 'FROM "ChatSession" s '
                 'LEFT JOIN "users" u ON u."user_id" = s."UserID" '
                 'LEFT JOIN "ChatMessage" m ON m."SessionID" = s."SessionID" '
+                'WHERE s."OwnerSubject" = %s '
                 'GROUP BY s."SessionID", s."Title", s."Role", s."Language", s."CreatedAt", u."display_name" '
                 'ORDER BY s."CreatedAt" DESC, s."SessionID" DESC LIMIT %s',
-                (limit,))
+                (owner_subject, limit))
             rows = cur.fetchall()
     sessions = [
         ChatSessionSummary(
@@ -48,14 +53,16 @@ def list_sessions(limit: int = 50) -> ChatSessionsResponse:
     return ChatSessionsResponse(count=len(sessions), sessions=sessions)
 
 
-def get_session(session_id: int) -> Optional[ChatSessionDetail]:
+def get_session(session_id: int, owner_subject: str) -> Optional[ChatSessionDetail]:
+    """Return a thread only when it belongs to the verified caller."""
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 'SELECT s."SessionID", s."Title", s."Role", s."Language", s."CreatedAt"::text, '
                 'u."display_name" FROM "ChatSession" s '
-                'LEFT JOIN "users" u ON u."user_id" = s."UserID" WHERE s."SessionID" = %s',
-                (session_id,))
+                'LEFT JOIN "users" u ON u."user_id" = s."UserID" '
+                'WHERE s."SessionID" = %s AND s."OwnerSubject" = %s',
+                (session_id, owner_subject))
             head = cur.fetchone()
             if not head:
                 return None
@@ -102,6 +109,10 @@ from ..nlsql.schema import ROLES            # noqa: E402
 from ..roles import normalize_role          # noqa: E402
 from .schemas import AskResponse, TranslateResponse  # noqa: E402
 
+# Re-exported so the router can return an opaque 404 without depending directly
+# on the NL-to-SQL implementation module.
+ChatSessionAccessError = _engine.ChatSessionAccessError
+
 
 def _resolve_role(x_role: Optional[str]) -> str:
     """Trust the X-Role signal (pre-Phase-14, same as the rest of the app), but
@@ -137,18 +148,33 @@ def _outcome_to_response(o: "_engine.AskOutcome") -> AskResponse:
         visualization=o.visualization)
 
 
-def ask(x_role: Optional[str], question: str, language: Optional[str] = None,
-        session_id: Optional[int] = None, voice: Optional[dict] = None) -> AskResponse:
+def ask(x_role: Optional[str], question: str, *, owner_subject: str,
+        language: Optional[str] = None, session_id: Optional[int] = None,
+        voice: Optional[dict] = None) -> AskResponse:
     role = _resolve_role(x_role)
-    outcome = _engine.ask(role, question, language=language, session_id=session_id, voice=voice)
+    outcome = _engine.ask(
+        role,
+        question,
+        language=language,
+        session_id=session_id,
+        voice=voice,
+        owner_subject=owner_subject,
+    )
     return _outcome_to_response(outcome)
 
 
-def explain(x_role: Optional[str], context: str, language: Optional[str] = None,
+def explain(x_role: Optional[str], context: str, *, owner_subject: str,
+            language: Optional[str] = None,
             session_id: Optional[int] = None) -> AskResponse:
-    """Route a chart/alert context through the same grounded, cited engine."""
+    """Route a chart/alert context through the same owner-bound engine."""
     role = _resolve_role(x_role)
-    outcome = _engine.ask(role, context, language=language, session_id=session_id)
+    outcome = _engine.ask(
+        role,
+        context,
+        language=language,
+        session_id=session_id,
+        owner_subject=owner_subject,
+    )
     return _outcome_to_response(outcome)
 
 

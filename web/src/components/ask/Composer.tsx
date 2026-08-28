@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { AlertTriangle, Bookmark, BookmarkCheck, Loader2, Mic, MicOff, SendHorizonal } from "lucide-react";
-import type { AskLang, AskLangMode } from "@/stores/useAskStore";
+import { AlertTriangle, AudioLines, Bookmark, BookmarkCheck, Loader2, Mic, MicOff, SendHorizonal } from "lucide-react";
+import { VOICE_LOW_CONFIDENCE, type AskLang, type AskLangMode } from "@/stores/useAskStore";
 import { useRole } from "@/providers/RoleProvider";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,10 @@ export function Composer({
   languageMode,
   onLanguageModeChange,
   onSaveQuery,
+  onOpenVoiceMode,
+  voiceModeAvailable = false,
+  lowConfidenceThreshold = VOICE_LOW_CONFIDENCE,
+  modelLabel = MODEL_CHIP,
   busy = false,
 }: {
   value: string;
@@ -40,6 +44,10 @@ export function Composer({
   languageMode: AskLangMode;
   onLanguageModeChange: (m: AskLangMode) => void;
   onSaveQuery?: (text: string) => void;
+  onOpenVoiceMode?: () => void;
+  voiceModeAvailable?: boolean;
+  lowConfidenceThreshold?: number;
+  modelLabel?: string;
   busy?: boolean;
 }) {
   const { def } = useRole();
@@ -84,7 +92,9 @@ export function Composer({
   };
 
   const lowConfidence =
-    spoken && speech.confidence != null && speech.confidence < 0.6 && value.trim().length > 0;
+    spoken &&
+    (speech.confidence == null || speech.confidence < lowConfidenceThreshold) &&
+    value.trim().length > 0;
 
   const submit = () => {
     if (!canSend || busy) return;
@@ -128,7 +138,7 @@ export function Composer({
           </span>
         )}
         <span className="rounded-full bg-surface-2 px-2 py-0.5 text-12 text-content-dim">{def.scope}</span>
-        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-12 text-content-dim">{MODEL_CHIP}</span>
+        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-12 text-content-dim">{modelLabel}</span>
         {speech.listening && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-12 font-medium text-primary">
             <span className="size-2 animate-pulse rounded-full bg-primary" />
@@ -164,7 +174,9 @@ export function Composer({
         <div className="mx-3 mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control bg-severity-high/10 px-2 py-1.5 text-12 text-severity-high">
           <AlertTriangle className="size-3.5 shrink-0" />
           <span className="min-w-0">
-            Low-confidence transcription ({Math.round((speech.confidence ?? 0) * 100)}%) —{" "}
+            {speech.confidence == null
+              ? "Recognition confidence is unavailable"
+              : `Low-confidence transcription (${Math.round(speech.confidence * 100)}%)`} —{" "}
             {confirmPending ? "check the text, then confirm." : "check the text before sending."}
           </span>
           {confirmPending && (
@@ -184,13 +196,37 @@ export function Composer({
 
       {/* Controls row */}
       <div className="flex items-center gap-1.5 px-3 pb-2.5">
+        {onOpenVoiceMode && voiceModeAvailable && (
+          <SimpleTooltip
+            label={
+              speech.supported
+                ? "Start continuous Voice Mode"
+                : "Voice Mode needs browser speech recognition (Chrome or Edge)"
+            }
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                speech.abort();
+                onOpenVoiceMode();
+              }}
+              disabled={!speech.supported || busy}
+              aria-label="Open Voice Mode"
+            >
+              <AudioLines /> Voice mode
+            </Button>
+          </SimpleTooltip>
+        )}
+
         {speech.supported ? (
           <div className="flex items-center gap-1.5">
             <SimpleTooltip
               label={
                 speech.listening
                   ? "Stop dictation"
-                  : "Dictate with your browser's voice input (on-device Web Speech)"
+                  : "Dictate with your browser's speech recognition"
               }
             >
               <Button

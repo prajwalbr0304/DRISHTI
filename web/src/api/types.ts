@@ -502,8 +502,13 @@ export interface CapabilitiesSemanticPlanner {
 }
 export interface CapabilitiesVoice {
   voice_query_enabled: boolean;
-  /** "browser-web-speech" in this submission (NOT Zia). */
+  /** Browser speech in the current deployment; never presented as Bedrock audio. */
   provider: string;
+  /** Current turn transport, e.g. "browser-continuous-turns". */
+  mode: string;
+  continuous_mode_available: boolean;
+  /** False for the HTTPS/browser loop; reserved for a future audio relay. */
+  server_audio_streaming: boolean;
   zia_voice_available: boolean;
   zia_translation_available: boolean;
   browser_fallback: boolean;
@@ -924,6 +929,7 @@ export interface ObjectRef {
 export interface CaseListItem {
   case_id: number;
   crime_no?: string | null;
+  internal_crime_no?: string | null;
   case_no?: string | null;
   registered_date?: string | null;
   status_id?: number | null;
@@ -938,6 +944,14 @@ export interface CaseListItem {
   latitude?: number | null;
   longitude?: number | null;
   brief_facts?: string | null;
+  record_origin: string;
+  is_synthetic: boolean;
+  reference_mapping_kind?: string | null;
+  location_label?: string | null;
+  location_precision?: string | null;
+  not_exact_incident_scene: boolean;
+  location_uncertainty_radius_m?: number | null;
+  location_attribution?: string | null;
   victim_count: number;
   accused_count: number;
   has_arrest: boolean;
@@ -986,6 +1000,7 @@ export interface CaseloadResponse {
 export interface CaseCore {
   case_id: number;
   crime_no?: string | null;
+  internal_crime_no?: string | null;
   registered_date?: string | null;
   incident_from?: string | null;
   incident_to?: string | null;
@@ -1004,6 +1019,14 @@ export interface CaseCore {
   district?: string | null;
   station?: string | null;
   io_name?: string | null;
+  record_origin: string;
+  is_synthetic: boolean;
+  reference_mapping_kind?: string | null;
+  location_label?: string | null;
+  location_precision?: string | null;
+  not_exact_incident_scene: boolean;
+  location_uncertainty_radius_m?: number | null;
+  location_attribution?: string | null;
 }
 export interface CasePerson {
   id: number;
@@ -1041,6 +1064,7 @@ export interface CaseCurrentVersion {
   status_code: string;
   record_origin: string;
   is_synthetic: boolean;
+  read_only: boolean;
   excluded_from_derived_analytics: boolean;
   source_cutoff?: string | null;
   official_references: Record<string, unknown>;
@@ -1224,6 +1248,13 @@ export interface PointFeature {
   crime_group?: string | null;
   date?: string | null;
   hour?: number | null;
+  crime_no?: string | null;
+  location_label?: string | null;
+  location_precision?: string | null;
+  not_exact_incident_scene: boolean;
+  uncertainty_radius_m?: number | null;
+  location_attribution?: string | null;
+  excluded_from_derived_analytics: boolean;
 }
 export interface PointsResponse {
   count: number;
@@ -1254,12 +1285,28 @@ export interface CaseLinkNode {
   crime_no?: string | null;
   crime_group?: string | null;
   via?: string | null;
+  record_origin: string;
+  is_synthetic: boolean;
+  reference_mapping_kind?: string | null;
+  location_label?: string | null;
+  location_precision?: string | null;
+  not_exact_incident_scene: boolean;
+  uncertainty_radius_m?: number | null;
+  location_attribution?: string | null;
 }
 export interface CaseLinksResponse {
   source_case_id: number;
   source_lon?: number | null;
   source_lat?: number | null;
   source_crime_no?: string | null;
+  source_record_origin: string;
+  source_is_synthetic: boolean;
+  source_reference_mapping_kind?: string | null;
+  source_location_label?: string | null;
+  source_location_precision?: string | null;
+  source_not_exact_incident_scene: boolean;
+  source_uncertainty_radius_m?: number | null;
+  source_location_attribution?: string | null;
   count: number;
   links: CaseLinkNode[];
 }
@@ -1842,6 +1889,9 @@ export interface EvCaseLink {
   crime_no?: string | null;
   link_type: string;
   created_at?: string | null;
+  record_origin: string;
+  is_synthetic: boolean;
+  reference_mapping_kind?: string | null;
 }
 export interface EvEntityLink {
   evidence_entity_link_id: number;
@@ -1868,6 +1918,7 @@ export interface EvItem {
   confidentiality: string;
   state: string; // draft | uploading | available | failed | archived
   is_synthetic: boolean;
+  is_read_only: boolean;
   manual_metadata: Record<string, unknown>;
   captured_at?: string | null;
   received_at?: string | null;
@@ -1892,6 +1943,7 @@ export interface EvListItem {
   source_label?: string | null;
   state: string;
   is_synthetic: boolean;
+  is_read_only: boolean;
   language?: string | null;
   tags: string[];
   version_no?: number | null;
@@ -2189,6 +2241,7 @@ export interface CwCourtEvent {
   case_master_id: number;
   court_id?: number | null;
   court_name?: string | null;
+  court_reference_kind?: string | null;
   event_type: string;
   scheduled_at?: string | null;
   occurred_at?: string | null;
@@ -2246,6 +2299,8 @@ export interface CwCourtLifecycleView {
   current_status_label?: string | null;
   legacy_status?: string | null;
   has_case_version: boolean;
+  read_only: boolean;
+  read_only_reason?: string | null;
   prior_event_types: string[];
   allowed_transitions: CwTransitionMeta[];
   court_events: CwCourtEvent[];

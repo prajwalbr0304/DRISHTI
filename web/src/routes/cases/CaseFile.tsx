@@ -255,9 +255,9 @@ function SubPage({
     case "evidence":
       return <EvidencePage caseId={caseId} />;
     case "statements":
-      return <StatementsPage caseId={caseId} />;
+      return <StatementsPage caseId={caseId} readOnly={detail.current_version?.read_only ?? false} />;
     case "property":
-      return <PropertyPage caseId={caseId} />;
+      return <PropertyPage caseId={caseId} readOnly={detail.current_version?.read_only ?? false} />;
     case "digital":
       return <DigitalPage caseId={caseId} />;
     case "court":

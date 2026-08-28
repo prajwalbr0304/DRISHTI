@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FlaskConical, Package, Plus } from "lucide-react";
+import { FlaskConical, Lock, Package, Plus } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { CwLabResultInput, CwPropertyItem, CwPropertyItemInput } from "@/api/types";
@@ -19,8 +19,9 @@ const PROP_STATUS_BADGE: Record<string, "neutral" | "low" | "outline" | "primary
   seized: "primary", recovered: "low", returned: "outline", disposed: "neutral",
 };
 
-export function PropertyPage({ caseId }: { caseId: number }) {
-  const canWrite = useCanWriteCasework();
+export function PropertyPage({ caseId, readOnly }: { caseId: number; readOnly: boolean }) {
+  const roleCanWrite = useCanWriteCasework();
+  const canWrite = roleCanWrite && !readOnly;
   const [addSeizure, setAddSeizure] = useState(false);
   const qc = useQueryClient();
 
@@ -38,6 +39,16 @@ export function PropertyPage({ caseId }: { caseId: number }) {
           <Button variant="primary" size="sm" onClick={() => setAddSeizure(true)}><Plus /> Add seizure</Button>
         )}
       </div>
+
+      {readOnly && (
+        <div
+          className="flex items-start gap-2 rounded-card border border-severity-medium/40 bg-severity-medium/5 px-3 py-2 text-12 text-content"
+          role="status"
+        >
+          <Lock className="mt-0.5 size-4 shrink-0" />
+          <p><span className="font-semibold">Source-curated case.</span> Seizures, property status, and lab records are read-only.</p>
+        </div>
+      )}
 
       {q.isLoading && <Skeleton className="h-24 w-full" />}
       {q.error && <p className="text-13 text-content-dim">{errorMessage(q.error)}</p>}
@@ -67,7 +78,7 @@ export function PropertyPage({ caseId }: { caseId: number }) {
 
       <LabPanel caseId={caseId} canWrite={canWrite} />
 
-      {addSeizure && (
+      {canWrite && addSeizure && (
         <AddSeizureDialog caseId={caseId} open={addSeizure} onOpenChange={(v) => { setAddSeizure(v); if (!v) invalidate(); }} />
       )}
     </div>
@@ -213,7 +224,7 @@ function LabPanel({ caseId, canWrite }: { caseId: number; canWrite: boolean }) {
       </div>
       <p className="text-12 text-content-dim">Optional manual metadata — a report file may be linked, never parsed.</p>
 
-      {adding && (
+      {canWrite && adding && (
         <div className="mt-2 grid grid-cols-2 gap-2 rounded-control border border-hairline bg-surface-2/40 p-3">
           <NativeSelect value={testType} onChange={setTestType} options={lookups.data?.lab_test_types ?? []}
                         placeholder="chemical" aria-label="Test type" />

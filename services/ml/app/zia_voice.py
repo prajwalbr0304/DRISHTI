@@ -133,6 +133,11 @@ def voice_capability_status() -> dict:
         "voice_query_enabled": bool(s.query_voice_enabled),
         # The submitted STT/TTS provider. Browser recognition is NEVER called Zia.
         "provider": "catalyst-zia" if zia_on else "browser-web-speech",
+        # The shipped continuous Voice Mode loops browser STT -> guarded Ask ->
+        # browser TTS over ordinary HTTPS. It is not a server audio stream.
+        "mode": "server-streaming" if zia_on else "browser-continuous-turns",
+        "continuous_mode_available": bool(s.query_voice_enabled),
+        "server_audio_streaming": bool(zia_on),
         "zia_voice_available": zia_on,
         "zia_translation_available": zia_on,
         "browser_fallback": True,

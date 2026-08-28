@@ -231,9 +231,12 @@ def _confidence(step0: dict) -> float:
     return round(float(1.0 / (1.0 + cv)), 4)
 
 
-def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3) -> dict:
-    """Forecast each district's count trajectory; write the next-period median to
-    CrimePrediction and return the full fan-chart trajectories."""
+def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3,
+                          policy_attestation=None) -> dict:
+    """Forecast each district's count trajectory; write an attested layer."""
+    from ..cases import analytics_policy
+
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
     fc = get_forecaster()
     centroids = feat.district_centroids(conn)
     names = feat.district_names(conn)
@@ -242,8 +245,10 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
         district_ids = sorted(int(r[0]) for r in cur.fetchall())
 
     mv_id = models.get_or_create_model_version(
-        conn, fc.name, "forecasting", "1.0.0", framework=fc.family,
-        hyperparameters={"horizon": horizon, "season": _SEASON})
+        conn, fc.name, "forecasting",
+        analytics_policy.policy_model_version("1.0.0", attestation), framework=fc.family,
+        hyperparameters=analytics_policy.stamp(
+            {"horizon": horizon, "season": _SEASON}, attestation))
 
     trajectories, rows = [], []
     start = end = None
@@ -259,8 +264,9 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
         start = dt.datetime(y, m, 1, tzinfo=dt.timezone.utc)
         end = (start + dt.timedelta(days=31 * horizon)).replace(day=1)
         lon, lat = centroids.get(d, (None, None))
-        features_json = {"layer": "timesfm", "model": fc.name, "trajectory": traj,
-                         "history_tail": counts[-12:]}
+        features_json = analytics_policy.stamp(
+            {"layer": "timesfm", "model": fc.name, "trajectory": traj,
+             "history_tail": counts[-12:]}, attestation)
         if getattr(fc, "actual_device", None):   # real SageMaker T4 provenance
             features_json.update(actual_device=fc.actual_device, gpu_name=fc.gpu_name,
                                  model_artifact_digest=fc.model_artifact_digest,
@@ -271,6 +277,7 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
                      round(min(1.0, s0["median"] / (max(counts) or 1)), 5), conf,
                      Json(features_json), lon, lon, lat))
 
+    analytics_policy.require_supplied_current(conn, attestation, "TimesFM forecast run")
     with conn.cursor() as cur:
         cur.execute('DELETE FROM "CrimePrediction" WHERE "Features"->>\'layer\'=\'timesfm\' '
                     'AND "CrimeHeadID" IS NOT DISTINCT FROM %s', (head_id,))
@@ -284,28 +291,32 @@ def forecast_trajectories(conn, head_id: Optional[int] = None, horizon: int = 3)
                 template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
                          "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
                 page_size=200)
-        models.log_inference(conn, mv_id, ref_table="CrimePrediction",
-                             inputs={"head_id": head_id, "horizon": horizon},
-                             outputs={"districts": len(rows), "model": fc.name})
+        models.log_inference(
+            conn, mv_id, ref_table="CrimePrediction",
+            inputs=analytics_policy.stamp(
+                {"head_id": head_id, "horizon": horizon}, attestation),
+            outputs={"districts": len(rows), "model": fc.name,
+                     "complete_generation": True})
 
     model_name = fc.name
     if hasattr(fc, "release"):     # free TimesFM weights before the next layer loads
         fc.release()
     return {"written": len(rows), "model": model_name, "model_version_id": mv_id,
-            "horizon": horizon, "trajectories": trajectories}
+            "horizon": horizon, "trajectories": trajectories,
+            "analytics_policy_attestation": attestation.as_dict()}
 
 
 def forecast_trajectories_safe(head_id: Optional[int] = None, horizon: int = 6) -> dict:
     """Connection-safe TimesFM layer for the slow SageMaker path.
 
-    The SageMaker async round-trips take minutes across all districts, which would
-    idle-timeout a single held-open RDS connection (as the full pipeline hit). So:
-      1. read every district series with a short-lived read connection;
-      2. run the forecasts with NO DB connection held (the slow part);
-      3. persist the timesfm layer with a fresh write connection.
-    Writes the same CrimePrediction layer='timesfm' rows as ``forecast_trajectories``
-    (+ real device/gpu/digest provenance when served on the T4)."""
+    The source policy is captured with the input read and revalidated in the
+    fresh write transaction. A policy change during remote inference rejects the
+    write rather than stamping rows generated from a stale cohort.
+    """
+    from ..cases import analytics_policy
+
     with db.ro_conn() as conn:
+        attestation = analytics_policy.current_attestation(conn)
         centroids = feat.district_centroids(conn)
         names = feat.district_names(conn)
         with conn.cursor() as cur:
@@ -329,10 +340,14 @@ def forecast_trajectories_safe(head_id: Optional[int] = None, horizon: int = 6) 
     digest = getattr(fc, "model_artifact_digest", None)
 
     with db.rw_conn() as conn:
+        analytics_policy.require_supplied_current(conn, attestation, "TimesFM SageMaker run")
         mv_id = models.get_or_create_model_version(
-            conn, fc.name, "forecasting", "1.0.0", framework=fc.family,
-            hyperparameters={"horizon": horizon, "season": _SEASON,
-                             "served_via": "aws_sagemaker_async" if device else "local"})
+            conn, fc.name, "forecasting",
+            analytics_policy.policy_model_version("1.0.0", attestation), framework=fc.family,
+            hyperparameters=analytics_policy.stamp(
+                {"horizon": horizon, "season": _SEASON,
+                 "served_via": "aws_sagemaker_async" if device else "local"},
+                attestation))
         rows = []
         for d, periods, counts, traj, conf in done:
             s0 = traj[0]
@@ -340,8 +355,9 @@ def forecast_trajectories_safe(head_id: Optional[int] = None, horizon: int = 6) 
             start = dt.datetime(y, m, 1, tzinfo=dt.timezone.utc)
             end = (start + dt.timedelta(days=31 * horizon)).replace(day=1)
             lon, lat = centroids.get(d, (None, None))
-            features_json = {"layer": "timesfm", "model": fc.name, "trajectory": traj,
-                             "history_tail": counts[-12:], "district": names.get(d)}
+            features_json = analytics_policy.stamp(
+                {"layer": "timesfm", "model": fc.name, "trajectory": traj,
+                 "history_tail": counts[-12:], "district": names.get(d)}, attestation)
             if device:
                 features_json.update(actual_device=device, gpu_name=gpu,
                                      model_artifact_digest=digest,
@@ -362,10 +378,13 @@ def forecast_trajectories_safe(head_id: Optional[int] = None, horizon: int = 6) 
                     template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,"
                              "CASE WHEN %s IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326) END)",
                     page_size=200)
-            models.log_inference(conn, mv_id, ref_table="CrimePrediction",
-                                inputs={"head_id": head_id, "horizon": horizon},
-                                outputs={"districts": len(rows), "model": fc.name,
-                                         "actual_device": device, "gpu_name": gpu})
+            models.log_inference(
+                conn, mv_id, ref_table="CrimePrediction",
+                inputs=analytics_policy.stamp(
+                    {"head_id": head_id, "horizon": horizon}, attestation),
+                outputs={"districts": len(rows), "model": fc.name,
+                         "actual_device": device, "gpu_name": gpu,
+                         "complete_generation": True})
     return {"written": len(rows), "model": fc.name, "model_version_id": mv_id,
             "actual_device": device, "gpu_name": gpu, "model_artifact_digest": digest,
-            "districts": len(done)}
+            "districts": len(done), "analytics_policy_attestation": attestation.as_dict()}

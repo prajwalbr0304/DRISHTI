@@ -18,7 +18,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..cases import casedata
 from ..config import get_settings
+from .executor import authorize_case_aggregate
 from .glossary import glossary_text
 from .schema import requires_aggregate, schema_text
 
@@ -112,6 +114,12 @@ _BASE_FROM = (
 )
 
 
+def _analytics_where(where: str) -> str:
+    """Add current analytics policy only to deterministic aggregate branches."""
+    eligible = casedata.analytics_eligible_sql("cm")
+    return f"{where} AND {eligible}" if where else f" WHERE {eligible}"
+
+
 def _extract(question: str) -> dict:
     q = question.strip()
     ql = q.lower()
@@ -190,6 +198,7 @@ class FallbackPlanner:
         f = _carry_context(question, _extract(question), list(history or []))
         ql = question.lower()
         where = _where(f)
+        aggregate_where = _analytics_where(where)
         agg_role = requires_aggregate(role)
 
         if f.get("case_ref"):
@@ -222,15 +231,17 @@ class FallbackPlanner:
             r"\btop\b|ಟಾಪ್|most|highest|ranking|which districts|ಅತಿ ಹೆಚ್ಚು|ಹೆಚ್ಚು|"
             r"hecchu|adhika|jaasti", ql):
             n = f.get("top_n", 5)
-            sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{where} '
+            sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{aggregate_where} '
                    f'GROUP BY d."DistrictName" ORDER BY case_count DESC LIMIT {n}')
-            return Plan(sql=sql, intent="top_districts", confidence=0.72, language=language, filters=f)
+            return Plan(sql=authorize_case_aggregate(sql), intent="top_districts",
+                        confidence=0.72, language=language, filters=f)
 
         if re.search(r"trend|over time|monthly|per month|by month|each month|ಪ್ರವೃತ್ತಿ|ತಿಂಗಳ|"
                      r"pravrutti|tingala|maasika|maasa", ql):
             sql = (f'SELECT to_char(date_trunc(\'month\', cm."CrimeRegisteredDate"), \'YYYY-MM\') AS month, '
-                   f'COUNT(*) AS case_count {_BASE_FROM}{where} GROUP BY month ORDER BY month')
-            return Plan(sql=sql, intent="trend", confidence=0.7, language=language, filters=f)
+                   f'COUNT(*) AS case_count {_BASE_FROM}{aggregate_where} GROUP BY month ORDER BY month')
+            return Plan(sql=authorize_case_aggregate(sql), intent="trend",
+                        confidence=0.7, language=language, filters=f)
 
         if re.search(r"how many|count|number of|total|how much|ಎಷ್ಟು|ಸಂಖ್ಯೆ|"
                      r"\beshtu\b|\bestu\b|sankhye", ql):
@@ -248,11 +259,13 @@ class FallbackPlanner:
             if re.search(r"by district|per district|each district|across districts", ql) or (
                 not f.get("place") and re.search(r"district", ql)
             ):
-                sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{where} '
+                sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{aggregate_where} '
                        f'GROUP BY d."DistrictName" ORDER BY case_count DESC')
-                return Plan(sql=sql, intent="count_by_district", confidence=0.7, language=language, filters=f)
-            sql = f'SELECT COUNT(*) AS case_count {_BASE_FROM}{where}'
-            return Plan(sql=sql, intent="count", confidence=0.72, language=language, filters=f)
+                return Plan(sql=authorize_case_aggregate(sql), intent="count_by_district",
+                            confidence=0.7, language=language, filters=f)
+            sql = f'SELECT COUNT(*) AS case_count {_BASE_FROM}{aggregate_where}'
+            return Plan(sql=authorize_case_aggregate(sql), intent="count",
+                        confidence=0.72, language=language, filters=f)
 
         if re.search(r"list|show|which|recent|latest|display|give me|ತೋರಿಸಿ|ಪಟ್ಟಿ|ಇತ್ತೀಚಿನ|"
                      r"torisi|pattilist|ittichina|itichina", ql):
@@ -271,9 +284,10 @@ class FallbackPlanner:
                     intent="clarify", confidence=0.3, language=language, filters=f)
             if agg_role:
                 # aggregate-only role: no case list -> aggregate by district instead
-                sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{where} '
+                sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{aggregate_where} '
                        f'GROUP BY d."DistrictName" ORDER BY case_count DESC')
-                return Plan(sql=sql, intent="count_by_district", confidence=0.6, language=language, filters=f)
+                return Plan(sql=authorize_case_aggregate(sql), intent="count_by_district",
+                            confidence=0.6, language=language, filters=f)
             sql = (f'SELECT cm."CaseMasterID", cm."CrimeNo", cm."CrimeRegisteredDate", '
                    f'd."DistrictName", ch."CrimeGroupName", csh."CrimeHeadName", stt."CaseStatusName" '
                    f'{_BASE_FROM}{where} ORDER BY cm."CrimeRegisteredDate" DESC NULLS LAST')

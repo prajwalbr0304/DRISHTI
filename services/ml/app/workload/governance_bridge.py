@@ -29,6 +29,7 @@ import numpy as np
 from psycopg2.extras import Json
 
 from .. import audit, models
+from ..cases import analytics_policy
 from ..governance import builder
 from . import evaluation
 from . import features as feat
@@ -76,40 +77,112 @@ def workload_schema_id(conn) -> int:
     return int(r[0])
 
 
+def _training_snapshot_identity(conn, snapshot_id: Optional[int], attestation) -> str:
+    if snapshot_id is None:
+        raise analytics_policy.DerivedArtifactUnavailable(
+            "A workload model requires immutable training-snapshot lineage.")
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "ContentHash","Exclusions" FROM "TrainingDatasetSnapshot" '
+            'WHERE "TrainingDatasetSnapshotID"=%s', (snapshot_id,))
+        row = cur.fetchone()
+    if not row or not row[0]:
+        raise analytics_policy.DerivedArtifactUnavailable(
+            f"TrainingDatasetSnapshot {snapshot_id} is missing or has no content identity.")
+    analytics_policy.require_current(
+        conn, row[1], f"TrainingDatasetSnapshot {snapshot_id}", current=attestation)
+    return str(row[0])
+
+
+def require_workload_model_identity(metadata, artifact: str = "workload model") -> dict:
+    values = metadata if isinstance(metadata, dict) else {}
+    identity = values.get("model_identity")
+    digest = values.get("model_identity_sha256")
+    if not isinstance(identity, dict) or not isinstance(digest, str):
+        raise analytics_policy.ArtifactPolicyMismatch(
+            f"{artifact} has no immutable workload model identity; regenerate it.")
+    if builder._hash(identity) != digest:
+        raise analytics_policy.ArtifactPolicyMismatch(
+            f"{artifact} has inconsistent workload model identity metadata; regenerate it.")
+    return identity
+
+
 def ensure_workload_model(conn, feature_schema_version_id: int, *,
                           training_dataset_snapshot_id: Optional[int] = None,
                           metrics: Optional[dict] = None, backend: str = "incontext",
                           held_out_report: Optional[dict] = None,
-                          lifecycle: str = "staged", actor: Optional[str] = None) -> int:
-    """Register/lookup the approved workload ModelVersion and bind it to the
-    approved schema + training snapshot. Idempotent; refreshes governance fields.
-    The full held-out evaluation is stored alongside the summary so the UI can
-    serve it statically (no per-request recompute)."""
+                          model_config: Optional[dict] = None,
+                          lifecycle: str = "staged", actor: Optional[str] = None,
+                          policy_attestation=None) -> int:
+    """Register an immutable policy-, training-, and backend-qualified model."""
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
+    analytics_policy.require_supplied_current(conn, attestation, "workload model")
+    training_hash = _training_snapshot_identity(
+        conn, training_dataset_snapshot_id, attestation)
     if lifecycle not in _LIFECYCLE:
         lifecycle = "staged"
-    # production backend is Google TabFM on GPU (Prompt 14); Phase-13 CPU uses the
-    # requested interim backend (TabPFN, else the deterministic in-context stand-in).
-    report_blob = {"summary": metrics or {}, "phase13_backend": backend,
-                   "production_backend": "google-tabfm-v1 (GPU, Prompt 14)",
-                   "held_out": held_out_report or {}}
+    model_identity = {
+        "release_version": WORKLOAD_MODEL_VERSION,
+        "feature_schema_version_id": int(feature_schema_version_id),
+        "training_dataset_snapshot_id": int(training_dataset_snapshot_id),
+        "training_content_hash": training_hash,
+        "served_backend": backend,
+        "configuration": dict(model_config or {}),
+    }
+    identity_digest = builder._hash(model_identity)
+    report_blob = analytics_policy.stamp(
+        {"summary": metrics or {}, "phase13_backend": backend,
+         "production_backend": "google-tabfm-v1 (GPU, Prompt 14)",
+         "held_out": held_out_report or {}},
+        attestation)
+    hyperparameters = analytics_policy.stamp(
+        {"task": feat.TASK, "bands": feat.BANDS,
+         "production_candidate": "tabfm",
+         "phase13_candidates": ["tabpfn", "incontext"],
+         "baselines": ["prior_period", "majority", "gbm"],
+         "served_backend": backend,
+         "model_identity": model_identity,
+         "model_identity_sha256": identity_digest},
+        attestation)
+    immutable_version = f"{WORKLOAD_MODEL_VERSION}+identity.{identity_digest[:16]}"
     mv_id = models.get_or_create_model_version(
-        conn, WORKLOAD_MODEL_NAME, "classification", WORKLOAD_MODEL_VERSION,
+        conn, WORKLOAD_MODEL_NAME, "classification",
+        analytics_policy.policy_model_version(immutable_version, attestation),
         framework="tabfm-foundation", status=lifecycle,
-        hyperparameters={"task": feat.TASK, "bands": feat.BANDS,
-                         "production_candidate": "tabfm",
-                         "phase13_candidates": ["tabpfn", "incontext"],
-                         "baselines": ["prior_period", "majority", "gbm"],
-                         "served_backend": backend},
-        metrics=metrics or {})
+        hyperparameters=hyperparameters, metrics=metrics or {})
+    analytics_policy.require_model(conn, mv_id, "workload", current=attestation)
     with conn.cursor() as cur:
         cur.execute(
+            'SELECT "Hyperparameters","FeatureSchemaVersionID",'
+            '"TrainingDatasetSnapshotID" FROM "ModelVersion" '
+            'WHERE "ModelVersionID"=%s', (mv_id,))
+        existing = cur.fetchone()
+    if not existing:
+        raise analytics_policy.DerivedArtifactUnavailable(
+            f"Workload ModelVersion {mv_id} disappeared during registration.")
+    existing_identity = require_workload_model_identity(
+        existing[0], f"Workload ModelVersion {mv_id}")
+    if existing_identity != model_identity:
+        raise analytics_policy.ArtifactPolicyMismatch(
+            f"Workload ModelVersion {mv_id} collides with different immutable inputs.")
+    if existing[1] not in (None, feature_schema_version_id) or existing[2] not in (
+            None, training_dataset_snapshot_id):
+        raise analytics_policy.ArtifactPolicyMismatch(
+            f"Workload ModelVersion {mv_id} has conflicting schema or training lineage.")
+    with conn.cursor() as cur:
+        if lifecycle == "active":
+            cur.execute(
+                'UPDATE "ModelVersion" SET "Status"=\'shadow\' '
+                'WHERE "ModelName"=%s AND "ModelVersionID"<>%s AND "Status"=\'active\'',
+                (WORKLOAD_MODEL_NAME, mv_id))
+        cur.execute(
             'UPDATE "ModelVersion" SET "FeatureSchemaVersionID"=%s, '
-            '"TrainingDatasetSnapshotID"=COALESCE(%s,"TrainingDatasetSnapshotID"), '
+            '"TrainingDatasetSnapshotID"=%s, '
             '"ApprovalStatus"=\'approved\', "ApprovedBy"=COALESCE("ApprovedBy",%s), '
             '"ApprovedAt"=COALESCE("ApprovedAt", now()), "Environment"=\'hackathon_demo\', '
             '"Status"=%s, "EvaluationReport"=%s WHERE "ModelVersionID"=%s',
-            (feature_schema_version_id, training_dataset_snapshot_id, actor or "workload-bridge",
-             lifecycle, Json(report_blob), mv_id))
+            (feature_schema_version_id, training_dataset_snapshot_id,
+             actor or "workload-bridge", lifecycle, Json(report_blob), mv_id))
     return mv_id
 
 
@@ -138,55 +211,91 @@ def set_lifecycle(conn, model_version_id: int, stage: str, actor: Optional[str] 
 # Reproducible training dataset snapshot (time/geo splits + label windows)
 # ---------------------------------------------------------------------------
 def register_training_snapshot(conn, ds, *, feature_schema_version_id: int,
-                               actor: Optional[str] = None) -> int:
-    """Persist (idempotently) a TrainingDatasetSnapshot describing the exact
-    time/geographic splits, label windows, band thresholds and row count."""
+                               actor: Optional[str] = None,
+                               policy_attestation=None) -> int:
+    """Persist/reuse an attested workload TrainingDatasetSnapshot."""
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
+    analytics_policy.require_supplied_current(conn, attestation, "workload training snapshot")
     meta = ds.meta
     time_split = {"train": meta["train_cutoffs"], "val": meta["val_cutoffs"],
                   "test": meta["test_cutoffs"], "unit": "quarterly_cutoff"}
     geo_split = {"holdout_fraction": meta["geo_holdout_fraction"],
-                 "holdout_districts": ds.holdout_districts, "method": "every_kth_sorted_district"}
-    exclusions = {"valid_geography_only": meta["valid_geography"],
-                  "band_thresholds": ds.thresholds, "bands": ds.bands}
-    content_hash = builder._hash({"schema": feature_schema_version_id, "time": time_split,
-                                  "geo": geo_split, "rows": meta["n_rows"],
-                                  "thresholds": ds.thresholds, "axis": [meta["axis_first"], meta["axis_last"]]})
+                 "holdout_districts": ds.holdout_districts,
+                 "method": "every_kth_sorted_district"}
+    dataset_content_hash = builder._hash({
+        "feature_names": list(ds.feature_names),
+        "features": np.asarray(ds.X, dtype=float).tolist(),
+        "band_labels": np.asarray(ds.y, dtype=int).tolist(),
+        "label_counts": np.asarray(ds.label_count, dtype=float).tolist(),
+        "unit_ids": np.asarray(ds.unit_ids, dtype=int).tolist(),
+        "district_ids": np.asarray(ds.district_ids, dtype=int).tolist(),
+        "cutoff_periods": np.asarray(ds.cutoff_periods).tolist(),
+        "split_tags": np.asarray(ds.split_tags).tolist(),
+        "geo_holdout": np.asarray(ds.geo_holdout, dtype=bool).tolist(),
+        "meta": meta,
+    })
+    exclusions = analytics_policy.stamp(
+        {"valid_geography_only": meta["valid_geography"],
+         "band_thresholds": ds.thresholds, "bands": ds.bands,
+         "dataset_content_sha256": dataset_content_hash},
+        attestation)
+    content_hash = builder._hash({
+        "schema": feature_schema_version_id,
+        "time": time_split,
+        "geo": geo_split,
+        "rows": meta["n_rows"],
+        "thresholds": ds.thresholds,
+        "axis": [meta["axis_first"], meta["axis_last"]],
+        "dataset_content_sha256": dataset_content_hash,
+        "exclusions": exclusions,
+    })
     name = f"{feat.SCHEMA_NAME}-train"
     with conn.cursor() as cur:
-        cur.execute('SELECT "TrainingDatasetSnapshotID" FROM "TrainingDatasetSnapshot" '
-                    'WHERE "Name"=%s AND "ContentHash"=%s', (name, content_hash))
-        r = cur.fetchone()
-        if r:
-            return int(r[0])
+        cur.execute(
+            'SELECT "TrainingDatasetSnapshotID","Exclusions" '
+            'FROM "TrainingDatasetSnapshot" WHERE "Name"=%s AND "ContentHash"=%s',
+            (name, content_hash))
+        row = cur.fetchone()
+        if row:
+            analytics_policy.require_current(
+                conn, row[1], f"TrainingDatasetSnapshot {row[0]}", current=attestation)
+            return int(row[0])
         cutoff_dt = feat._period_end_dt(meta["cutoffs"][-1])
-        lw_start = feat._period_end_dt(meta["test_cutoffs"][0]) if meta["test_cutoffs"] else cutoff_dt
-        lw_end = feat._period_end_dt(meta["axis_last"])
+        label_start = (feat._period_end_dt(meta["test_cutoffs"][0])
+                       if meta["test_cutoffs"] else cutoff_dt)
+        label_end = feat._period_end_dt(meta["axis_last"])
         cur.execute(
             'INSERT INTO "TrainingDatasetSnapshot" ("Name","FeatureSchemaVersionID","TimeSplit",'
             '"GeoSplit","RowCount","ObservationCutoff","LabelWindowStart","LabelWindowEnd",'
             '"Exclusions","ApprovalStatus","ContentHash") '
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'approved',%s) RETURNING \"TrainingDatasetSnapshotID\"",
             (name, feature_schema_version_id, Json(time_split), Json(geo_split), meta["n_rows"],
-             cutoff_dt, lw_start, lw_end, Json(exclusions), content_hash))
-        snap_id = int(cur.fetchone()[0])
-    audit.record(audit.Action.MODEL_RUN, "training_dataset_snapshot", snap_id, actor=actor,
-                 conn=conn, detail={"rows": meta["n_rows"], "schema": feature_schema_version_id})
-    return snap_id
+             cutoff_dt, label_start, label_end, Json(exclusions), content_hash))
+        snapshot_id = int(cur.fetchone()[0])
+    audit.record(audit.Action.MODEL_RUN, "training_dataset_snapshot", snapshot_id, actor=actor,
+                 conn=conn, detail={"rows": meta["n_rows"],
+                                    "schema": feature_schema_version_id})
+    return snapshot_id
 
 
 # ---------------------------------------------------------------------------
 # Immutable per-station feature snapshot (idempotent + supersession)
 # ---------------------------------------------------------------------------
-def _find_live_snapshot(conn, schema_id: int, subject_ref_id: str, content_hash: str) -> Optional[int]:
+def _find_live_snapshot(conn, schema_id: int, subject_ref_id: str, content_hash: str,
+                        policy_attestation) -> Optional[int]:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "FeatureSnapshotID" FROM "FeatureSnapshot" '
+            'SELECT "FeatureSnapshotID","SourceVersions" FROM "FeatureSnapshot" '
             'WHERE "FeatureSchemaVersionID"=%s AND "SubjectKind"=%s AND "SubjectRefID"=%s '
             "AND \"ContentHash\"=%s AND \"SupersededByFeatureSnapshotID\" IS NULL "
             "AND \"QualityStatus\" <> 'stale' ORDER BY \"FeatureSnapshotID\" DESC LIMIT 1",
             (schema_id, feat.SUBJECT_KIND, subject_ref_id, content_hash))
-        r = cur.fetchone()
-    return int(r[0]) if r else None
+        row = cur.fetchone()
+    if not row:
+        return None
+    analytics_policy.require_current(
+        conn, row[1], f"FeatureSnapshot {row[0]}", current=policy_attestation)
+    return int(row[0])
 
 
 def _supersede_prior(conn, schema_id: int, subject_ref_id: str, new_id: int,
@@ -211,29 +320,69 @@ def _supersede_prior(conn, schema_id: int, subject_ref_id: str, new_id: int,
     return len(prior)
 
 
+def _stale_missing_snapshots(conn, schema_id: int, current_snapshot_ids: set[int]) -> int:
+    """Retire workload snapshots/results omitted by a complete or zero run."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "FeatureSnapshotID" FROM "FeatureSnapshot" '
+            'WHERE "FeatureSchemaVersionID"=%s AND "SubjectKind"=%s '
+            'AND "SupersededByFeatureSnapshotID" IS NULL AND "QualityStatus"<>\'stale\'',
+            (schema_id, feat.SUBJECT_KIND))
+        stale_ids = [int(row[0]) for row in cur.fetchall()
+                     if int(row[0]) not in current_snapshot_ids]
+        if not stale_ids:
+            return 0
+        reason = "absent from current workload generation"
+        cur.execute(
+            'UPDATE "FeatureSnapshot" SET "QualityStatus"=\'stale\',"StaleReason"=%s,'
+            '"SupersededAt"=now() WHERE "FeatureSnapshotID"=ANY(%s)',
+            (reason, stale_ids))
+        cur.execute(
+            'UPDATE "PredictionResult" SET "IsStale"=TRUE,"StaleReason"=%s,"StaleAt"=now() '
+            'WHERE "FeatureSnapshotID"=ANY(%s) AND "IsStale"=FALSE',
+            (reason, stale_ids))
+        cur.execute(
+            'UPDATE "PredictionRequest" SET "Status"=\'stale\' '
+            'WHERE "FeatureSnapshotID"=ANY(%s) '
+            'AND "Status" IN (\'queued\',\'running\',\'completed\')',
+            (stale_ids,))
+    return len(stale_ids)
+
+
 def build_workload_snapshot(conn, *, schema_id: int, unit_id: int, cutoff: dt.datetime,
-                            values: dict, source_versions: dict, actor: Optional[str] = None) -> dict:
+                            values: dict, source_versions: dict, actor: Optional[str] = None,
+                            policy_attestation=None) -> dict:
+    attestation = policy_attestation or analytics_policy.current_attestation(conn)
+    analytics_policy.require_supplied_current(conn, attestation, "workload feature snapshot")
     schema = builder._load_schema(conn, schema_id)
     if schema["status"] != "approved":
         raise builder.SchemaNotApproved(f"schema {schema_id} not approved.")
     definitions = builder._load_definitions(conn, schema["feature_definition_ids"])
-    builder.assert_no_protected_features(schema["task"], definitions)   # protected-feature guard
+    builder.assert_no_protected_features(schema["task"], definitions)
 
     names = [d["name"] for d in definitions]
     vals, unknown = {}, []
-    for n in names:
-        if n in values and values[n] is not None:
-            vals[n] = values[n]
+    for name in names:
+        if name in values and values[name] is not None:
+            vals[name] = values[name]
         else:
-            vals[n] = None
-            unknown.append(n)
+            vals[name] = None
+            unknown.append(name)
     quality = "partial" if unknown else "ok"
     subject_ref = str(unit_id)
-    content_hash = builder._hash({"schema": schema_id, "subject": [feat.SUBJECT_KIND, subject_ref],
-                                  "cutoff": builder._iso(cutoff), "values": vals})
-    existing = _find_live_snapshot(conn, schema_id, subject_ref, content_hash)
+    attested_sources = analytics_policy.stamp(source_versions, attestation)
+    content_hash = builder._hash({
+        "schema": schema_id,
+        "subject": [feat.SUBJECT_KIND, subject_ref],
+        "cutoff": builder._iso(cutoff),
+        "values": vals,
+        "source_versions": attested_sources,
+    })
+    existing = _find_live_snapshot(
+        conn, schema_id, subject_ref, content_hash, attestation)
     if existing is not None:
-        return {"feature_snapshot_id": existing, "reused": True, "quality_status": quality,
+        return {"feature_snapshot_id": existing, "reused": True,
+                "quality_status": quality, "content_hash": content_hash,
                 "superseded_prior": 0}
     with conn.cursor() as cur:
         cur.execute(
@@ -241,11 +390,12 @@ def build_workload_snapshot(conn, *, schema_id: int, unit_id: int, cutoff: dt.da
             '"ObservationCutoff","Values","SourceVersions","QualityStatus","ContentHash",'
             '"IsImmutable","BuiltByActor") VALUES (%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s) '
             'RETURNING "FeatureSnapshotID"',
-            (schema_id, feat.SUBJECT_KIND, subject_ref, cutoff, Json(vals), Json(source_versions),
+            (schema_id, feat.SUBJECT_KIND, subject_ref, cutoff, Json(vals), Json(attested_sources),
              quality, content_hash, actor))
-        snap_id = int(cur.fetchone()[0])
-    superseded = _supersede_prior(conn, schema_id, subject_ref, snap_id, actor)
-    return {"feature_snapshot_id": snap_id, "reused": False, "quality_status": quality,
+        snapshot_id = int(cur.fetchone()[0])
+    superseded = _supersede_prior(conn, schema_id, subject_ref, snapshot_id, actor)
+    return {"feature_snapshot_id": snapshot_id, "reused": False,
+            "quality_status": quality, "content_hash": content_hash,
             "superseded_prior": superseded}
 
 
@@ -253,8 +403,9 @@ def build_workload_snapshot(conn, *, schema_id: int, unit_id: int, cutoff: dt.da
 # Governed request + result
 # ---------------------------------------------------------------------------
 def _get_or_create_request(conn, model_version_id: int, feature_snapshot_id: int,
-                           actor: Optional[str]) -> tuple[int, bool]:
-    idem = f"workload:{feat.SUBJECT_KIND}:{feature_snapshot_id}"
+                           actor: Optional[str], policy_attestation) -> tuple[int, bool]:
+    idem = (f"workload:{feat.SUBJECT_KIND}:{feature_snapshot_id}:"
+            f"model:{model_version_id}:{policy_attestation.sha256}")
     with conn.cursor() as cur:
         cur.execute(
             'INSERT INTO "PredictionRequest" ("ModelVersionID","FeatureSnapshotID","RequestKind",'
@@ -264,17 +415,27 @@ def _get_or_create_request(conn, model_version_id: int, feature_snapshot_id: int
         r = cur.fetchone()
         if r:
             return int(r[0]), True
-        cur.execute('SELECT "PredictionRequestID" FROM "PredictionRequest" WHERE "IdempotencyKey"=%s',
-                    (idem,))
-        return int(cur.fetchone()[0]), False
+        cur.execute(
+            'SELECT "PredictionRequestID","ModelVersionID","FeatureSnapshotID" '
+            'FROM "PredictionRequest" WHERE "IdempotencyKey"=%s', (idem,))
+        existing = cur.fetchone()
+    if not existing or int(existing[1]) != int(model_version_id) or int(existing[2]) != int(
+            feature_snapshot_id):
+        raise analytics_policy.ArtifactPolicyMismatch(
+            "Workload request idempotency key collides with different immutable lineage.")
+    return int(existing[0]), False
 
 
 def _write_result(conn, request_id: int, model_version_id: int, feature_snapshot_id: int,
                   *, output: dict, explanation: dict, confidence: float) -> tuple[int, bool]:
     with conn.cursor() as cur:
-        cur.execute('SELECT "PredictionResultID" FROM "PredictionResult" '
-                    'WHERE "PredictionRequestID"=%s AND "SupersededByResultID" IS NULL '
-                    'AND "IsStale"=FALSE ORDER BY "PredictionResultID" DESC LIMIT 1', (request_id,))
+        cur.execute(
+            'SELECT "PredictionResultID" FROM "PredictionResult" '
+            'WHERE "PredictionRequestID"=%s AND "ModelVersionID"=%s '
+            'AND "FeatureSnapshotID"=%s AND "SupersededByResultID" IS NULL '
+            'AND "IsStale"=FALSE AND ("ExpiresAt" IS NULL OR "ExpiresAt">now()) '
+            'ORDER BY "PredictionResultID" DESC LIMIT 1',
+            (request_id, model_version_id, feature_snapshot_id))
         r = cur.fetchone()
         if r:
             return int(r[0]), False
@@ -286,6 +447,12 @@ def _write_result(conn, request_id: int, model_version_id: int, feature_snapshot
             (request_id, model_version_id, feature_snapshot_id, Json(output), Json(explanation),
              _LIMITATIONS, round(float(confidence), 5), expires))
         res_id = int(cur.fetchone()[0])
+        cur.execute(
+            'UPDATE "PredictionResult" SET "IsStale"=TRUE,"StaleReason"=%s,'
+            '"StaleAt"=now(),"SupersededByResultID"=%s '
+            'WHERE "PredictionRequestID"=%s AND "PredictionResultID"<>%s '
+            'AND "SupersededByResultID" IS NULL',
+            ("superseded by regenerated workload result", res_id, request_id, res_id))
         cur.execute("UPDATE \"PredictionRequest\" SET \"Status\"='completed' "
                     "WHERE \"PredictionRequestID\"=%s AND \"Status\" IN ('queued','running')",
                     (request_id,))
@@ -299,83 +466,126 @@ def persist_predictions(conn, *, foundation_kind: str = "incontext", limit: Opti
                         abstain_confidence: float = evaluation.DEFAULT_ABSTAIN_CONFIDENCE,
                         min_history_months: float = evaluation.DEFAULT_MIN_HISTORY_MONTHS,
                         lifecycle: str = "staged", actor: str = "workload-batch") -> dict:
-    """Train on the full labelled history, evaluate, register the governed model +
-    training snapshot, and persist each station's live band prediction through the
-    governed contract. Idempotent + supersedes prior snapshots."""
+    """Persist a policy-attested workload generation, including valid zero runs."""
+    attestation = analytics_policy.current_attestation(conn)
     schema_id = workload_schema_id(conn)
-    ds = feat.build_dataset(conn)
-    report = evaluation.evaluate_dataset(ds, foundation_kind=foundation_kind,
-                                         abstain_confidence=abstain_confidence,
-                                         min_history_months=min_history_months)
+    dataset = feat.build_dataset(conn)
+    report = evaluation.evaluate_dataset(
+        dataset, foundation_kind=foundation_kind,
+        abstain_confidence=abstain_confidence,
+        min_history_months=min_history_months)
     metrics = evaluation.summarize(report)
-    ts_id = register_training_snapshot(conn, ds, feature_schema_version_id=schema_id, actor=actor)
+    training_snapshot_id = register_training_snapshot(
+        conn, dataset, feature_schema_version_id=schema_id, actor=actor,
+        policy_attestation=attestation)
 
-    # served model: fit on ALL labelled rows, calibrate on val (deterministic
-    # in-context fallback if the requested weights/deps are unavailable)
-    model, backend = evaluation._resolve_model(foundation_kind, ds.n_bands, None)
-    model.fit(ds.X, ds.y)
-    va = ds.mask("val")
-    T = evaluation._fit_temperature(model.predict_proba(ds.X[va]), ds.y[va]) if va.any() else 1.0
+    model, backend = evaluation._resolve_model(foundation_kind, dataset.n_bands, None)
+    model.fit(dataset.X, dataset.y)
+    validation_mask = dataset.mask("val")
+    temperature = (evaluation._fit_temperature(
+        model.predict_proba(dataset.X[validation_mask]), dataset.y[validation_mask])
+        if validation_mask.any() else 1.0)
 
-    mv_id = ensure_workload_model(conn, schema_id, training_dataset_snapshot_id=ts_id,
-                                  metrics={**metrics, "backend": backend}, backend=backend,
-                                  held_out_report=report, lifecycle=lifecycle, actor=actor)
+    model_config = {
+        "requested_foundation": foundation_kind,
+        "resolved_model_class": type(model).__name__,
+        "temperature": round(float(temperature), 12),
+        "abstain_confidence": float(abstain_confidence),
+        "min_history_months": float(min_history_months),
+        "n_bands": int(dataset.n_bands),
+    }
+    model_version_id = ensure_workload_model(
+        conn, schema_id, training_dataset_snapshot_id=training_snapshot_id,
+        metrics={**metrics, "backend": backend}, backend=backend,
+        held_out_report=report, model_config=model_config, lifecycle=lifecycle,
+        actor=actor, policy_attestation=attestation)
 
     live = feat.build_live_features(conn)
     cutoff = feat._period_end_dt(live["cutoff_period"])
     rows = live["rows"][:limit] if limit else live["rows"]
     if rows:
-        vecs = np.asarray([r["vector"] for r in rows], dtype=float)
-        proba = evaluation._apply_temperature(model.predict_proba(vecs), T)
+        vectors = np.asarray([row["vector"] for row in rows], dtype=float)
+        probabilities = evaluation._apply_temperature(
+            model.predict_proba(vectors), temperature)
     else:
-        proba = np.zeros((0, ds.n_bands))
+        probabilities = np.zeros((0, dataset.n_bands))
 
-    src_base = {"canonical_layer": "CaseVersion", "throughput_layer": "ChargesheetDetails",
-                "as_of": cutoff.isoformat(), "feature_schema_version_id": schema_id,
-                "task": feat.TASK, "backend": backend, "temperature": T}
+    source_base = {
+        "canonical_layer": "CaseVersion", "throughput_layer": "ChargesheetDetails",
+        "as_of": cutoff.isoformat(), "feature_schema_version_id": schema_id,
+        "task": feat.TASK, "backend": backend, "temperature": temperature,
+    }
     snapshots = requests = results = reused = superseded = 0
-    hist_idx = feat.FEATURE_NAMES.index("wl_history_months")
-    for i, row in enumerate(rows):
-        p = proba[i]
-        band = int(p.argmax())
-        conf = float(p.max())
-        history = float(row["vector"][hist_idx])
-        abstain = bool(conf < abstain_confidence or history < min_history_months)
-        src = {**src_base, "unit_id": row["unit_id"], "district_id": row["district_id"]}
-        snap = build_workload_snapshot(conn, schema_id=schema_id, unit_id=row["unit_id"],
-                                       cutoff=cutoff, values=row["features"], source_versions=src,
-                                       actor=actor)
-        snapshots += 0 if snap["reused"] else 1
-        reused += 1 if snap["reused"] else 0
-        superseded += snap.get("superseded_prior", 0)
-        req_id, created_req = _get_or_create_request(conn, mv_id, snap["feature_snapshot_id"], actor)
-        requests += 1 if created_req else 0
-        output = {"workload_band": ds.bands[band], "band_ordinal": band,
-                  "band_probabilities": {ds.bands[b]: round(float(p[b]), 4) for b in range(ds.n_bands)},
-                  "abstained": abstain, "cutoff_period": live["cutoff_period"],
-                  "recent_case_volume": row["features"]["wl_recent_case_volume"],
-                  "aggregate_subject": "police_district", "district_id": row["district_id"],
-                  "district_name": row["unit_name"]}
-        explanation = {"method": f"TabFM aggregate workload classifier ({backend} backend); "
-                                 "temperature-calibrated; ordinal band from pre-cutoff station "
-                                 "volume/trend/seasonality/throughput features",
-                       "top_features": ["wl_recent_case_volume", "wl_trailing_year_volume",
-                                        "wl_prioryear_same_quarter", "wl_trend_slope"],
-                       "aggregate_only": True, "not_person_level": True,
-                       "evaluation": metrics}
-        _res_id, created_res = _write_result(conn, req_id, mv_id, snap["feature_snapshot_id"],
-                                             output=output, explanation=explanation, confidence=conf)
-        results += 1 if created_res else 0
+    current_snapshot_ids: set[int] = set()
+    history_index = feat.FEATURE_NAMES.index("wl_history_months")
+    for index, row in enumerate(rows):
+        probability = probabilities[index]
+        band = int(probability.argmax())
+        confidence = float(probability.max())
+        history = float(row["vector"][history_index])
+        abstain = bool(confidence < abstain_confidence or history < min_history_months)
+        sources = {**source_base, "unit_id": row["unit_id"],
+                   "district_id": row["district_id"]}
+        snapshot = build_workload_snapshot(
+            conn, schema_id=schema_id, unit_id=row["unit_id"], cutoff=cutoff,
+            values=row["features"], source_versions=sources, actor=actor,
+            policy_attestation=attestation)
+        snapshot_id = snapshot["feature_snapshot_id"]
+        current_snapshot_ids.add(snapshot_id)
+        snapshots += 0 if snapshot["reused"] else 1
+        reused += 1 if snapshot["reused"] else 0
+        superseded += snapshot.get("superseded_prior", 0)
+        request_id, created_request = _get_or_create_request(
+            conn, model_version_id, snapshot_id, actor, attestation)
+        requests += 1 if created_request else 0
+        output = {
+            "workload_band": dataset.bands[band], "band_ordinal": band,
+            "band_probabilities": {dataset.bands[b]: round(float(probability[b]), 4)
+                                   for b in range(dataset.n_bands)},
+            "abstained": abstain, "cutoff_period": live["cutoff_period"],
+            "recent_case_volume": row["features"]["wl_recent_case_volume"],
+            "aggregate_subject": "police_district", "district_id": row["district_id"],
+            "district_name": row["unit_name"],
+        }
+        explanation = analytics_policy.stamp(
+            {"method": f"TabFM aggregate workload classifier ({backend} backend); "
+                       "temperature-calibrated; ordinal band from pre-cutoff station "
+                       "volume/trend/seasonality/throughput features",
+             "top_features": ["wl_recent_case_volume", "wl_trailing_year_volume",
+                              "wl_prioryear_same_quarter", "wl_trend_slope"],
+             "aggregate_only": True, "not_person_level": True,
+             "evaluation": metrics},
+            attestation)
+        _result_id, created_result = _write_result(
+            conn, request_id, model_version_id, snapshot_id, output=output,
+            explanation=explanation, confidence=confidence)
+        results += 1 if created_result else 0
 
-    audit.record(audit.Action.MODEL_RUN, "workload_governed", mv_id, actor=actor, conn=conn,
-                 detail={"model_version_id": mv_id, "feature_schema_version_id": schema_id,
-                         "training_dataset_snapshot_id": ts_id, "stations": len(rows),
-                         "snapshots_new": snapshots, "results_new": results, "backend": backend})
-    return {"model_version_id": mv_id, "feature_schema_version_id": schema_id,
-            "training_dataset_snapshot_id": ts_id, "backend": backend, "cutoff": live["cutoff_period"],
-            "stations": len(rows), "snapshots_new": snapshots, "snapshots_reused": reused,
-            "requests_new": requests, "results_new": results, "superseded_prior": superseded,
-            "metrics": metrics}
+    complete_generation = limit is None
+    analytics_policy.require_supplied_current(conn, attestation, "workload prediction run")
+    if complete_generation:
+        superseded += _stale_missing_snapshots(conn, schema_id, current_snapshot_ids)
+    models.log_inference(
+        conn, model_version_id, ref_table="PredictionResult",
+        inputs=analytics_policy.stamp(
+            {"task": feat.TASK, "feature_schema_version_id": schema_id,
+             "cutoff_period": live["cutoff_period"], "limit": limit}, attestation),
+        outputs={"stations": len(rows), "results": results,
+                 "complete_generation": complete_generation})
+    audit.record(audit.Action.MODEL_RUN, "workload_governed", model_version_id,
+                 actor=actor, conn=conn,
+                 detail={"model_version_id": model_version_id,
+                         "feature_schema_version_id": schema_id,
+                         "training_dataset_snapshot_id": training_snapshot_id,
+                         "stations": len(rows), "snapshots_new": snapshots,
+                         "results_new": results, "backend": backend,
+                         "complete_generation": complete_generation})
+    return {"model_version_id": model_version_id, "feature_schema_version_id": schema_id,
+            "training_dataset_snapshot_id": training_snapshot_id, "backend": backend,
+            "cutoff": live["cutoff_period"], "stations": len(rows),
+            "snapshots_new": snapshots, "snapshots_reused": reused,
+            "requests_new": requests, "results_new": results,
+            "superseded_prior": superseded, "metrics": metrics}
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +635,6 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
     Requires ``DRISHTI_AWS_ADAPTER_URL`` / ``DRISHTI_AWS_ADAPTER_SECRET`` and a live
     SageMaker endpoint. Aggregate DISTRICT support only — never a person-level score.
     """
-    import hashlib
     import time
 
     import numpy as np
@@ -436,8 +645,12 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
     from ..predict.routing import InputEvent, RoutingContext
     from ..predict.runtime import PredictionJobInput, PredictionRuntime
 
+    attestation = analytics_policy.current_attestation(conn)
     schema_id = workload_schema_id(conn)
     ds = feat.build_dataset(conn)
+    training_snapshot_id = register_training_snapshot(
+        conn, ds, feature_schema_version_id=schema_id, actor=actor,
+        policy_attestation=attestation)
 
     # Labelled in-context examples for TabFM (deterministic subsample to a context
     # budget so the crossing payload stays bounded). All rows are historical.
@@ -447,17 +660,64 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
         ctx_X, ctx_y = ctx_X[idx], ctx_y[idx]
     context_x = [[round(float(v), 6) for v in row] for row in ctx_X]
     context_y = [int(v) for v in ctx_y]
+    context_digest = builder._hash({
+        "feature_names": list(feat.FEATURE_NAMES),
+        "context_x": context_x,
+        "context_y": context_y,
+        "context_limit": int(context_limit),
+    })
 
     live = feat.build_live_features(conn)
     rows = live["rows"]
-    if not rows:
-        raise WorkloadGovernanceError("no live district features to score")
     cutoff_dt = feat._period_end_dt(live["cutoff_period"])
+    if not rows:
+        zero_metrics = {"backend": "tabfm", "served_via": "not_dispatched_zero_rows"}
+        model_version_id = ensure_workload_model(
+            conn, schema_id, training_dataset_snapshot_id=training_snapshot_id,
+            metrics=zero_metrics, backend="google-tabfm-v1 (not dispatched)",
+            model_config={"dispatch": "not_dispatched_zero_rows",
+                          "context_sha256": context_digest,
+                          "context_limit": int(context_limit),
+                          "n_bands": int(ds.n_bands)},
+            lifecycle="active", actor=actor, policy_attestation=attestation)
+        superseded = _stale_missing_snapshots(conn, schema_id, set())
+        analytics_policy.require_supplied_current(
+            conn, attestation, "SageMaker workload zero run")
+        models.log_inference(
+            conn, model_version_id, ref_table="PredictionResult",
+            inputs=analytics_policy.stamp(
+                {"task": feat.TASK, "feature_schema_version_id": schema_id,
+                 "cutoff_period": live["cutoff_period"], "dispatch": "sagemaker_async"},
+                attestation),
+            outputs={"stations": 0, "results": 0, "complete_generation": True})
+        audit.record(
+            audit.Action.MODEL_RUN, "workload_sagemaker", model_version_id,
+            actor=actor, conn=conn,
+            detail={"model_version_id": model_version_id, "districts": 0,
+                    "results_new": 0, "complete_generation": True})
+        return {"model_version_id": model_version_id,
+                "feature_schema_version_id": schema_id,
+                "training_dataset_snapshot_id": training_snapshot_id,
+                "backend": "google-tabfm-v1", "cutoff": live["cutoff_period"],
+                "districts": 0, "snapshots_new": 0, "snapshots_reused": 0,
+                "requests_new": 0, "results_new": 0,
+                "superseded_prior": superseded, "metrics": zero_metrics}
     query_rows = [[round(float(v), 6) for v in r["vector"]] for r in rows]
 
     columns = [ColumnDef(name=n) for n in feat.FEATURE_NAMES]
-    svh = hashlib.sha256(
-        f'{live["cutoff_period"]}:{len(rows)}:{feat.SCHEMA_VERSION}'.encode()).hexdigest()[:16]
+    query_digest = builder._hash({
+        "subject_ids": [str(r["district_id"]) for r in rows],
+        "query_rows": query_rows,
+        "cutoff_period": live["cutoff_period"],
+    })
+    svh = builder._hash({
+        "feature_schema_version": feat.SCHEMA_VERSION,
+        "training_dataset_snapshot_id": training_snapshot_id,
+        "context_sha256": context_digest,
+        "query_sha256": query_digest,
+        "policy_version": attestation.version,
+        "policy_sha256": attestation.sha256,
+    })
 
     job = PredictionJobInput(
         routing_ctx=RoutingContext(event=InputEvent.FIR_APPROVED, subject_kind=feat.SUBJECT_KIND,
@@ -466,7 +726,9 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
         task=ModelTask.STATION_WORKLOAD_BAND, requested_backend=BackendKind.TABFM,
         subject_kind=feat.SUBJECT_KIND, subject_ids=[str(r["district_id"]) for r in rows],
         columns=columns, query_rows=query_rows,
-        feature_schema_version=feat.SCHEMA_VERSION, model_version=WORKLOAD_MODEL_VERSION,
+        feature_schema_version=feat.SCHEMA_VERSION,
+        model_version=analytics_policy.policy_model_version(
+            WORKLOAD_MODEL_VERSION, attestation),
         feature_schema_digest=f"wl-schema-{schema_id}", observation_cutoff=live["cutoff"],
         source_version_hash=svh, context_x=context_x, context_y=context_y,
         output_schema={"n_bands": ds.n_bands})
@@ -491,24 +753,38 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
     device = getattr(res.actual_device, "value", str(res.actual_device))
     gpu = res.gpu_name
     digest = res.model_artifact_digest
+    if not isinstance(digest, str) or not digest.strip():
+        raise WorkloadGovernanceError(
+            "SageMaker TabFM result has no immutable model-artifact digest.")
     preds = res.predictions or []
+    if len(preds) != len(rows):
+        raise WorkloadGovernanceError(
+            f"SageMaker returned {len(preds)} predictions for {len(rows)} workload subjects; "
+            "refusing a partial persisted generation.")
     backend_label = f"google-tabfm-v1 ({device}/{gpu})"
 
-    # Register/serve the governed model with the REAL backend/device evidence.
-    ts_id = register_training_snapshot(conn, ds, feature_schema_version_id=schema_id, actor=actor)
+    # Revalidate after the long remote inference before any database artifact is stamped.
+    analytics_policy.require_supplied_current(conn, attestation, "SageMaker workload run")
     metrics = {"backend": "tabfm", "actual_device": device, "gpu_name": gpu,
                "model_artifact_digest": digest, "served_via": "aws_sagemaker_async_t4",
                "adapter_request_id": res.request_id, "runtime_ms": res.runtime_ms,
                "cold_start_ms": res.cold_start_ms, "peak_gpu_mem_mb": res.peak_gpu_mem_mb}
-    mv_id = ensure_workload_model(conn, schema_id, training_dataset_snapshot_id=ts_id,
-                                  metrics=metrics, backend=backend_label,
-                                  lifecycle="active", actor=actor)
+    mv_id = ensure_workload_model(
+        conn, schema_id, training_dataset_snapshot_id=training_snapshot_id,
+        metrics=metrics, backend=backend_label,
+        model_config={"dispatch": "sagemaker_async",
+                      "model_artifact_digest": digest,
+                      "context_sha256": context_digest,
+                      "context_limit": int(context_limit),
+                      "n_bands": int(ds.n_bands)},
+        lifecycle="active", actor=actor, policy_attestation=attestation)
 
     src_base = {"canonical_layer": "CaseVersion", "throughput_layer": "ChargesheetDetails",
                 "as_of": cutoff_dt.isoformat(), "feature_schema_version_id": schema_id,
                 "task": feat.TASK, "backend": "google-tabfm-v1", "actual_device": device,
                 "gpu_name": gpu, "model_artifact_digest": digest, "dispatch": "sagemaker_async"}
     snapshots = requests = results = reused = superseded = 0
+    current_snapshot_ids: set[int] = set()
     for i, row in enumerate(rows):
         pred = preds[i] if i < len(preds) else {}
         probs = pred.get("band_probabilities") or [0.0] * ds.n_bands
@@ -516,13 +792,16 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
         band = min(max(band, 0), ds.n_bands - 1)
         conf = float(max(probs)) if probs else 0.0
         src = {**src_base, "unit_id": row["unit_id"], "district_id": row["district_id"]}
-        snap = build_workload_snapshot(conn, schema_id=schema_id, unit_id=row["unit_id"],
-                                       cutoff=cutoff_dt, values=row["features"],
-                                       source_versions=src, actor=actor)
+        snap = build_workload_snapshot(
+            conn, schema_id=schema_id, unit_id=row["unit_id"], cutoff=cutoff_dt,
+            values=row["features"], source_versions=src, actor=actor,
+            policy_attestation=attestation)
+        current_snapshot_ids.add(snap["feature_snapshot_id"])
         snapshots += 0 if snap["reused"] else 1
         reused += 1 if snap["reused"] else 0
         superseded += snap.get("superseded_prior", 0)
-        req_id, created_req = _get_or_create_request(conn, mv_id, snap["feature_snapshot_id"], actor)
+        req_id, created_req = _get_or_create_request(
+            conn, mv_id, snap["feature_snapshot_id"], actor, attestation)
         requests += 1 if created_req else 0
         output = {"workload_band": ds.bands[band], "band_ordinal": band,
                   "band_probabilities": {ds.bands[b]: round(float(probs[b]), 4)
@@ -533,26 +812,42 @@ def persist_predictions_via_sagemaker(conn, *, context_limit: int = 512,
                   "district_name": row["unit_name"], "actual_backend": "tabfm",
                   "actual_device": device, "gpu_name": gpu, "model_artifact_digest": digest,
                   "served_via": "aws_sagemaker_async"}
-        explanation = {"method": (f"REAL Google TabFM v1 in-context classifier on AWS SageMaker "
-                                  f"({device}, {gpu}); fail-closed validated; ordinal band from "
-                                  "pre-cutoff district volume/trend/seasonality/throughput features"),
-                       "top_features": ["wl_recent_case_volume", "wl_trailing_year_volume",
-                                        "wl_prioryear_same_quarter", "wl_trend_slope"],
-                       "aggregate_only": True, "not_person_level": True,
-                       "model_artifact_digest": digest}
+        explanation = analytics_policy.stamp(
+            {"method": (f"REAL Google TabFM v1 in-context classifier on AWS SageMaker "
+                        f"({device}, {gpu}); fail-closed validated; ordinal band from "
+                        "pre-cutoff district volume/trend/seasonality/throughput features"),
+             "top_features": ["wl_recent_case_volume", "wl_trailing_year_volume",
+                              "wl_prioryear_same_quarter", "wl_trend_slope"],
+             "aggregate_only": True, "not_person_level": True,
+             "model_artifact_digest": digest},
+            attestation)
         _res_id, created_res = _write_result(conn, req_id, mv_id, snap["feature_snapshot_id"],
                                              output=output, explanation=explanation, confidence=conf)
         results += 1 if created_res else 0
 
+    superseded += _stale_missing_snapshots(conn, schema_id, current_snapshot_ids)
+    analytics_policy.require_supplied_current(conn, attestation, "SageMaker workload run")
+    models.log_inference(
+        conn, mv_id, ref_table="PredictionResult",
+        inputs=analytics_policy.stamp(
+            {"task": feat.TASK, "feature_schema_version_id": schema_id,
+             "cutoff_period": live["cutoff_period"], "dispatch": "sagemaker_async"},
+            attestation),
+        outputs={"stations": len(rows), "results": results,
+                 "complete_generation": True})
     audit.record(audit.Action.MODEL_RUN, "workload_sagemaker", mv_id, actor=actor, conn=conn,
                  detail={"model_version_id": mv_id, "backend": "tabfm", "device": device,
-                         "gpu_name": gpu, "model_artifact_digest": digest, "districts": len(rows),
-                         "results_new": results, "adapter_request_id": res.request_id})
+                         "gpu_name": gpu, "model_artifact_digest": digest,
+                         "districts": len(rows), "results_new": results,
+                         "adapter_request_id": res.request_id, "complete_generation": True})
     return {"model_version_id": mv_id, "feature_schema_version_id": schema_id,
-            "training_dataset_snapshot_id": ts_id, "backend": "google-tabfm-v1",
+            "training_dataset_snapshot_id": training_snapshot_id,
+            "backend": "google-tabfm-v1",
             "actual_device": device, "gpu_name": gpu, "model_artifact_digest": digest,
-            "cutoff": live["cutoff_period"], "districts": len(rows), "snapshots_new": snapshots,
-            "snapshots_reused": reused, "requests_new": requests, "results_new": results,
+            "cutoff": live["cutoff_period"], "districts": len(rows),
+            "snapshots_new": snapshots, "snapshots_reused": reused,
+            "requests_new": requests, "results_new": results,
             "superseded_prior": superseded, "runtime_ms": res.runtime_ms,
-            "cold_start_ms": res.cold_start_ms, "peak_gpu_mem_mb": res.peak_gpu_mem_mb,
+            "cold_start_ms": res.cold_start_ms,
+            "peak_gpu_mem_mb": res.peak_gpu_mem_mb,
             "adapter_request_id": res.request_id}

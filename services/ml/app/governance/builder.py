@@ -28,6 +28,8 @@ from typing import Optional
 
 from psycopg2.extras import Json
 
+from ..cases import analytics_policy
+
 # Tasks for which a separately-reviewed aggregate schema may include a
 # protected/restricted feature. EMPTY for the hackathon: protected attributes
 # (caste/religion/gender/juvenile/...) are excluded from every prediction schema.
@@ -114,8 +116,12 @@ def assert_no_protected_features(task: Optional[str], definitions: list[dict]) -
 # Canonical pre-cutoff area aggregates (leakage-safe)
 # ---------------------------------------------------------------------------
 def _default_cutoff(conn) -> dt.datetime:
+    from ..cases import casedata
+
     with conn.cursor() as cur:
-        cur.execute('SELECT max("CrimeRegisteredDate") FROM "CaseMaster"')
+        cur.execute(
+            'SELECT max(cm."CrimeRegisteredDate") FROM "CaseMaster" cm '
+            f'WHERE {casedata.analytics_eligible_sql("cm")}')
         r = cur.fetchone()
     latest = r[0] if r and r[0] else dt.datetime.now(dt.timezone.utc)
     if isinstance(latest, dt.date) and not isinstance(latest, dt.datetime):
@@ -127,6 +133,8 @@ def _district_area_stats(conn, district_id: int, cutoff) -> dict:
     """Pre-cutoff canonical aggregates for one district. Reads only validated
     canonical cases (those with a current CaseVersion) registered on/before the
     observation cutoff — post-cutoff rows can never contribute (no leakage)."""
+    from ..cases import casedata
+
     prior_start = cutoff - dt.timedelta(days=365)
     with conn.cursor() as cur:
         cur.execute(
@@ -142,6 +150,7 @@ def _district_area_stats(conn, district_id: int, cutoff) -> dict:
             'WHERE u."DistrictID" = %s '
             'AND cm."CrimeRegisteredDate" IS NOT NULL '
             'AND cm."CrimeRegisteredDate" <= %s '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'AND EXISTS (SELECT 1 FROM "CaseVersion" cv '
             '            WHERE cv."CaseMasterID" = cm."CaseMasterID" AND cv."IsCurrent")',
             (prior_start, district_id, cutoff))
@@ -192,6 +201,7 @@ def build_snapshot(conn, *, feature_schema_version_id: int, subject_kind: str,
     Enforces: approved schema only; protected features excluded; strictly
     pre-cutoff inputs; deterministic content hash; provenance in SourceVersions.
     """
+    attestation = analytics_policy.current_attestation(conn)
     schema = _load_schema(conn, feature_schema_version_id)
     if schema["status"] != "approved":
         raise SchemaNotApproved(
@@ -215,15 +225,21 @@ def build_snapshot(conn, *, feature_schema_version_id: int, subject_kind: str,
     values, unknown = _compute_values(names, stats)
     quality = "partial" if unknown else "ok"
 
-    source_versions = {
+    source_versions = analytics_policy.stamp({
         "canonical_layer": "CaseVersion",
         "case_source_system_id": _source_system_id(conn),
         "as_of": _iso(cutoff),
         "n_pre_cutoff_cases": stats["total_pre"],
         "feature_schema_version_id": feature_schema_version_id,
-    }
-    content_hash = _hash({"schema": feature_schema_version_id, "subject": [subject_kind, subject_ref_id],
-                          "cutoff": _iso(cutoff), "values": values})
+    }, attestation)
+    content_hash = _hash({
+        "schema": feature_schema_version_id,
+        "subject": [subject_kind, subject_ref_id],
+        "cutoff": _iso(cutoff),
+        "values": values,
+        "source_versions": source_versions,
+    })
+    analytics_policy.require_supplied_current(conn, attestation, "generic feature snapshot")
 
     with conn.cursor() as cur:
         cur.execute(

@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from ..config import get_settings
+from ..cases import analytics_policy
 from ..intake.guards import require_write_allowed
 from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import service
@@ -63,6 +64,8 @@ def require_gov_review(x_role: Optional[str] = Header(default=None)) -> str:
 
 
 def _map_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, analytics_policy.DerivedArtifactUnavailable):
+        return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, (service.NotFound, service.builder.SubjectNotFound)):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, service.SchemaMismatch):
@@ -74,6 +77,13 @@ def _map_error(exc: Exception) -> HTTPException:
     if isinstance(exc, (service.BuilderError, service.GovernanceError)):
         return HTTPException(status_code=400, detail=str(exc))
     raise exc
+
+
+def _serve(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        raise _map_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +107,7 @@ def models(governed_only: bool = Query(True)):
 @router.get("/snapshots", response_model=FeatureSnapshotListResponse)
 def snapshots(subject_kind: Optional[str] = Query(None), subject_ref_id: Optional[str] = Query(None),
               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)):
-    return service.list_snapshots(subject_kind, subject_ref_id, page, page_size)
+    return _serve(service.list_snapshots, subject_kind, subject_ref_id, page, page_size)
 
 
 @router.get("/labels", response_model=OutcomeLabelListResponse)
@@ -109,12 +119,12 @@ def labels(split: Optional[str] = Query(None), page: int = Query(1, ge=1),
 @router.get("/predictions", response_model=PredictionRequestListResponse)
 def predictions(status: Optional[str] = Query(None), page: int = Query(1, ge=1),
                 page_size: int = Query(50, ge=1, le=200)):
-    return service.list_requests(status, page, page_size)
+    return _serve(service.list_requests, status, page, page_size)
 
 
 @router.get("/predictions/{request_id}", response_model=PredictionDetail)
 def prediction_detail(request_id: int):
-    detail = service.get_prediction_detail(request_id)
+    detail = _serve(service.get_prediction_detail, request_id)
     if detail is None:
         raise HTTPException(status_code=404, detail=f"PredictionRequest {request_id} not found.")
     return detail
@@ -156,7 +166,7 @@ def create_prediction(body: CreatePredictionRequest, request: Request,
                                      body.actor or f"demo.{role}")
     except Exception as exc:  # noqa: BLE001
         raise _map_error(exc)
-    detail = service.get_prediction_detail(req["prediction_request_id"])
+    detail = _serve(service.get_prediction_detail, req["prediction_request_id"])
     if detail is None:
         raise HTTPException(status_code=500, detail="request created but not retrievable")
     return detail
@@ -170,7 +180,7 @@ def run_prediction(request_id: int, body: RunPredictionRequest, request: Request
         service.run_request(request_id, body.actor or f"demo.{role}")
     except Exception as exc:  # noqa: BLE001
         raise _map_error(exc)
-    return service.get_prediction_detail(request_id)
+    return _serve(service.get_prediction_detail, request_id)
 
 
 @router.post("/predictions/{request_id}/review", response_model=PredictionDetail)
@@ -182,7 +192,7 @@ def review_prediction(request_id: int, body: ReviewPredictionRequest, request: R
                                body.actor or f"demo.{role}")
     except Exception as exc:  # noqa: BLE001
         raise _map_error(exc)
-    return service.get_prediction_detail(request_id)
+    return _serve(service.get_prediction_detail, request_id)
 
 
 @router.post("/models/{model_version_id}/rollback", response_model=ModelVersionListResponse)

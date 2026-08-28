@@ -87,9 +87,40 @@ const BOUNDARY_TOGGLES: { key: BoundaryKey; label: string; swatch: string; aggre
 ];
 
 type Selected =
-  | { type: "case"; id: number; lon: number; lat: number }
+  | { type: "case"; id: number; lon: number; lat: number; approximate: boolean }
   | { type: "station"; station: StationFeature }
   | null;
+
+function caseReferenceLabel(caseId: number, crimeNo?: string | null): string {
+  const presentationNumber = crimeNo?.trim();
+  return presentationNumber ? `Case ${presentationNumber}` : `Internal case ID #${caseId}`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] ?? character);
+}
+
+function isApproximateLocation(location: {
+  not_exact_incident_scene?: boolean | null;
+  location_precision?: string | null;
+}): boolean {
+  return location.not_exact_incident_scene === true
+    || location.location_precision === "approximate_locality_reference";
+}
+
+function isApproximateLinkSource(source: {
+  source_not_exact_incident_scene?: boolean | null;
+  source_location_precision?: string | null;
+}): boolean {
+  return source.source_not_exact_incident_scene === true
+    || source.source_location_precision === "approximate_locality_reference";
+}
 
 function haversineKm(a: [number, number], b: [number, number]) {
   const R = 6371;
@@ -210,6 +241,19 @@ export function MapHotspots() {
     enabled: mode === "live" && showLinks && linkHub != null,
   });
 
+  // The case-links response is authoritative for source precision. If it marks
+  // the selected hub as approximate, close and disable exact-location imagery.
+  useEffect(() => {
+    const source = linksQ.data;
+    if (!source || selected?.type !== "case" || selected.id !== source.source_case_id) return;
+    const approximate = isApproximateLinkSource(source);
+    if (selected.approximate !== approximate) setSelected({ ...selected, approximate });
+    if (approximate) {
+      setStreetView(null);
+      setSvCamera(null);
+    }
+  }, [linksQ.data, selected]);
+
   // Boundary overlays are static reference geography — fetch once, keep forever.
   const stateBndQ = useQuery({
     queryKey: ["geo", "boundary", "state"],
@@ -281,16 +325,23 @@ export function MapHotspots() {
     [windowPoints, crimeFilter],
   );
 
+  // Governed records remain visible as individual live-map references, but do
+  // not contribute to density, hex-bin, hotspot, or other derived aggregates.
+  const analyticsVisiblePoints = useMemo(
+    () => visiblePoints.filter((p) => !p.excluded_from_derived_analytics),
+    [visiblePoints],
+  );
+
   const todPoints = useMemo(() => {
     const bucket = TOD_BUCKETS.find((b) => b.key === tod);
-    if (!bucket?.range) return visiblePoints;
+    if (!bucket?.range) return analyticsVisiblePoints;
     const [lo, hi] = bucket.range;
-    return visiblePoints.filter((p) => p.hour != null && p.hour >= lo && p.hour < hi);
-  }, [visiblePoints, tod]);
+    return analyticsVisiblePoints.filter((p) => p.hour != null && p.hour >= lo && p.hour < hi);
+  }, [analyticsVisiblePoints, tod]);
 
   // Clamped colour domains so the extreme metro outlier can't collapse the ramp
   // (Live low-zoom hex + Hotspots 3D hex both use quantize over these domains).
-  const liveHexDomain = useMemo(() => hexColorDomain(visiblePoints), [visiblePoints]);
+  const liveHexDomain = useMemo(() => hexColorDomain(analyticsVisiblePoints), [analyticsVisiblePoints]);
   const hotspotHexDomain = useMemo(() => hexColorDomain(todPoints), [todPoints]);
 
   const stations = stationsQ.data?.stations ?? [];
@@ -335,6 +386,13 @@ export function MapHotspots() {
 
   const activeAlerts = (alertsQ.data?.alerts ?? []).filter((a) => !ackIds.has(a.alert_id));
   const horizonScale = horizon / 30;
+  const hasApproximateLocations = mode === "live" && (
+    visiblePoints.some((point) => isApproximateLocation(point))
+    || (showLinks && linksQ.data != null && (
+      isApproximateLinkSource(linksQ.data)
+      || linksQ.data.links.some((link) => isApproximateLocation(link))
+    ))
+  );
 
   const layers = useMemo<Layer[]>(() => {
     const L: Layer[] = [];
@@ -349,24 +407,42 @@ export function MapHotspots() {
     }
     if (mode === "live") {
       const onCaseClick = (p: PointFeature) => {
-        setSelected({ type: "case", id: p.case_id, lon: p.lon, lat: p.lat });
+        setSelected({
+          type: "case", id: p.case_id, lon: p.lon, lat: p.lat,
+          approximate: isApproximateLocation(p),
+        });
+        if (isApproximateLocation(p)) {
+          setStreetView(null);
+          setSvCamera(null);
+        }
         if (showLinks) {
           setLinkHub({ id: p.case_id, lon: p.lon, lat: p.lat });
           if (!is3D) set3D(true);
         }
       };
-      if (viewState.zoom < 8.5) L.push(pointsHex(visiblePoints, liveHexDomain));
+      if (viewState.zoom < 8.5) L.push(pointsHex(analyticsVisiblePoints, liveHexDomain));
       else L.push(pointsScatter(visiblePoints, onCaseClick));
       if (showStations && viewState.zoom >= STATION_MIN_ZOOM)
         L.push(stationMarkers(stations, (s) => setSelected({ type: "station", station: s })));
       // Connected-cases 3D arcs (shared accused footprint)
       const lk = linksQ.data;
       if (showLinks && linkHub && lk && lk.source_lon != null && lk.source_lat != null) {
-        const src = { lon: lk.source_lon, lat: lk.source_lat };
+        const src = {
+          lon: lk.source_lon,
+          lat: lk.source_lat,
+          not_exact_incident_scene: isApproximateLinkSource(lk),
+          location_precision: lk.source_location_precision,
+          uncertainty_radius_m: lk.source_uncertainty_radius_m,
+        };
         L.push(caseArcs(src, lk.links));
         L.push(
           linkTargets(lk.links, (l: CaseLinkNode) => {
-            setSelected({ type: "case", id: l.case_id, lon: l.lon, lat: l.lat });
+            const approximate = isApproximateLocation(l);
+            setSelected({ type: "case", id: l.case_id, lon: l.lon, lat: l.lat, approximate });
+            if (approximate) {
+              setStreetView(null);
+              setSvCamera(null);
+            }
             setLinkHub({ id: l.case_id, lon: l.lon, lat: l.lat });
           }),
         );
@@ -395,7 +471,7 @@ export function MapHotspots() {
     }
     return L;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, aggregateOnly, visiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D, boundaries, stateBndQ.data, distBndQ.data, talukBndQ.data, shoBndQ.data]);
+  }, [mode, aggregateOnly, visiblePoints, analyticsVisiblePoints, todPoints, liveHexDomain, hotspotHexDomain, stations, showStations, hotspotsQ.data, forecastQ.data, districtAggs, gaps, activeAlerts, pulse, horizonScale, viewState.zoom, hex3D, showLinks, linkHub, linksQ.data, is3D, boundaries, stateBndQ.data, distBndQ.data, talukBndQ.data, shoBndQ.data]);
 
   const getTooltip = (info: PickingInfo): { html: string; style: Record<string, string> } | null => {
     // Once a detail popup is open it becomes the single source of information
@@ -406,10 +482,19 @@ export function MapHotspots() {
     if (!o) return null;
     let html = "";
     const id = info.layer?.id;
-    if (id === "incident-points") html = `${(o as PointFeature).crime_group ?? "Incident"} · case ${(o as PointFeature).case_id}`;
+    if (id === "incident-points") {
+      const point = o as PointFeature;
+      html = `${point.crime_group ?? "Incident"} · ${caseReferenceLabel(point.case_id, point.crime_no)}`
+        + (isApproximateLocation(point) ? " · approximate locality, not exact incident scene" : "");
+    }
     else if (id === "incident-hex") html = `${(o as { points?: unknown[] }).points?.length ?? ""} incidents`;
     else if (id === "police-stations") html = `${(o as StationFeature).name ?? "Station"} · ${(o as StationFeature).case_count} cases`;
-    else if (id === "link-targets") html = `${(o as CaseLinkNode).crime_no ?? "Case"} · linked via ${(o as CaseLinkNode).via ?? "shared accused"}`;
+    else if (id === "link-targets") {
+      const link = o as CaseLinkNode;
+      html = `${caseReferenceLabel(link.case_id, link.crime_no)} · linked via ${link.via ?? "shared accused"}`
+        + (isApproximateLocation(link) ? " · approximate locality, not exact incident scene" : "")
+        + (link.location_label ? ` · ${link.location_label}` : "");
+    }
     else if (id === "hotspot-hex-3d") html = `${(o as { points?: unknown[] }).points?.length ?? ""} incidents`;
     else if (id === "forecast-cells") html = `~${Math.round(((o as MapCell).predicted_count ?? 0) * horizonScale)} predicted · ${Math.round(((o as MapCell).confidence ?? 0) * 100)}% conf`;
     else if (id === "district-symbols") html = `District ${(o as DistrictAgg).district_id} · ~${Math.round((o as DistrictAgg).predicted * horizonScale)} predicted`;
@@ -425,7 +510,7 @@ export function MapHotspots() {
     }
     if (!html) return null;
     return {
-      html,
+      html: escapeHtml(html),
       style: {
         background: "#1d2740",
         color: "#e8ecf6",
@@ -498,7 +583,11 @@ export function MapHotspots() {
           getTooltip={getTooltip}
           suppressTooltip={selected != null}
           mapStyle={mapStyle}
-          onMapClick={(ll) => streetView && setStreetView({ lon: ll.lng, lat: ll.lat })}
+          onMapClick={(ll) => {
+            if (streetView && !(selected?.type === "case" && selected.approximate)) {
+              setStreetView({ lon: ll.lng, lat: ll.lat });
+            }
+          }}
         >
           {showCoverage && MAPILLARY_TILES && (
             <Source id="mly-coverage" type="vector" tiles={[MAPILLARY_TILES]} minzoom={6} maxzoom={14}>
@@ -651,9 +740,13 @@ export function MapHotspots() {
               <>
                 <button
                   type="button"
+                  disabled={selected?.type === "case" && selected.approximate}
+                  title={selected?.type === "case" && selected.approximate
+                    ? "Street view is disabled for an approximate locality reference."
+                    : undefined}
                   onClick={() => setStreetView((sv) => (sv ? null : { lon: viewState.longitude, lat: viewState.latitude }))}
                   className={cn(
-                    "flex w-full items-center justify-center gap-1.5 rounded-control px-2 py-1.5 text-12 font-medium transition-colors",
+                    "flex w-full items-center justify-center gap-1.5 rounded-control px-2 py-1.5 text-12 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                     streetView ? "bg-primary text-primary-fg" : "bg-surface-2 text-content-dim hover:text-content",
                   )}
                 >
@@ -673,7 +766,12 @@ export function MapHotspots() {
           </div>
         </div>
 
-        <Legend mode={mode} aggregateOnly={aggregateOnly} crimeGroups={crimeGroups} />
+        <Legend
+          mode={mode}
+          aggregateOnly={aggregateOnly}
+          crimeGroups={crimeGroups}
+          hasApproximateLocations={hasApproximateLocations}
+        />
       </div>
     </div>
   );
@@ -848,10 +946,20 @@ function ModeControls({
 }
 
 /* ------------------------------- Legend ----------------------------------- */
-function Legend({ mode, aggregateOnly, crimeGroups }: { mode: Mode; aggregateOnly: boolean; crimeGroups: string[] }) {
+function Legend({
+  mode,
+  aggregateOnly,
+  crimeGroups,
+  hasApproximateLocations,
+}: {
+  mode: Mode;
+  aggregateOnly: boolean;
+  crimeGroups: string[];
+  hasApproximateLocations: boolean;
+}) {
   if (!aggregateOnly && mode === "live") {
     const groups = crimeGroups.slice(0, 6);
-    if (groups.length === 0) return null;
+    if (groups.length === 0 && !hasApproximateLocations) return null;
     return (
       <LegendBox title="Crime type">
         {groups.map((g) => (
@@ -864,6 +972,12 @@ function Legend({ mode, aggregateOnly, crimeGroups }: { mode: Mode; aggregateOnl
           <span className="size-2.5 rounded-full border border-primary bg-[#e8ecf6]" />
           Police station
         </span>
+        {hasApproximateLocations && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-3 rounded-full border-2 border-content-dim bg-content-dim/10" />
+            Locality ring = approximate reference, not exact incident scene
+          </span>
+        )}
       </LegendBox>
     );
   }

@@ -14,12 +14,18 @@ from .embeddings import embedder_for_model_name, to_pgvector
 
 
 def corpus_model(cur) -> Optional[tuple]:
-    """The most recent 'case' embedding ModelVersion actually present in the corpus."""
+    """Most recent model with a live, currently eligible case corpus."""
+    eligible = casedata.analytics_eligible_sql("cm")
     cur.execute(
-        '''SELECT ce."ModelVersionID", mv."ModelName", COUNT(*)
+        '''SELECT ce."ModelVersionID", mv."ModelName",
+                  COUNT(DISTINCT ce."CaseMasterID")
            FROM "CrimeEmbedding" ce
            JOIN "ModelVersion" mv ON mv."ModelVersionID" = ce."ModelVersionID"
+           JOIN "CaseMaster" cm ON cm."CaseMasterID" = ce."CaseMasterID"
            WHERE ce."SourceType" = 'case'
+             AND ce."IsArchived" = FALSE
+             AND ce."CaseMasterID" IS NOT NULL
+             AND ''' + eligible + '''
            GROUP BY ce."ModelVersionID", mv."ModelName"
            ORDER BY MAX(ce."CreatedAt") DESC, ce."ModelVersionID" DESC
            LIMIT 1''')
@@ -27,11 +33,16 @@ def corpus_model(cur) -> Optional[tuple]:
 
 
 def _fetch_cards(cur, ids: list[int]) -> dict[int, dict]:
-    """Per-case summary + OUTCOME (status, chargesheet disposition, arrest count)."""
+    """Eligible case summaries with presentation-safe official references."""
     if not ids:
         return {}
+    eligible = casedata.analytics_eligible_sql("cm")
     cur.execute(
-        '''SELECT cm."CaseMasterID", cm."CrimeNo", cm."CrimeRegisteredDate",
+        '''SELECT cm."CaseMasterID",
+                  COALESCE(NULLIF(cv."SnapshotAttributes" #>>
+                                      '{official_references,police_crime_no}', ''),
+                           cm."CrimeNo"),
+                  cm."CrimeRegisteredDate",
                   ch."CrimeGroupName", csh."CrimeHeadName", grv."LookupValue",
                   d."DistrictName", st."CaseStatusName",
                   (SELECT COUNT(*) FROM "Accused" a WHERE a."CaseMasterID"=cm."CaseMasterID"),
@@ -45,7 +56,13 @@ def _fetch_cards(cur, ids: list[int]) -> dict[int, dict]:
            LEFT JOIN "CrimeSubHead"     csh ON csh."CrimeSubHeadID" = cm."CrimeMinorHeadID"
            LEFT JOIN "GravityOffence"   grv ON grv."GravityOffenceID" = cm."GravityOffenceID"
            LEFT JOIN "CaseStatusMaster" st  ON st."CaseStatusID"    = cm."CaseStatusID"
-           WHERE cm."CaseMasterID" = ANY(%s)''', (ids,))
+           LEFT JOIN LATERAL (
+               SELECT cv0."SnapshotAttributes"
+               FROM "CaseVersion" cv0
+               WHERE cv0."CaseMasterID"=cm."CaseMasterID" AND cv0."IsCurrent"=TRUE
+               ORDER BY cv0."VersionNo" DESC LIMIT 1
+           ) cv ON TRUE
+           WHERE cm."CaseMasterID" = ANY(%s) AND ''' + eligible, (ids,))
     out = {}
     for r in cur.fetchall():
         cstype = r[10]
@@ -122,21 +139,22 @@ def find_similar(conn, case_id: int, k: int = 5, scope: str = "district",
         embedder = embedder_for_model_name(model_name)
         qvec = to_pgvector(embedder.embed([q["text"]])[0])
 
-        # ANN search in the SAME model-version space, excluding the query case +
-        # any archived embedding, filtered to the demo context BEFORE ranking.
+        # ANN candidates are joined back to the live case row and policy-filtered
+        # before distance ordering/LIMIT. Card hydration repeats the check so a
+        # policy change between reads cannot re-expose a stale embedding.
         params: list = [qvec, mv_id, case_id]
-        joins = ""
+        joins = 'JOIN "CaseMaster" candidate ON candidate."CaseMasterID" = ce."CaseMasterID" '
         where_ctx = ""
         if scope_district is not None:
-            joins = ('JOIN "CaseMaster" qm ON qm."CaseMasterID" = ce."CaseMasterID" '
-                     'JOIN "Unit" qu ON qu."UnitID" = qm."PoliceStationID" ')
-            where_ctx = 'AND qu."DistrictID" = %s '
+            joins += 'JOIN "Unit" candidate_unit ON candidate_unit."UnitID" = candidate."PoliceStationID" '
+            where_ctx = 'AND candidate_unit."DistrictID" = %s '
+        candidate_eligible = casedata.analytics_eligible_sql("candidate")
         cur.execute(
             'SELECT ce."CaseMasterID", (ce."Embedding" <=> %s::vector) AS dist '
             'FROM "CrimeEmbedding" ce ' + joins +
             'WHERE ce."ModelVersionID"=%s AND ce."SourceType"=\'case\' '
             '  AND ce."IsArchived" = FALSE AND ce."CaseMasterID" <> %s '
-            + where_ctx +
+            '  AND ' + candidate_eligible + ' ' + where_ctx +
             'ORDER BY ce."Embedding" <=> %s::vector LIMIT %s',
             params + ([scope_district] if scope_district is not None else []) + [qvec, int(k)])
         hits = [(int(r[0]), float(r[1])) for r in cur.fetchall()]
@@ -149,7 +167,11 @@ def find_similar(conn, case_id: int, k: int = 5, scope: str = "district",
 
     results = []
     for cid, dist in hits:
-        card = cards.get(cid, {"case_id": cid})
+        card = cards.get(cid)
+        if card is None:
+            # Fail closed if the independently policy-filtered card read no longer
+            # finds this ANN candidate.
+            continue
         # cosine distance in [0,2] -> similarity in [-1,1]; clamp to [0,1] for display
         card["similarity"] = round(max(0.0, min(1.0, 1.0 - dist)), 4)
         card["distance"] = round(dist, 6)

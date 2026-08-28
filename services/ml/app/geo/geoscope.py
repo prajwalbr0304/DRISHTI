@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ..cases import casedata
+
 _BOUNDARY_ATTR = "_drishti_state_boundary_available"
 _OOS_ATTR = "_drishti_out_of_state_case_ids"
 
@@ -29,7 +31,9 @@ _OOS_ATTR = "_drishti_out_of_state_case_ids"
 # out-of-state anti-set.
 _OUT_OF_STATE_SQL = (
     'SELECT cm."CaseMasterID" FROM "CaseMaster" cm '
-    'WHERE cm."geom" IS NOT NULL AND NOT EXISTS ('
+    'WHERE cm."geom" IS NOT NULL '
+    f'AND {casedata.analytics_eligible_sql("cm")} '
+    'AND NOT EXISTS ('
     'SELECT 1 FROM "JurisdictionBoundary" sb '
     "WHERE sb.\"Level\" = 'state' AND sb.\"IsCurrent\" AND ST_Contains(sb.\"geom\", cm.\"geom\"))"
 )
@@ -109,6 +113,7 @@ def count_out_of_state(conn, district_id: Optional[int] = None,
     if district_id is None and head_id is None:
         return len(out_of_state_case_ids(conn))
     where = ['cm."geom" IS NOT NULL', 'cm."CrimeRegisteredDate" IS NOT NULL',
+             casedata.analytics_eligible_sql("cm"),
              'NOT EXISTS (SELECT 1 FROM "JurisdictionBoundary" sb '
              "WHERE sb.\"Level\" = 'state' AND sb.\"IsCurrent\" "
              'AND ST_Contains(sb."geom", cm."geom"))']

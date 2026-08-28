@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Popup } from "react-map-gl/maplibre";
-import { ArrowUpRight, Building2, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Building2, Loader2 } from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { StationFeature } from "@/api/types";
@@ -33,6 +33,11 @@ export function CasePopup({
     queryFn: ({ signal }) => api.cases.detail(id, signal),
   });
   const c = q.data?.core;
+  const approximate = c?.not_exact_incident_scene === true
+    || c?.location_precision === "approximate_locality_reference";
+  const where = approximate
+    ? (c?.location_label ?? "Approximate locality reference")
+    : [c?.station, c?.district].filter(Boolean).join(" · ");
 
   return (
     <Popup
@@ -59,7 +64,13 @@ export function CasePopup({
             </div>
             <Row label="Crime" value={[c.crime_group, c.crime_subhead].filter(Boolean).join(" · ")} />
             <Row label="Status" value={c.status} />
-            <Row label="Where" value={[c.station, c.district].filter(Boolean).join(" · ")} />
+            <Row label="Where" value={where} />
+            {approximate && (
+              <p className="flex items-start gap-1.5 rounded-control border border-severity-medium/40 bg-severity-medium/5 px-2 py-1.5 text-[11px] leading-relaxed text-content-dim">
+                <AlertTriangle className="mt-0.5 size-3 shrink-0 text-severity-medium" />
+                Locality-level reference only; this is not the verified shed or exact alleged incident scene.
+              </p>
+            )}
             <Row label="Registered" value={c.registered_date ? formatDate(c.registered_date) : null} />
             {q.data && q.data.section_labels.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-0.5">

@@ -54,6 +54,8 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
   if (q.isLoading) return <Skeleton className="h-40 w-full" />;
   if (q.error) return <p className="text-13 text-content-dim">{errorMessage(q.error)}</p>;
   const v = q.data!;
+  const canWriteCase = canWrite && !v.read_only;
+  const canReviewCase = canReview && !v.read_only;
 
   return (
     <div className="space-y-4">
@@ -66,8 +68,14 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
         {!v.has_case_version && <span className="text-11 text-content-dim">(event-backed lifecycle starts on first action)</span>}
       </div>
 
+      {v.read_only && (
+        <p className="rounded-card border border-hairline bg-surface-2/50 px-3 py-2 text-12 leading-relaxed text-content-dim">
+          {v.read_only_reason ?? "This public-source procedural record is read-only."}
+        </p>
+      )}
+
       {/* lifecycle transitions */}
-      {canWrite && v.allowed_transitions.length > 0 && (
+      {canWriteCase && v.allowed_transitions.length > 0 && (
         <div className="rounded-card border border-hairline bg-surface p-3">
           <div className="mb-2 text-13 font-semibold text-content">Lifecycle actions</div>
           <div className="flex flex-wrap gap-2">
@@ -89,7 +97,7 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
           <h4 className="flex items-center gap-1.5 text-13 font-semibold text-content">
             <Landmark className="size-3.5" /> Court events ({v.court_events.length})
           </h4>
-          {canWrite && <Button variant="ghost" size="sm" onClick={() => setAddingCourt((x) => !x)}><Plus /> Court event</Button>}
+          {canWriteCase && <Button variant="ghost" size="sm" onClick={() => setAddingCourt((x) => !x)}><Plus /> Court event</Button>}
         </div>
         {addingCourt && (
           <AddCourtEvent caseId={caseId} onDone={() => { setAddingCourt(false); invalidate(); }} />
@@ -98,7 +106,9 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
           {v.court_events.map((ce) => (
             <div key={ce.court_event_id} className="flex flex-wrap items-center gap-2 text-13">
               <Badge variant="neutral" className="capitalize">{pretty(ce.event_type)}</Badge>
-              <span className="text-content-dim">{ce.court_name ?? ""}</span>
+              <span className="text-content-dim">
+                {ce.court_name ?? (ce.court_reference_kind === "unasserted" ? "Court not asserted in curated record" : "")}
+              </span>
               {ce.outcome && <span className="text-content">· {ce.outcome}</span>}
               {ce.occurred_at && <span className="text-12 text-content-dim">· {formatDateTime(ce.occurred_at)}</span>}
             </div>
@@ -111,7 +121,7 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
       <div className="rounded-card border border-hairline bg-surface p-3">
         <div className="flex items-center justify-between">
           <h4 className="flex items-center gap-1.5 text-13 font-semibold text-content"><Gavel className="size-3.5" /> Bail ({v.bail_events.length})</h4>
-          {canWrite && (
+          {canWriteCase && (
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" onClick={() => bail.mutate({ status: "granted" })} disabled={bail.isPending}>Grant</Button>
               <Button variant="ghost" size="sm" onClick={() => bail.mutate({ status: "rejected" })} disabled={bail.isPending}>Reject</Button>
@@ -133,7 +143,7 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
       <div className="rounded-card border border-hairline bg-surface p-3">
         <div className="flex items-center justify-between">
           <h4 className="flex items-center gap-1.5 text-13 font-semibold text-content"><ShieldCheck className="size-3.5" /> Disposition & outcome</h4>
-          {canReview && (
+          {canReviewCase && (
             <div className="flex flex-wrap gap-1">
               {(lookups.data?.disposition_types ?? []).map((d) => (
                 <Button key={d.value} variant="ghost" size="sm" disabled={disposition.isPending}
@@ -156,7 +166,7 @@ export function CourtLifecyclePage({ caseId }: { caseId: number }) {
         <div className="mt-3 border-t border-hairline pt-2">
           <div className="flex items-center justify-between">
             <span className="text-13 text-content">Verified outcomes ({v.outcomes.length})</span>
-            {canReview && (
+            {canReviewCase && (
               <Button size="sm" disabled={!v.can_record_outcome || outcome.isPending} onClick={() => outcome.mutate()}>
                 Record verified outcome
               </Button>

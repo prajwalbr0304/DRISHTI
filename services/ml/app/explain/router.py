@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
+from ..cases import analytics_policy
 from . import service
 from .schemas import (ContractAuditResponse, ExplainResponse, ModelDetailResponse,
                       ModelsResponse)
@@ -41,7 +42,10 @@ def model_detail(model_version_id: int):
 
 @router.get("/{table}/{record_id}", response_model=ExplainResponse)
 def explain(table: str, record_id: int):
-    resp = service.explain_row(table, record_id)
+    try:
+        resp = service.explain_row(table, record_id)
+    except analytics_policy.DerivedArtifactUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if resp is service.UNSUPPORTED:
         raise HTTPException(status_code=400,
                             detail=f"Not explainable: '{table}'. Supported: {', '.join(_EXPLAINABLE)}.")

@@ -71,11 +71,15 @@ def pai_for_cell(conn, district_id, head_id, cutoff: dt.date,
 
 
 def pai_report(conn, cutoff: dt.date = dt.date(2025, 1, 1), top_cells: int = 8) -> dict:
+    from ..cases import casedata
+
     with conn.cursor() as cur:
         cur.execute(
             'SELECT u."DistrictID", cm."CrimeMajorHeadID", COUNT(*) c '
             'FROM "CaseMaster" cm JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
-            'WHERE cm."geom" IS NOT NULL GROUP BY 1,2 ORDER BY c DESC LIMIT %s',
+            'WHERE cm."geom" IS NOT NULL '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
+            'GROUP BY 1,2 ORDER BY c DESC LIMIT %s',
             (top_cells,))
         cells = cur.fetchall()
     results = []
@@ -92,6 +96,8 @@ def pai_report(conn, cutoff: dt.date = dt.date(2025, 1, 1), top_cells: int = 8) 
 
 
 def known_patterns(conn) -> dict:
+    from ..cases import casedata
+
     out = {}
     with conn.cursor() as cur:
         # Bengaluru dominates cyber/economic
@@ -101,6 +107,7 @@ def known_patterns(conn) -> dict:
             'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
             'JOIN "CrimeHead" ch ON ch."CrimeHeadID"=cm."CrimeMajorHeadID" '
             "WHERE ch.\"CrimeGroupName\"='Economic & Cyber Crime' "
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY 1 ORDER BY c DESC LIMIT 3')
         cyber = cur.fetchall()
         out["cyber_top_districts"] = [(r[0], int(r[1])) for r in cyber]
@@ -113,6 +120,7 @@ def known_patterns(conn) -> dict:
             'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
             'JOIN "CrimeHead" ch ON ch."CrimeHeadID"=cm."CrimeMajorHeadID" '
             "WHERE ch.\"CrimeGroupName\"='Smuggling & Excise' "
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY 1 ORDER BY c DESC LIMIT 5')
         smug = [(r[0], int(r[1])) for r in cur.fetchall()]
         out["smuggling_top_districts"] = smug
@@ -126,6 +134,7 @@ def known_patterns(conn) -> dict:
             'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
             'JOIN "CrimeHead" ch ON ch."CrimeHeadID"=cm."CrimeMajorHeadID" '
             "WHERE ch.\"CrimeGroupName\"='Drug Offences' "
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY 1 ORDER BY c DESC LIMIT 6')
         ndps = [(r[0], int(r[1])) for r in cur.fetchall()]
         out["ndps_top_districts"] = ndps
@@ -136,7 +145,9 @@ def known_patterns(conn) -> dict:
         cur.execute(
             'SELECT EXTRACT(MONTH FROM cm."CrimeRegisteredDate")::int m, COUNT(*) c '
             'FROM "CaseMaster" cm JOIN "CrimeSubHead" csh ON csh."CrimeSubHeadID"=cm."CrimeMinorHeadID" '
-            "WHERE csh.\"CrimeHeadName\"='Theft' GROUP BY 1 ORDER BY 1")
+            "WHERE csh.\"CrimeHeadName\"='Theft' "
+            f'AND {casedata.analytics_eligible_sql("cm")} '
+            'GROUP BY 1 ORDER BY 1')
         by_month = {int(r[0]): int(r[1]) for r in cur.fetchall()}
         avg = float(np.mean(list(by_month.values()))) if by_month else 0.0
         festival = {m: by_month.get(m, 0) for m in (10, 11)}

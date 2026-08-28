@@ -123,6 +123,11 @@ export function EvidenceDetailsDialog({
 
             <div className="max-h-[68vh] space-y-4 overflow-y-auto pr-1">
               {actionError && <p className="text-12 text-severity-critical">{actionError}</p>}
+              {item.is_read_only && (
+                <p className="rounded-control border border-hairline bg-surface-2/50 px-3 py-2 text-12 leading-relaxed text-content-dim">
+                  This source-qualified public reference is read-only. Add a separate annotation rather than editing, relinking, archiving, or attaching a file to it.
+                </p>
+              )}
 
               {/* Current file */}
               {item.current_object ? (
@@ -179,7 +184,7 @@ export function EvidenceDetailsDialog({
               <section>
                 <div className="mb-1 flex items-center justify-between">
                   <h4 className="text-13 font-semibold text-content">Metadata</h4>
-                  {canWrite && item.state !== "archived" && (
+                  {canWrite && !item.is_read_only && item.state !== "archived" && (
                     <Button variant="ghost" size="sm" onClick={() => setEditing((v) => !v)}>
                       <Pencil /> {editing ? "Close" : "Correct"}
                     </Button>
@@ -212,8 +217,10 @@ export function EvidenceDetailsDialog({
                 <div className="space-y-1">
                   {item.case_links.map((l) => (
                     <div key={l.evidence_case_link_id} className="flex items-center justify-between text-12">
-                      <span className="text-content">Case {l.crime_no ?? l.case_master_id} · {l.link_type}</span>
-                      {canWrite && item.case_links.length > 1 && (
+                      <span className="text-content">
+                        {l.crime_no?.trim() ? `Case ${l.crime_no.trim()}` : `Internal case ID #${l.case_master_id}`} · {l.link_type}
+                      </span>
+                      {canWrite && !item.is_read_only && item.case_links.length > 1 && (
                         <Button variant="ghost" size="icon-sm" aria-label="Unlink case"
                                 onClick={() => unlinkCase.mutate(l.case_master_id)}>
                           <Unlink />
@@ -274,7 +281,7 @@ export function EvidenceDetailsDialog({
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-hairline pt-3">
-              {canWrite && (item.state === "archived" ? (
+              {canWrite && !item.is_read_only && (item.state === "archived" ? (
                 <Button variant="outline" size="sm" onClick={() => restore.mutate()} disabled={restore.isPending}>
                   <ArchiveRestore /> Restore
                 </Button>

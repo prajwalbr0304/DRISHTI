@@ -40,7 +40,10 @@ def monthly_series(conn, district_id: Optional[int] = None, head_id: Optional[in
     excluded. It is a safe no-op when no jurisdiction boundary is loaded, so the
     descriptive-analytics callers (which pass the default False) are unaffected.
     """
-    where = ['cm."CrimeRegisteredDate" IS NOT NULL']
+    from ..cases import casedata
+
+    where = ['cm."CrimeRegisteredDate" IS NOT NULL',
+             casedata.analytics_eligible_sql("cm")]
     params: list = []
     joins = ""
     if district_id is not None:

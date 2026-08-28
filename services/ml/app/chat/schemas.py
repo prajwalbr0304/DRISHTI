@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..contracts import AiResult
 
@@ -68,12 +68,14 @@ class ChatSessionDetail(BaseModel):
 
 # --- Phase 4: voice metadata for a dictated question ------------------------
 class VoiceIn(BaseModel):
-    """Web-Speech recognition metadata for a dictated question (Phase 4).
-    Persisted to VoiceTranscript, linked to the user turn."""
-    confidence: Optional[float] = None      # recogniser confidence in [0,1]
+    """Reviewed speech-recognition metadata linked to the user turn."""
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     language: Optional[str] = None          # en | kn
     transcript: Optional[str] = None        # defaults to the question text
     is_low_confidence: Optional[bool] = None
+    # Required when confidence is missing or below the configured threshold.
+    # The server enforces this; the browser gate is only the first UX layer.
+    confirmed: bool = False
 
 
 # --- Phase 2: the live NL->SQL conversational engine ------------------------

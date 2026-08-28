@@ -35,6 +35,8 @@ export interface AskMessage {
   text: string;
   language?: string;
   spoken?: boolean;
+  /** The continuous dialog owns TTS for this turn. */
+  voiceMode?: boolean;
   /* assistant answer anatomy (grounded answers) */
   citedRecordIds?: (number | string)[];
   generatedSql?: string | null;
@@ -81,10 +83,12 @@ interface AskState {
       spoken?: boolean;
       voiceConfidence?: number;
       voiceLanguage?: string;
-      /** explicit user confirmation for a low-confidence spoken query. */
+      /** explicit user confirmation for a low/unknown-confidence spoken query. */
       voiceConfirmed?: boolean;
+      /** continuous Voice Mode owns playback, so ChatView must not auto-speak again. */
+      voiceMode?: boolean;
     },
-  ) => Promise<void>;
+  ) => Promise<AskResponse | null>;
   loadSession: (detail: ChatSessionDetail) => void;
   reset: () => void;
   setPendingSeed: (seed: string) => void;
@@ -136,18 +140,15 @@ export const useAskStore = create<AskState>((set, get) => ({
 
   send: async (text, opts) => {
     const trimmed = text.trim();
-    if (!trimmed || get().busy) return;
-    // Low-confidence voice gate (Prompt 19 §E.3): never auto-execute a spoken
-    // query whose transcription confidence is below threshold unless the user
-    // explicitly confirmed it. The composer owns the confirm/edit UX; here we
-    // simply refuse to fire the request so nothing is sent by accident.
+    if (!trimmed || get().busy) return null;
+    // Low or unknown-confidence speech must be explicitly confirmed. This
+    // client guard mirrors the server boundary; it is not the security check.
     if (
       opts?.spoken &&
-      opts.voiceConfidence != null &&
-      opts.voiceConfidence < VOICE_LOW_CONFIDENCE &&
+      (opts.voiceConfidence == null || opts.voiceConfidence < VOICE_LOW_CONFIDENCE) &&
       !opts.voiceConfirmed
     ) {
-      return;
+      return null;
     }
     // In auto mode the asked language is the script of the text actually sent.
     if (get().languageMode === "auto") {
@@ -156,21 +157,20 @@ export const useAskStore = create<AskState>((set, get) => ({
     }
     const now = Date.now();
     const lang = get().language;
-    // voice metadata (Phase 4): flag low-confidence dictation for read-back.
-    const voice =
-      opts?.spoken && opts.voiceConfidence != null
-        ? {
-            transcript_text: trimmed,
-            language: opts.voiceLanguage ?? lang,
-            confidence: opts.voiceConfidence,
-            is_low_confidence: opts.voiceConfidence < 0.6,
-          }
-        : opts?.spoken
-          ? { transcript_text: trimmed, language: opts.voiceLanguage ?? lang, is_low_confidence: false }
-          : null;
+    // Preserve the transcript metadata for audit/read-back. Missing browser
+    // confidence is deliberately treated as low confidence.
+    const voice = opts?.spoken
+      ? {
+          transcript_text: trimmed,
+          language: opts.voiceLanguage ?? lang,
+          confidence: opts.voiceConfidence ?? null,
+          is_low_confidence:
+            opts.voiceConfidence == null || opts.voiceConfidence < VOICE_LOW_CONFIDENCE,
+        }
+      : null;
     const user: AskMessage = {
       id: nextId(), sender: "user", text: trimmed, language: lang,
-      spoken: opts?.spoken, voice, createdAt: now,
+      spoken: opts?.spoken, voiceMode: opts?.voiceMode, voice, createdAt: now,
     };
     const placeholderId = nextId();
     const thinking: AskMessage = {
@@ -185,7 +185,12 @@ export const useAskStore = create<AskState>((set, get) => ({
         session_id: get().sourceSessionId ?? undefined,
         voice:
           opts?.spoken
-            ? { confidence: opts.voiceConfidence, language: opts.voiceLanguage ?? lang, transcript: trimmed }
+            ? {
+                confidence: opts.voiceConfidence,
+                language: opts.voiceLanguage ?? lang,
+                transcript: trimmed,
+                confirmed: opts.voiceConfirmed,
+              }
             : undefined,
       });
       set((s) => ({
@@ -193,6 +198,7 @@ export const useAskStore = create<AskState>((set, get) => ({
         sourceSessionId: res.session_id,
         messages: s.messages.map((m) => (m.id === placeholderId ? answerFromResponse(placeholderId, res) : m)),
       }));
+      return res;
     } catch (e) {
       set((s) => ({
         busy: false,
@@ -202,6 +208,7 @@ export const useAskStore = create<AskState>((set, get) => ({
             : m,
         ),
       }));
+      return null;
     }
   },
 

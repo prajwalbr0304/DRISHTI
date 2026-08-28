@@ -92,6 +92,13 @@ class PointFeature(BaseModel):
     crime_group: Optional[str] = None
     date: Optional[str] = None
     hour: Optional[int] = None          # incident hour (0-23) for time-of-day filtering
+    crime_no: Optional[str] = None      # presentation-safe public reference
+    location_label: Optional[str] = None
+    location_precision: Optional[str] = None
+    not_exact_incident_scene: bool = False
+    uncertainty_radius_m: Optional[int] = None
+    location_attribution: Optional[str] = None
+    excluded_from_derived_analytics: bool = False
 
 
 class PointsResponse(BaseModel):
@@ -126,6 +133,14 @@ class CaseLinkNode(BaseModel):
     crime_no: Optional[str] = None
     crime_group: Optional[str] = None
     via: Optional[str] = None            # the shared accused name
+    record_origin: str = "synthetic_fixture"
+    is_synthetic: bool = True
+    reference_mapping_kind: Optional[str] = None
+    location_label: Optional[str] = None
+    location_precision: Optional[str] = None
+    not_exact_incident_scene: bool = False
+    uncertainty_radius_m: Optional[int] = None
+    location_attribution: Optional[str] = None
 
 
 class CaseLinksResponse(BaseModel):
@@ -133,6 +148,14 @@ class CaseLinksResponse(BaseModel):
     source_lon: Optional[float] = None
     source_lat: Optional[float] = None
     source_crime_no: Optional[str] = None
+    source_record_origin: str = "synthetic_fixture"
+    source_is_synthetic: bool = True
+    source_reference_mapping_kind: Optional[str] = None
+    source_location_label: Optional[str] = None
+    source_location_precision: Optional[str] = None
+    source_not_exact_incident_scene: bool = False
+    source_uncertainty_radius_m: Optional[int] = None
+    source_location_attribution: Optional[str] = None
     count: int
     links: list[CaseLinkNode]
 

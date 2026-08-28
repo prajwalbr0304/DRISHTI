@@ -9,22 +9,12 @@ from __future__ import annotations
 
 from typing import Optional
 
+from . import analytics_policy
+
 
 def analytics_eligible_sql(alias: str = "cm") -> str:
-    """SQL predicate excluding records explicitly barred from derived analytics.
-
-    The alias is supplied only by internal query builders. A correlated lookup
-    keeps this policy usable without adding a schema migration or denormalising
-    source-governance flags onto ``CaseMaster``.
-    """
-    if not alias.replace("_", "").isalnum():
-        raise ValueError("Unsafe SQL alias")
-    return (
-        'NOT EXISTS (SELECT 1 FROM "CaseVersion" cv_policy '
-        f'WHERE cv_policy."CaseMasterID"={alias}."CaseMasterID" '
-        'AND cv_policy."IsCurrent"=TRUE '
-        'AND cv_policy."SnapshotAttributes"->>\'excluded_from_derived_analytics\'=\'true\')'
-    )
+    """SQL predicate for the versioned, fail-closed case analytics policy."""
+    return analytics_policy.analytics_eligible_sql(alias)
 
 
 # One resolved "core" row per case: CaseMaster plus presentation-safe lookups.

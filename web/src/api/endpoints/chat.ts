@@ -5,6 +5,7 @@ export interface AskVoiceBody {
   confidence?: number;
   language?: string;
   transcript?: string;
+  confirmed?: boolean;
 }
 export interface AskBody {
   question: string;

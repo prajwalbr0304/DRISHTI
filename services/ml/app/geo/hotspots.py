@@ -22,6 +22,7 @@ from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import haversine_distances
 
 from .. import matviews, models
+from ..cases import casedata
 
 EARTH_M = 6_371_000.0
 
@@ -36,6 +37,7 @@ def _fetch_cells(conn, start, end):
             'JOIN "District" d ON d."DistrictID" = u."DistrictID" '
             'JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
             'WHERE cm."geom" IS NOT NULL AND cm."IncidentFromDate" >= %s AND cm."IncidentFromDate" < %s '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY 1,2,3,4',
             (start, end),
         )
@@ -51,6 +53,7 @@ def _fetch_points(conn, district_id, head_id, start, end, cap=2500):
             'WHERE u."DistrictID" = %s AND cm."CrimeMajorHeadID" = %s '
             '  AND cm."geom" IS NOT NULL '
             '  AND cm."IncidentFromDate" >= %s AND cm."IncidentFromDate" < %s '
+            f'  AND {casedata.analytics_eligible_sql("cm")} '
             'ORDER BY cm."IncidentFromDate"',
             (district_id, head_id, start, end),
         )
@@ -95,12 +98,22 @@ def _kde_intensity(lon, lat, cx, cy, n_cell):
 
 def run_hotspots(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None,
                  eps_m: float = 1500.0, eps_days: float = 150.0, min_samples: int = 15) -> dict:
+    from ..cases import analytics_policy
+
     start = start or dt.date(2021, 1, 1)
     end = end or dt.date(2026, 1, 1)
+    attestation = analytics_policy.current_attestation(conn)
+    base_hyperparameters = {
+        "eps_m": eps_m,
+        "eps_days": eps_days,
+        "min_samples": min_samples,
+        "algorithm": "ST-DBSCAN + gaussian_kde",
+    }
     mv_id = models.get_or_create_model_version(
-        conn, "drishti-hotspot-kde", "clustering", "1.1.0", framework="sklearn+scipy",
-        hyperparameters={"eps_m": eps_m, "eps_days": eps_days, "min_samples": min_samples,
-                         "algorithm": "ST-DBSCAN + gaussian_kde"})
+        conn, "drishti-hotspot-kde", "clustering",
+        analytics_policy.policy_model_version("1.1.0", attestation),
+        framework="sklearn+scipy",
+        hyperparameters=analytics_policy.stamp(base_hyperparameters, attestation))
 
     cells = _fetch_cells(conn, start, end)
     rows = []
@@ -127,11 +140,13 @@ def run_hotspots(conn, start: Optional[dt.date] = None, end: Optional[dt.date] =
                          intensity, size, start, end, True,
                          clon, clat, radius_m, clon, clat))
 
+    analytics_policy.require_supplied_current(conn, attestation, "hotspot run")
     with conn.cursor() as cur:
-        # idempotent: drop this model's prior surfaces; deactivate any others so
-        # mv_active_hotspots reflects only the freshly computed KDE hotspots.
+        # A new policy digest gets a new ModelVersion. Deactivate every older
+        # surface, but never add an attestation to its legacy metadata.
         cur.execute('DELETE FROM "CrimeHotspot" WHERE "ModelVersionID" = %s', (mv_id,))
-        cur.execute('UPDATE "CrimeHotspot" SET "IsActive" = FALSE WHERE "IsActive" AND "ModelVersionID" <> %s', (mv_id,))
+        cur.execute('UPDATE "CrimeHotspot" SET "IsActive" = FALSE '
+                    'WHERE "IsActive" AND "ModelVersionID" <> %s', (mv_id,))
         if rows:
             execute_values(
                 cur,
@@ -146,9 +161,12 @@ def run_hotspots(conn, start: Optional[dt.date] = None, end: Optional[dt.date] =
             )
         models.log_inference(
             conn, mv_id,
-            inputs={"start": str(start), "end": str(end), "eps_m": eps_m,
-                    "eps_days": eps_days, "min_samples": min_samples, "cells": len(cells)},
-            outputs={"hotspots_written": len(rows), "clusters": total_clusters},
+            inputs=analytics_policy.stamp(
+                {"start": str(start), "end": str(end), "eps_m": eps_m,
+                 "eps_days": eps_days, "min_samples": min_samples, "cells": len(cells)},
+                attestation),
+            outputs={"hotspots_written": len(rows), "clusters": total_clusters,
+                     "complete_generation": True},
             ref_table="CrimeHotspot")
 
     # refresh the dependent matview

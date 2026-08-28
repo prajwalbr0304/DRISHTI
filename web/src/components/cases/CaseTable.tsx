@@ -41,7 +41,7 @@ export function CaseTable({
           </colgroup>
           <thead className="sticky top-0 z-10 bg-surface-2">
             <tr className="border-b border-hairline">
-              <th className={TH}>Crime No.</th>
+              <th className={TH}>Case reference</th>
               <th className={TH}>Crime</th>
               <th className={TH}>Location</th>
               <th className={TH}>Status</th>

@@ -56,7 +56,12 @@ def approved_context_sources(conn) -> list[dict]:
 
 def data_freshness(conn) -> dict:
     """Data-as-of per source — drives the forecast screen's freshness banner."""
-    case_max = _scalar(conn, 'SELECT MAX("CrimeRegisteredDate") FROM "CaseMaster"')
+    from ..cases import casedata
+
+    case_max = _scalar(
+        conn,
+        'SELECT MAX(cm."CrimeRegisteredDate") FROM "CaseMaster" cm '
+        f'WHERE {casedata.analytics_eligible_sql("cm")}')
     sources = {
         "cases": _iso(case_max),
         "weather": _iso(_scalar(conn, 'SELECT MAX("ObservedAt") FROM "WeatherIndicator"')),

@@ -18,8 +18,9 @@ import {
   caseworkKeys, pretty, toISO, useCanWriteCasework, useCaseworkLookups,
 } from "./casework/caseworkShared";
 
-export function StatementsPage({ caseId }: { caseId: number }) {
-  const canWrite = useCanWriteCasework();
+export function StatementsPage({ caseId, readOnly = true }: { caseId: number; readOnly?: boolean }) {
+  const roleCanWrite = useCanWriteCasework();
+  const canWrite = roleCanWrite && !readOnly;
   const [adding, setAdding] = useState(false);
   const q = useQuery({
     queryKey: caseworkKeys.statements(caseId),
@@ -37,6 +38,15 @@ export function StatementsPage({ caseId }: { caseId: number }) {
           </Button>
         )}
       </div>
+      {readOnly && (
+        <div
+          className="flex items-start gap-2 rounded-card border border-severity-medium/40 bg-severity-medium/5 px-3 py-2 text-12 text-content"
+          role="status"
+        >
+          <Lock className="mt-0.5 size-4 shrink-0" />
+          <p><span className="font-semibold">Source-curated case.</span> Statements are read-only.</p>
+        </div>
+      )}
       <p className="text-12 text-content-dim">
         Typed statements are entered manually and versioned. Restricted statements are limited to
         assigned investigators/supervisors. An uploaded document/audio file may be linked as a reference only.
@@ -53,7 +63,7 @@ export function StatementsPage({ caseId }: { caseId: number }) {
         {items.map((s) => <StatementCard key={s.statement_id} s={s} caseId={caseId} canWrite={canWrite} />)}
       </div>
 
-      {adding && <AddStatement caseId={caseId} open={adding} onOpenChange={setAdding} />}
+      {canWrite && adding && <AddStatement caseId={caseId} open={adding} onOpenChange={setAdding} />}
     </div>
   );
 }
@@ -116,7 +126,7 @@ function StatementCard({ s, caseId, canWrite }: { s: CwStatement; caseId: number
         </ol>
       )}
 
-      {correcting && (
+      {canWrite && correcting && (
         <CorrectStatement sid={s.statement_id} onDone={() => { setCorrecting(false); invalidate(); }} />
       )}
     </div>

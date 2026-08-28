@@ -73,6 +73,8 @@ def _indicator_means(conn, start, end) -> dict[int, dict[str, float]]:
 
 def _crime_counts(conn, start, end):
     """Return (district_names, {(district, category): count}, categories)."""
+    from ..cases import casedata
+
     with conn.cursor() as cur:
         cur.execute(
             'SELECT u."DistrictID", d."DistrictName", ch."CrimeGroupName", COUNT(*) '
@@ -81,6 +83,7 @@ def _crime_counts(conn, start, end):
             'JOIN "District" d ON d."DistrictID" = u."DistrictID" '
             'JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
             'WHERE cm."CrimeRegisteredDate" >= %s AND cm."CrimeRegisteredDate" < %s '
+            f'AND {casedata.analytics_eligible_sql("cm")} '
             'GROUP BY 1,2,3',
             (start, end))
         rows = cur.fetchall()

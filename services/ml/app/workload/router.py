@@ -19,6 +19,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 
+from ..cases import analytics_policy
 from ..config import get_settings
 from ..intake.guards import require_write_allowed
 from ..roles import ALL_ROLES, DEFAULT_ROLE
@@ -57,6 +58,8 @@ def require_workload_admin(x_role: Optional[str] = Header(default=None)) -> str:
 
 
 def _map_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, analytics_policy.DerivedArtifactUnavailable):
+        return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, gb.WorkloadSchemaMissing):
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, gb.WorkloadGovernanceError):
@@ -64,6 +67,13 @@ def _map_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=422, detail=str(exc))
     raise exc
+
+
+def _serve(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        raise _map_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -76,22 +86,19 @@ def task():
 
 @router.get("/models", response_model=WorkloadModelListResponse)
 def models():
-    return service.list_models()
+    return _serve(service.list_models)
 
 
 @router.get("/predictions", response_model=WorkloadPredictionListResponse)
 def predictions(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
                 include_stale: bool = Query(False)):
-    return service.list_predictions(page, page_size, include_stale)
+    return _serve(service.list_predictions, page, page_size, include_stale)
 
 
 @router.get("/evaluation", response_model=WorkloadEvaluationResponse)
 def evaluation(foundation_kind: str = Query("served", description="served|incontext|tabpfn|tabfm|auto"),
                refresh: bool = Query(False)):
-    try:
-        return service.evaluation_report(foundation_kind=foundation_kind, refresh=refresh)
-    except Exception as exc:  # noqa: BLE001
-        raise _map_error(exc)
+    return _serve(service.evaluation_report, foundation_kind=foundation_kind, refresh=refresh)
 
 
 @router.get("/benchmarks", response_model=WorkloadBenchmarkListResponse)

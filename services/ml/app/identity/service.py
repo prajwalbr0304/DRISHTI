@@ -71,6 +71,158 @@ _PERSON_FK_TABLES: tuple[tuple[str, str, str], ...] = (
     ("GangMembership", "MemberCanonicalPersonID", "GangMembershipID"),
 )
 
+_PUBLIC_SOURCE_CURATED = "public_source_curated"
+_RESERVED_IDENTITY_ATTRIBUTE_KEYS = frozenset({
+    "record_origin", "is_synthetic", "source", "provenance",
+    "created_via", "idempotency_key",
+})
+_RESERVED_IDENTITY_ATTRIBUTE_PREFIXES = ("source_", "public_source_")
+_PERSON_ATTRIBUTE_TARGETS = {
+    "PersonAlias": "PersonAliasID",
+    "PersonIdentifier": "PersonIdentifierID",
+    "PersonContact": "PersonContactID",
+    "PersonAddress": "PersonAddressID",
+}
+
+
+def _reject_reserved_identity_attributes(attributes) -> None:
+    """Keep provenance and origin metadata under server-side control."""
+    reserved = sorted({
+        str(key) for key in (attributes or {})
+        if str(key) in _RESERVED_IDENTITY_ATTRIBUTE_KEYS
+        or str(key).startswith(_RESERVED_IDENTITY_ATTRIBUTE_PREFIXES)
+    })
+    if reserved:
+        raise IdentityValidationError(
+            "Identity attributes cannot set service-managed provenance keys: "
+            + ", ".join(reserved) + "."
+        )
+
+
+def _target_ids(values) -> list[int]:
+    return sorted({int(value) for value in values if value is not None})
+
+
+def _require_mutable_identity_targets(
+    conn, *, person_ids=(), case_ids=(), role_ids=(),
+) -> None:
+    """Reject identity writes when persisted provenance marks a target curated.
+
+    Direct targets are locked before classification. Role-linked parents are
+    classified from the locked role's persisted foreign keys; they are not
+    independently locked, avoiding a role/person lock-order inversion with the
+    merge repoint loop.
+    """
+    direct_person_ids = _target_ids(person_ids)
+    direct_case_ids = _target_ids(case_ids)
+    target_role_ids = _target_ids(role_ids)
+    linked_person_ids: set[int] = set()
+    linked_case_ids: set[int] = set()
+
+    with conn.cursor() as cur:
+        if direct_person_ids:
+            cur.execute(
+                'SELECT "CanonicalPersonID" FROM "CanonicalPerson" '
+                'WHERE "CanonicalPersonID"=ANY(%s) ORDER BY "CanonicalPersonID" FOR UPDATE',
+                (direct_person_ids,),
+            )
+            found = {int(row[0]) for row in cur.fetchall()}
+            missing = next((pid for pid in direct_person_ids if pid not in found), None)
+            if missing is not None:
+                raise IdentityNotFound(f"CanonicalPerson {missing} not found.")
+
+        if direct_case_ids:
+            cur.execute(
+                'SELECT "CaseMasterID" FROM "CaseMaster" '
+                'WHERE "CaseMasterID"=ANY(%s) ORDER BY "CaseMasterID" FOR UPDATE',
+                (direct_case_ids,),
+            )
+            found = {int(row[0]) for row in cur.fetchall()}
+            missing = next((cid for cid in direct_case_ids if cid not in found), None)
+            if missing is not None:
+                raise IdentityNotFound(f"Case {missing} not found.")
+
+        if target_role_ids:
+            cur.execute(
+                'SELECT "CasePartyRoleID","CanonicalPersonID","CaseMasterID",'
+                'COALESCE("Provenance"->>\'record_origin\'=%s,FALSE) '
+                'FROM "CasePartyRole" WHERE "CasePartyRoleID"=ANY(%s) '
+                'ORDER BY "CasePartyRoleID" FOR UPDATE',
+                (_PUBLIC_SOURCE_CURATED, target_role_ids),
+            )
+            role_rows = cur.fetchall()
+            found = {int(row[0]) for row in role_rows}
+            missing = next((rid for rid in target_role_ids if rid not in found), None)
+            if missing is not None:
+                raise IdentityNotFound(f"CasePartyRole {missing} not found.")
+            for role_id, person_id, case_id, is_curated in role_rows:
+                if is_curated:
+                    raise IdentityConflict(
+                        f"Public-source curated CasePartyRole {int(role_id)} is immutable."
+                    )
+                if person_id is not None:
+                    linked_person_ids.add(int(person_id))
+                linked_case_ids.add(int(case_id))
+
+        all_person_ids = sorted(set(direct_person_ids) | linked_person_ids)
+        if all_person_ids:
+            cur.execute(
+                'SELECT p."CanonicalPersonID",('
+                'COALESCE(p."Attributes"->>\'record_origin\'=%s,FALSE) OR EXISTS ('
+                'SELECT 1 FROM "CanonicalEntity" e '
+                'WHERE e."CanonicalPersonID"=p."CanonicalPersonID" '
+                'AND e."Attributes"->>\'record_origin\'=%s) OR EXISTS ('
+                'SELECT 1 FROM "CasePartyRole" r '
+                'WHERE r."CanonicalPersonID"=p."CanonicalPersonID" '
+                'AND r."Provenance"->>\'record_origin\'=%s) OR EXISTS ('
+                'SELECT 1 FROM "PersonAlias" a JOIN "SourceRecord" sr '
+                'ON sr."SourceRecordID"=a."SourceRecordID" '
+                'WHERE a."CanonicalPersonID"=p."CanonicalPersonID" '
+                'AND sr."Payload"->>\'record_origin\'=%s)) '
+                'FROM "CanonicalPerson" p WHERE p."CanonicalPersonID"=ANY(%s) '
+                'ORDER BY p."CanonicalPersonID"',
+                (_PUBLIC_SOURCE_CURATED, _PUBLIC_SOURCE_CURATED,
+                 _PUBLIC_SOURCE_CURATED, _PUBLIC_SOURCE_CURATED, all_person_ids),
+            )
+            person_rows = cur.fetchall()
+            found = {int(row[0]) for row in person_rows}
+            missing = next((pid for pid in all_person_ids if pid not in found), None)
+            if missing is not None:
+                raise IdentityNotFound(f"CanonicalPerson {missing} not found.")
+            curated = next((int(row[0]) for row in person_rows if row[1]), None)
+            if curated is not None:
+                raise IdentityConflict(
+                    f"Public-source curated CanonicalPerson {curated} is immutable."
+                )
+
+        all_case_ids = sorted(set(direct_case_ids) | linked_case_ids)
+        if all_case_ids:
+            cur.execute(
+                'SELECT cm."CaseMasterID",(EXISTS ('
+                'SELECT 1 FROM "CaseVersion" cv '
+                'WHERE cv."CaseMasterID"=cm."CaseMasterID" '
+                'AND cv."SnapshotAttributes"->>\'record_origin\'=%s) OR EXISTS ('
+                'SELECT 1 FROM "CaseSource" cs JOIN "SourceRecord" sr '
+                'ON sr."SourceRecordID"=cs."SourceRecordID" '
+                'WHERE cs."CaseMasterID"=cm."CaseMasterID" '
+                'AND sr."Payload"->>\'record_origin\'=%s) OR EXISTS ('
+                'SELECT 1 FROM "CasePartyRole" r '
+                'WHERE r."CaseMasterID"=cm."CaseMasterID" '
+                'AND r."Provenance"->>\'record_origin\'=%s)) '
+                'FROM "CaseMaster" cm WHERE cm."CaseMasterID"=ANY(%s) '
+                'ORDER BY cm."CaseMasterID"',
+                (_PUBLIC_SOURCE_CURATED, _PUBLIC_SOURCE_CURATED,
+                 _PUBLIC_SOURCE_CURATED, all_case_ids),
+            )
+            case_rows = cur.fetchall()
+            found = {int(row[0]) for row in case_rows}
+            missing = next((cid for cid in all_case_ids if cid not in found), None)
+            if missing is not None:
+                raise IdentityNotFound(f"Case {missing} not found.")
+            curated = next((int(row[0]) for row in case_rows if row[1]), None)
+            if curated is not None:
+                raise IdentityConflict(f"Public-source curated case {curated} is immutable.")
+
 
 # ===========================================================================
 # Person read
@@ -191,6 +343,7 @@ def _search_persons(conn, q, gender_id, juvenile, status, page, page_size) -> S.
 # Person write
 # ===========================================================================
 def _create_person(conn, req: S.CreatePersonRequest) -> int:
+    _reject_reserved_identity_attributes(req.attributes)
     if req.idempotency_key:
         with conn.cursor() as cur:
             cur.execute('SELECT "CanonicalPersonID" FROM "CanonicalPerson" '
@@ -226,6 +379,11 @@ def _update_person(conn, cpid: int, req: S.UpdatePersonRequest) -> None:
     r = _person_row(conn, cpid)
     if r is None:
         raise IdentityNotFound(f"CanonicalPerson {cpid} not found.")
+    _require_mutable_identity_targets(conn, person_ids=(cpid,))
+    r = _person_row(conn, cpid)
+    if r is None:  # defensive: the guard holds this row lock until transaction end
+        raise IdentityNotFound(f"CanonicalPerson {cpid} not found.")
+    _reject_reserved_identity_attributes(req.attributes)
     sets, params = [], []
     if req.display_label is not None:
         sets.append('"DisplayLabel"=%s'); params.append(req.display_label)
@@ -305,6 +463,7 @@ def _require_person(conn, cpid: int) -> None:
 
 def _add_alias(conn, cpid: int, a: S.AliasInput) -> int:
     _require_person(conn, cpid)
+    _require_mutable_identity_targets(conn, person_ids=(cpid,))
     with conn.cursor() as cur:
         cur.execute('SELECT "PersonAliasID" FROM "PersonAlias" '
                     'WHERE "CanonicalPersonID"=%s AND lower("AliasName")=lower(%s) AND "AliasType"=%s',
@@ -322,6 +481,7 @@ def _add_alias(conn, cpid: int, a: S.AliasInput) -> int:
 
 def _add_identifier(conn, cpid: int, i: S.IdentifierInput) -> int:
     _require_person(conn, cpid)
+    _require_mutable_identity_targets(conn, person_ids=(cpid,))
     if i.sensitivity not in S.SENSITIVITIES:
         raise IdentityValidationError(f"Invalid sensitivity '{i.sensitivity}'.")
     with conn.cursor() as cur:
@@ -338,6 +498,7 @@ def _add_identifier(conn, cpid: int, i: S.IdentifierInput) -> int:
 
 def _add_contact(conn, cpid: int, c: S.ContactInput) -> int:
     _require_person(conn, cpid)
+    _require_mutable_identity_targets(conn, person_ids=(cpid,))
     if c.sensitivity not in S.SENSITIVITIES:
         raise IdentityValidationError(f"Invalid sensitivity '{c.sensitivity}'.")
     with conn.cursor() as cur:
@@ -352,6 +513,7 @@ def _add_contact(conn, cpid: int, c: S.ContactInput) -> int:
 
 def _add_address(conn, cpid: int, ad: S.AddressInput) -> int:
     _require_person(conn, cpid)
+    _require_mutable_identity_targets(conn, person_ids=(cpid,))
     geom = None
     if ad.latitude is not None and ad.longitude is not None:
         geom = f"SRID=4326;POINT({ad.longitude} {ad.latitude})"
@@ -367,6 +529,17 @@ def _add_address(conn, cpid: int, ad: S.AddressInput) -> int:
 
 
 def _delete_attr(conn, table: str, pk_col: str, cpid: int, row_id: int, actor) -> None:
+    if _PERSON_ATTRIBUTE_TARGETS.get(table) != pk_col:
+        raise IdentityValidationError("Unsupported person attribute target.")
+    with conn.cursor() as cur:
+        cur.execute(
+            f'SELECT "{pk_col}" FROM "{table}" '
+            f'WHERE "CanonicalPersonID"=%s AND "{pk_col}"=%s',
+            (cpid, row_id),
+        )
+        if cur.fetchone() is None:
+            raise IdentityNotFound(f"{table} {row_id} not found for person {cpid}.")
+    _require_mutable_identity_targets(conn, person_ids=(cpid,))
     with conn.cursor() as cur:
         cur.execute(f'DELETE FROM "{table}" WHERE "{pk_col}"=%s AND "CanonicalPersonID"=%s',
                     (row_id, cpid))
@@ -390,6 +563,11 @@ def _add_party(conn, case_id: int, req: S.AddPartyRequest) -> S.PartyMutationRes
             raise IdentityNotFound(f"Case {case_id} not found.")
         if req.canonical_person_id:
             _require_person(conn, req.canonical_person_id)
+        _require_mutable_identity_targets(
+            conn,
+            person_ids=((req.canonical_person_id,) if req.canonical_person_id else ()),
+            case_ids=(case_id,),
+        )
         cur.execute(
             'INSERT INTO "CasePartyRole" ("CaseMasterID","CanonicalPersonID","CanonicalOrganisationID",'
             '"RoleType","IsUnknownParty","PartyLabel","SequenceNo","Provenance") '
@@ -414,6 +592,7 @@ def _update_party(conn, role_id: int, req: S.UpdatePartyRequest) -> S.PartyMutat
         row = cur.fetchone()
         if row is None:
             raise IdentityNotFound(f"CasePartyRole {role_id} not found.")
+        _require_mutable_identity_targets(conn, role_ids=(role_id,))
         sets, params = [], []
         if req.role_type is not None:
             if req.role_type not in S.PARTY_ROLES:
@@ -440,6 +619,7 @@ def _remove_party(conn, role_id: int, actor) -> int:
         row = cur.fetchone()
         if row is None:
             raise IdentityNotFound(f"CasePartyRole {role_id} not found.")
+        _require_mutable_identity_targets(conn, role_ids=(role_id,))
         case_id = int(row[0])
         # keep legacy child rows consistent (unlink the CasePartyRole ref)
         cur.execute('UPDATE "Accused" SET "CasePartyRoleID"=NULL WHERE "CasePartyRoleID"=%s', (role_id,))
@@ -637,6 +817,13 @@ def _merge(conn, winner: int, loser: int, reason, actor) -> S.MergeResult:
         raise IdentityNotFound(f"Winner CanonicalPerson {winner} not found.")
     if lr is None:
         raise IdentityNotFound(f"Loser CanonicalPerson {loser} not found.")
+    _require_mutable_identity_targets(conn, person_ids=(winner, loser))
+    # Re-read merge state after acquiring the target locks in the guard.
+    wr, lr = _person_row(conn, winner), _person_row(conn, loser)
+    if wr is None:
+        raise IdentityNotFound(f"Winner CanonicalPerson {winner} not found.")
+    if lr is None:
+        raise IdentityNotFound(f"Loser CanonicalPerson {loser} not found.")
     if wr[7] == 'merged':
         raise IdentityConflict(f"Winner {winner} is itself merged; choose a canonical winner.")
     if lr[7] == 'merged':
@@ -678,8 +865,16 @@ def _unmerge(conn, winner: int, loser: int, reason, actor) -> S.MergeResult:
         row = cur.fetchone()
     if row is None:
         raise IdentityNotFound(f"No merge of {loser} into {winner} to reverse.")
+    wr, lr = _person_row(conn, winner), _person_row(conn, loser)
+    if wr is None:
+        raise IdentityNotFound(f"Winner CanonicalPerson {winner} not found.")
+    if lr is None:
+        raise IdentityNotFound(f"Loser CanonicalPerson {loser} not found.")
+    _require_mutable_identity_targets(conn, person_ids=(winner, loser))
     lr = _person_row(conn, loser)
-    if lr is None or lr[7] != 'merged' or lr[8] != winner:
+    if lr is None:  # defensive: the guard holds this row lock until transaction end
+        raise IdentityNotFound(f"Loser CanonicalPerson {loser} not found.")
+    if lr[7] != 'merged' or lr[8] != winner:
         raise IdentityConflict(f"Person {loser} is not currently merged into {winner}.")
     before = row[1] or {}
     moved = before.get("moved", {})
