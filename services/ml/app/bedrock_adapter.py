@@ -1,13 +1,14 @@
 """Signed AppSail -> AWS adapter client for Bedrock Converse.
 
-Catalyst AppSail deliberately has no AWS credentials. In deployment, semantic
-planning therefore crosses the existing protected adapter boundary:
+Catalyst AppSail normally crosses the existing protected adapter boundary for
+semantic planning:
 
     AppSail -> signed HTTPS -> API Gateway -> Lambda role -> Amazon Bedrock
 
 Only a data-minimised role-scoped schema/glossary, bounded chat history, and the
 question are sent. The response is HMAC-signed and verified before it is parsed.
-Model identity is fail-closed to the reviewed Chinese-origin Bedrock allow-list.
+A dedicated least-privilege IAM user can provide direct failover; both paths are
+fail-closed to the reviewed Chinese-origin Bedrock allow-list.
 """
 from __future__ import annotations
 

@@ -3,10 +3,12 @@ typed visualization selector, the truthful capability advertisement and the
 Zia-voice honest-disable adapter. All offline, no DB, no network."""
 import pytest
 
+from app.bedrock_adapter import BedrockAdapterError
 from app.config import Settings, get_settings
 from app.nlsql import viz
 from app.nlsql.planner import (BedrockPlanner, CatalystQuickMLServingPlanner,
-                               FallbackPlanner, LLMPlanner, get_planner)
+                               FallbackPlanner, LLMPlanner, build_system_prompt,
+                               get_planner)
 
 
 # ============================ A: scope flags ================================
@@ -56,6 +58,14 @@ def test_planner_source_labels_are_stable():
     assert BedrockPlanner.name == "aws-bedrock"
 
 
+def test_system_prompt_pins_postgres_and_text_case_references():
+    prompt = build_system_prompt("system_admin")
+
+    assert "NEVER use SELECT TOP n" in prompt
+    assert '"CaseMaster"."CrimeNo"' in prompt
+    assert "long FIR/crime/case numbers are TEXT identifiers" in prompt
+
+
 def test_bedrock_planner_does_not_set_app_token_cap(monkeypatch):
     captured = {}
 
@@ -82,6 +92,75 @@ def test_bedrock_planner_does_not_set_app_token_cap(monkeypatch):
     assert plan.sql == 'SELECT COUNT(*) FROM "CaseMaster"'
     assert captured["inferenceConfig"] == {"temperature": 0}
     assert "maxTokens" not in captured["inferenceConfig"]
+
+
+def test_bedrock_planner_uses_direct_sdk_when_adapter_fails_and_opted_in(monkeypatch):
+    captured = {}
+
+    class _Client:
+        def converse(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "output": {"message": {"content": [
+                    {"text": '{"sql":"SELECT COUNT(*) FROM \\"CaseMaster\\"",'
+                             '"confidence":0.9}'}
+                ]}}
+            }
+
+    class _BrokenAdapter:
+        def __init__(self, **_kwargs):
+            pass
+
+        def converse(self, **_kwargs):
+            raise BedrockAdapterError("old adapter unavailable")
+
+    monkeypatch.setenv("DRISHTI_AWS_ADAPTER_URL", "https://adapter.example")
+    monkeypatch.setenv("DRISHTI_AWS_ADAPTER_SECRET", "test-secret")
+    monkeypatch.setattr("app.bedrock_adapter.SignedHttpsBedrockAdapter", _BrokenAdapter)
+    p = BedrockPlanner(Settings(semantic_planner_provider="aws_bedrock",
+                                bedrock_model_id="zai.glm-4.7-flash",
+                                bedrock_direct_sdk_enabled=True))
+    monkeypatch.setattr(p, "_client", lambda: _Client())
+
+    plan = p.plan("how many cases", "crime_analyst", "en", [])
+
+    assert plan.sql == 'SELECT COUNT(*) FROM "CaseMaster"'
+    assert captured["modelId"] == "zai.glm-4.7-flash"
+
+
+def test_bedrock_planner_does_not_bypass_adapter_without_opt_in(monkeypatch):
+    class _BrokenAdapter:
+        def __init__(self, **_kwargs):
+            pass
+
+        def converse(self, **_kwargs):
+            raise BedrockAdapterError("old adapter unavailable")
+
+    monkeypatch.setenv("DRISHTI_AWS_ADAPTER_URL", "https://adapter.example")
+    monkeypatch.setenv("DRISHTI_AWS_ADAPTER_SECRET", "test-secret")
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setattr("app.bedrock_adapter.SignedHttpsBedrockAdapter", _BrokenAdapter)
+    p = BedrockPlanner(Settings(semantic_planner_provider="aws_bedrock",
+                                bedrock_model_id="zai.glm-4.7-flash",
+                                bedrock_direct_sdk_enabled=False))
+
+    with pytest.raises(BedrockAdapterError, match="old adapter unavailable"):
+        p.plan("how many cases", "crime_analyst", "en", [])
+
+
+def test_bedrock_direct_mode_accepts_dedicated_iam_credentials(monkeypatch):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test-access-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret-key")
+    s = Settings(bedrock_direct_sdk_enabled=False)
+
+    assert s.bedrock_direct_sdk_available() is True
+
+
+def test_blank_bedrock_direct_flag_is_safe_default():
+    s = Settings(bedrock_direct_sdk_enabled="")
+
+    assert s.bedrock_direct_sdk_enabled is False
 
 
 def test_get_planner_returns_an_object_with_a_name():

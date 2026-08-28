@@ -127,11 +127,20 @@ def ask(role: str, question: str, language: Optional[str] = None,
         planner_source = "deterministic-fallback"
     lang = plan.language or lang
 
+    # The semantic model resolves the language and intent, while these recognized
+    # high-risk shapes use the server-authored equivalent SQL. Long FIR numbers
+    # must never be coerced into the integer CaseMasterID, and model-authored case
+    # aggregates cannot carry the executor's process-local authorization seal.
+    fb_plan = fallback_planner().plan(question, role, lang, history)
+    if (fb_plan.sql and (
+            fb_plan.intent == "case_details"
+            or (plan.sql and is_aggregate(plan.sql) and is_aggregate(fb_plan.sql)))):
+        plan = fb_plan
+
     # --- Deterministic override for reference-entity counts ------------------
     # The LLM sometimes confuses "how many stations" with "how many FIRs".
     # The offline planner maps these DETERMINISTICALLY and CORRECTLY, so prefer
     # it whenever the question is clearly about stations/districts (not cases).
-    fb_plan = fallback_planner().plan(question, role, lang, history)
     if fb_plan.intent in ("count_stations", "count_districts") and fb_plan.sql:
         plan = fb_plan
         planner_source = "deterministic-fallback"

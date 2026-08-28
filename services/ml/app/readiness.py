@@ -124,17 +124,21 @@ def evaluate(
         checks["object_store"] = "not_required"
 
     # 4. MANDATORY when Bedrock is selected: the exact approved model and a
-    # credential-safe transport must be configured. AppSail uses the signed AWS
-    # adapter; direct boto3 is allowed only through the explicit local-dev flag.
+    # credential-safe transport must be configured. AppSail normally uses the
+    # signed AWS adapter; an explicitly enabled direct mode also requires the
+    # dedicated IAM user's two credential variables in Catalyst.
     if settings.semantic_provider() == "aws_bedrock":
         from .bedrock_adapter import catalyst_runtime_detected
         adapter_configured = bool(
             os.getenv("DRISHTI_AWS_ADAPTER_URL", "").strip()
             and os.getenv("DRISHTI_AWS_ADAPTER_SECRET", "").strip())
-        local_direct_allowed = (settings.bedrock_direct_sdk_enabled
-                                and not catalyst_runtime_detected())
+        catalyst = catalyst_runtime_detected()
+        direct_credentials = bool(os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+                                  and os.getenv("AWS_SECRET_ACCESS_KEY", "").strip())
+        direct_allowed = (settings.bedrock_direct_sdk_available()
+                          and (not catalyst or direct_credentials))
         if settings.bedrock_model_allowed() and (
-                adapter_configured or local_direct_allowed):
+                adapter_configured or direct_allowed):
             checks["semantic_planner"] = "ok"
         else:
             checks["semantic_planner"] = "misconfigured"

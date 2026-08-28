@@ -11,9 +11,11 @@ synthetic-database startup guard. See app/hardening.py + app/main.py.
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Bedrock is fail-closed to an exact reviewed Chinese-origin identity, so an
@@ -89,16 +91,25 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout_s: float = 30.0
     # Amazon Bedrock Runtime. Local development may use an AWS SSO profile.
-    # Catalyst AppSail has no AWS credentials; when its signed AWS adapter is
-    # configured, BedrockPlanner routes Converse through that Lambda execution
-    # role instead. GLM 4.7 Flash is available in the adapter's Mumbai region.
-    bedrock_region: str = "ap-south-1"
+    # AppSail normally uses the signed adapter; an explicitly enabled direct
+    # mode may instead use a dedicated least-privilege IAM user. GLM 4.7 Flash
+    # is invoked in us-east-1 for the current deployment.
+    bedrock_region: str = "us-east-1"
     bedrock_model_id: str = ""
     bedrock_aws_profile: str = ""
-    # Explicit local-development escape hatch. It stays false in AppSail, where
-    # the signed adapter is mandatory and no AWS credential may be installed.
+    # Explicit local/profile opt-in. AppSail may also enable direct failover by
+    # supplying the dedicated least-privilege IAM credential pair server-side.
     bedrock_direct_sdk_enabled: bool = False
     bedrock_timeout_s: float = 30.0
+
+    @field_validator("bedrock_direct_sdk_enabled", mode="before")
+    @classmethod
+    def _blank_direct_sdk_flag_is_false(cls, value):
+        # Catalyst can retain a newly-created variable with an empty value.
+        # Treat that as the default instead of failing the whole app at startup.
+        if isinstance(value, str) and not value.strip():
+            return False
+        return value
     # Guarded-executor limits.
     nlsql_statement_timeout_ms: int = 5000      # per-query DB statement timeout
     nlsql_row_cap: int = 200                     # hard cap on rows returned
@@ -262,6 +273,12 @@ class Settings(BaseSettings):
     def bedrock_configured(self) -> bool:
         """True only once an approved Chinese Bedrock model is selected."""
         return self.bedrock_model_allowed()
+
+    def bedrock_direct_sdk_available(self) -> bool:
+        """Whether direct Bedrock has an explicit flag or dedicated IAM keys."""
+        static_iam = bool(os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+                          and os.getenv("AWS_SECRET_ACCESS_KEY", "").strip())
+        return bool(self.bedrock_direct_sdk_enabled or static_iam)
 
     def primary_planner_name(self) -> str:
         """The planner that SHOULD serve in the live-ready contract, given config.

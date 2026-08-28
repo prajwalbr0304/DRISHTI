@@ -316,6 +316,7 @@ def build_system_prompt(role: str) -> str:
         "You translate a police analyst's question into ONE read-only PostgreSQL SELECT.",
         "Use ONLY the tables and columns listed below; never invent a column or table.",
         "Quote identifiers exactly as shown (double quotes, PascalCase).",
+        "Use PostgreSQL syntax only: use LIMIT n at the end; NEVER use SELECT TOP n.",
         "Match names/values case-insensitively with ILIKE and % wildcards.",
         "NEVER write INSERT/UPDATE/DELETE/DDL or multiple statements.",
         # --- grounding rules that stop common mis-mappings -------------------
@@ -330,6 +331,10 @@ def build_system_prompt(role: str) -> str:
         'count districts with COUNT(*) on "District"; count FIRs/cases/crimes '
         'with COUNT(*) on "CaseMaster". Never answer a station/district count '
         'from "CaseMaster".',
+        'CASE REFERENCES: long FIR/crime/case numbers are TEXT identifiers. Compare '
+        'them as quoted strings against "CaseMaster"."CrimeNo" or '
+        '"CaseMaster"."CaseNo". "CaseMasterID" is a small internal integer and must '
+        'only be used when the user explicitly asks for an internal CaseMaster ID.',
         'CRIME TYPE: "CrimeHead"."CrimeGroupName" is the broad group (e.g. Cyber, '
         'Property); "CrimeSubHead"."CrimeHeadName" is the specific offence (e.g. '
         'Theft, Murder, Robbery). Pick whichever matches the question.',
@@ -470,6 +475,18 @@ class BedrockPlanner:
             return boto3.Session(profile_name=profile).client("bedrock-runtime", **kwargs)
         return boto3.client("bedrock-runtime", **kwargs)
 
+    def _direct_converse(self, *, system: list[dict], messages: list[dict]) -> str:
+        response = self._client().converse(
+            modelId=self._s.bedrock_model_id,
+            system=system,
+            messages=messages,
+            inferenceConfig={"temperature": 0},
+        )
+        return "".join(
+            part.get("text", "")
+            for part in response.get("output", {}).get("message", {}).get("content", [])
+        ).strip()
+
     def plan(self, question: str, role: str, language: str, history: list[Turn]) -> Plan:
         messages = _plan_messages(question, role, history, self._s.nlsql_max_history_turns)
         system = [{"text": messages[0]["content"]}]
@@ -481,34 +498,33 @@ class BedrockPlanner:
 
         # AppSail has no AWS IAM identity. Reuse its signed adapter boundary so
         # the Bedrock permission remains on a least-privilege Lambda role.
-        from ..bedrock_adapter import (SignedHttpsBedrockAdapter,
+        from ..bedrock_adapter import (BedrockAdapterError, SignedHttpsBedrockAdapter,
                                        bedrock_adapter_configured,
                                        catalyst_runtime_detected)
         if bedrock_adapter_configured():
-            content = SignedHttpsBedrockAdapter(
-                timeout_s=self._s.bedrock_timeout_s).converse(
-                    model_id=self._s.bedrock_model_id,
-                    system=system,
-                    messages=convo,
-                    inference_config={"temperature": 0},
-                )
+            try:
+                content = SignedHttpsBedrockAdapter(
+                    timeout_s=self._s.bedrock_timeout_s).converse(
+                        model_id=self._s.bedrock_model_id,
+                        system=system,
+                        messages=convo,
+                        inference_config={"temperature": 0},
+                    )
+            except BedrockAdapterError:
+                # A deployment may temporarily retain an older adapter while a
+                # least-privilege IAM user is configured in AppSail. Direct AWS
+                # failover is opt-in and keeps the exact model allow-list above.
+                if not self._s.bedrock_direct_sdk_available():
+                    raise
+                content = self._direct_converse(system=system, messages=convo)
         else:
-            if catalyst_runtime_detected():
+            if catalyst_runtime_detected() and not self._s.bedrock_direct_sdk_available():
                 raise RuntimeError(
-                    "signed AWS Bedrock adapter is mandatory in Catalyst AppSail")
-            if not self._s.bedrock_direct_sdk_enabled:
+                    "signed AWS Bedrock adapter or explicit direct SDK mode is required")
+            if not self._s.bedrock_direct_sdk_available():
                 raise RuntimeError(
                     "signed AWS Bedrock adapter is required; direct SDK access is disabled")
-            response = self._client().converse(
-                modelId=self._s.bedrock_model_id,
-                system=system,
-                messages=convo,
-                inferenceConfig={"temperature": 0},
-            )
-            content = "".join(
-                part.get("text", "")
-                for part in response.get("output", {}).get("message", {}).get("content", [])
-            ).strip()
+            content = self._direct_converse(system=system, messages=convo)
         return _plan_from_json(content, language, source="aws-bedrock")
 
 

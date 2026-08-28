@@ -82,10 +82,10 @@
       "DRISHTI_CHANNEL_TTL_MS": "Channel-token lifetime in ms (default 300000 = 5 min); the stream self-closes at expiry, forcing a re-handshake through the gateway.",
       "DRISHTI_AWS_ADAPTER_URL": "Required HTTPS API Gateway base URL for Bedrock and retained AWS model operations.",
       "DRISHTI_AWS_ADAPTER_SECRET": "Required shared HMAC secret, configured only in AppSail and AWS Secrets Manager; never commit or expose it to the browser.",
-      "SEMANTIC_PLANNER_PROVIDER": "Set to aws_bedrock. AppSail invokes it through the existing signed AWS adapter; do not add AWS access keys to AppSail.",
+      "SEMANTIC_PLANNER_PROVIDER": "Set to aws_bedrock. AppSail prefers the existing signed AWS adapter and may use explicit direct SDK failover with the dedicated least-privilege IAM user.",
       "BEDROCK_MODEL_ID": "Must be exactly zai.glm-4.7-flash. Code and AWS IAM both reject Claude, GPT/OpenAI, and any unreviewed model.",
-      "BEDROCK_REGION": "Set to ap-south-1 to match the signed adapter Lambda and the in-region GLM 4.7 Flash endpoint.",
-      "BEDROCK_DIRECT_SDK_ENABLED": "Must be false in Catalyst. AppSail is forbidden from bypassing the signed adapter or carrying AWS credentials."
+      "BEDROCK_REGION": "Set to us-east-1 for the current GLM 4.7 Flash Bedrock endpoint.",
+      "BEDROCK_DIRECT_SDK_ENABLED": "Optional local/profile opt-in. In AppSail, the dedicated least-privilege AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY server-side variables enable direct failover even when this flag is false or blank."
     },
     "must_not_set_for_crud": [],
     "database_url_policy": "Prompt 23 Option A (hackathon deviation, documented): DATABASE_URL IS now set on the AppSail so it accesses the synthetic AWS RDS (drishti-db, ap-south-1) SERVER-TO-SERVER for the operational CRUD domains still on RDS (intake/cases/casework/evidence/chat/governance/etc. - deployment_boundary.py migration=rds_backed_migration_pending). The BROWSER never reaches RDS (browser -> API Gateway -> gateway_api -> signed context -> AppSail -> RDS). Chosen for live-demo completeness instead of the full Data Store migration. Bounded because: the DB is synthetic (verify_hackathon_startup enforces the synthetic_meta.app_environment marker at boot and refuses a non-synthetic DB), RLS is off by explicit hackathon request, and Board/Disaster remain Data Store-native. Revert by removing DATABASE_URL to fall back to Data-Store-only operational serving.",
