@@ -46,8 +46,8 @@ export function KpiCard({
   className,
 }: KpiCardProps) {
   return (
-    <div className={cn("flex flex-col justify-between rounded-card border border-hairline bg-surface p-3.5 shadow-card", className)}>
-      <div className="flex items-center gap-2 text-12 text-content-dim">
+    <div className={cn("flex flex-col justify-between rounded-card border border-hairline bg-surface p-5 shadow-card", className)}>
+      <div className="flex items-center gap-2 text-body-s text-content-dim">
         {icon && <span className="[&_svg]:size-4">{icon}</span>}
         <span className="truncate">{label}</span>
         {(hint || pending) && (
@@ -65,17 +65,17 @@ export function KpiCard({
             <Skeleton className="h-8 w-24" />
           ) : pending ? (
             <div className="flex items-baseline gap-2">
-              <span className="text-28 font-semibold leading-none text-content-dim">—</span>
-              <span className="rounded bg-surface-2 px-1.5 py-0.5 text-12 text-content-dim">
+              <span className="text-28 font-bold leading-none text-content-dim">—</span>
+              <span className="rounded-badge bg-surface-2 px-1.5 py-0.5 text-body-s text-content-dim">
                 awaiting API
               </span>
             </div>
           ) : error ? (
-            <span className="text-16 text-content-dim">—</span>
+            <span className="text-heading-s text-content-dim">—</span>
           ) : (
-            <span className="tnum text-28 font-semibold leading-none text-content">
+            <span className="tnum text-28 font-bold leading-none text-content">
               {value == null ? "—" : value >= 100000 ? formatCompact(value) : formatNumber(value)}
-              {unit && <span className="ml-0.5 text-16 font-medium text-content-dim">{unit}</span>}
+              {unit && <span className="ml-0.5 text-heading-s font-bold text-content-dim">{unit}</span>}
             </span>
           )}
           {!loading && !pending && !error && delta != null && (
@@ -97,7 +97,7 @@ function Delta({ pct, improveWhenDown }: { pct: number; improveWhenDown: boolean
   return (
     <div
       className={cn(
-        "mt-1.5 inline-flex items-center gap-0.5 text-12 font-medium tnum",
+        "mt-1.5 inline-flex items-center gap-0.5 text-body-s font-bold tnum",
         flat ? "text-content-dim" : good ? "text-severity-low" : "text-severity-high",
       )}
     >

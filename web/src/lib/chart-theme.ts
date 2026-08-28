@@ -71,7 +71,8 @@ function resolveTheme(): ResolvedChartTheme {
     primary: readVar("--primary", "#3b82f6"),
     accent: readVar("--accent", "#12b981"),
     categorical: [...CATEGORY_PALETTE],
-    fontFamily: "Inter, 'Noto Sans Kannada', system-ui, sans-serif",
+    fontFamily:
+      "'Amazon Ember', 'Open Sans', 'Noto Sans Kannada', 'Helvetica Neue', Helvetica, Arial, sans-serif",
     fontSize: 12,
   };
 }

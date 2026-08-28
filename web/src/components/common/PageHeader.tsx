@@ -18,10 +18,14 @@ export function PageHeader({
   const translatedDescription = typeof description === "string" ? t(description) : description;
 
   return (
-    <div className={cn("mb-4 flex flex-wrap items-start justify-between gap-3", className)}>
+    /* AWS console page header: heading-xl title (24/30 bold) with a body-m
+       description, 20px below, actions right-aligned on the title line. */
+    <div className={cn("mb-5 flex flex-wrap items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        <h1 className="text-20 font-semibold tracking-tight text-content">{translatedTitle}</h1>
-        {translatedDescription && <p className="mt-0.5 text-13 text-content-dim">{translatedDescription}</p>}
+        <h1 className="text-heading-xl font-bold text-content">{translatedTitle}</h1>
+        {translatedDescription && (
+          <p className="mt-1 text-body-m text-content-dim">{translatedDescription}</p>
+        )}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>

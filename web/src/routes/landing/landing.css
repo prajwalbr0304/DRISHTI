@@ -8,7 +8,8 @@
   overflow-x: clip;
   background: var(--landing-bg);
   color: #f5f9fb;
-  font-family: "Inter", "Noto Sans Kannada", system-ui, sans-serif;
+  font-family: "Amazon Ember", "Open Sans", "Noto Sans Kannada", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
 }
 
 .landing-page *,

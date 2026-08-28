@@ -201,6 +201,79 @@ def test_executor_escalation_credentials_fails_any_role():
         executor.execute_select("SELECT * FROM users", "system_admin")
 
 
+# ============ model-authored CaseMaster aggregates (no DB) =================
+# The seal keeps an unfiltered case aggregate out of the database. It must NOT
+# also throw the semantic planner's analysis away: the server composes its
+# analytics-eligibility policy around the model's SQL and seals THAT.
+_MODEL_AGG = (
+    'SELECT "District"."DistrictName", COUNT(*) AS case_count FROM "CaseMaster" '
+    'JOIN "Unit" ON "Unit"."UnitID" = "CaseMaster"."PoliceStationID" '
+    'JOIN "District" ON "District"."DistrictID" = "Unit"."DistrictID" '
+    'WHERE "CaseMaster"."CrimeRegisteredDate" >= \'2024-01-01\' '
+    'GROUP BY "District"."DistrictName" ORDER BY case_count DESC LIMIT 3'
+)
+
+
+def test_raw_model_case_aggregate_still_fails_closed():
+    # unchanged guarantee: the model's own string cannot cross the boundary
+    assert executor.needs_case_aggregate_seal(_MODEL_AGG) is True
+    with pytest.raises(scope.ScopeError):
+        executor.execute_select(_MODEL_AGG, "crime_analyst")
+
+
+def test_model_case_aggregate_is_authorized_by_composing_policy():
+    sealed = executor.authorize_model_case_aggregate(_MODEL_AGG)
+    assert sealed is not None
+    text = str(sealed)
+    # the model's analysis survives verbatim (date filter + LIMIT 3 intact) …
+    assert "'2024-01-01'" in text and "LIMIT 3" in text
+    # … but every relation reference now goes through the server's policy CTE
+    assert "drishti_case_master_policy" in text
+    assert '"CaseMaster"' not in text.split(") SELECT", 1)[1]
+    assert 'FROM "CaseMaster" cm_policy_src' in text
+    assert '"CaseVersion"' in text          # analytics-eligibility predicate
+    assert scope.is_aggregate(text)
+    # the composed string satisfies the executor's exact-object seal
+    assert executor.needs_case_aggregate_seal(sealed) is False
+    scope.enforce_scope(guard.validate_select(sealed), "crime_analyst")
+
+
+def test_composed_model_aggregate_passes_aggregate_only_scope(aggregate_only_role):
+    # the policy CTE it adds ("CaseVersion") must not trip an aggregate-only seat
+    sealed = executor.authorize_model_case_aggregate(_MODEL_AGG)
+    scope.enforce_scope(guard.validate_select(sealed), aggregate_only_role)
+
+
+def test_deterministic_plan_is_not_rewrapped():
+    plan = FallbackPlanner().plan("top 5 districts by theft", "crime_analyst", "en", [])
+    assert executor.needs_case_aggregate_seal(plan.sql) is False
+
+
+def test_model_case_aggregate_preserves_string_literals():
+    sealed = executor.authorize_model_case_aggregate(
+        'SELECT COUNT(*) AS n, \'"CaseMaster"\' AS label FROM "CaseMaster" cm')
+    assert sealed is not None
+    assert '\'"CaseMaster"\'' in str(sealed)     # literal untouched
+
+
+@pytest.mark.parametrize("sql", [
+    'SELECT COUNT(*) FROM "public"."CaseMaster"',            # schema-qualified
+    "SELECT COUNT(*) FROM CaseMaster",                        # unquoted
+    'WITH x AS (SELECT * FROM "CaseMaster") SELECT COUNT(*) FROM x',  # own CTE
+    'SELECT COUNT(*) FROM "CaseMaster" drishti_case_master_policy',   # name clash
+    'DELETE FROM "CaseMaster"',                               # not a SELECT
+])
+def test_model_case_aggregate_fails_closed_when_not_exactly_composable(sql):
+    assert executor.authorize_model_case_aggregate(sql) is None
+
+
+def test_non_case_aggregate_needs_no_seal():
+    assert executor.needs_case_aggregate_seal(
+        'SELECT COUNT(*) AS n FROM "Unit"') is False
+    assert executor.authorize_model_case_aggregate(
+        'SELECT COUNT(*) AS n FROM "Unit"') is None
+
+
 # ============================ planner (no DB) ==============================
 @pytest.mark.parametrize("question,intent", [
     ("top 5 districts by theft", "top_districts"),
@@ -217,6 +290,22 @@ def test_fallback_planner_intents(question, intent):
 def test_fallback_planner_clarifies_unmatched():
     plan = FallbackPlanner().plan("hello there friend", "crime_analyst", "en", [])
     assert plan.needs_clarification and not plan.sql
+
+
+@pytest.mark.parametrize("question,intent", [
+    # reference-entity counts: no case/FIR word -> count the reference table
+    ("how many police stations are there in Mysuru", "count_stations"),
+    ("how many districts are there", "count_districts"),
+    # naming cases/FIRs makes it a CASE count even when a district/station is
+    # also named — otherwise the district-count SQL answers the wrong question
+    # and overrides a correct semantic plan.
+    ("how many FIRs in Mysuru district", "count"),
+    ("how many theft cases were registered at each police station", "count"),
+])
+def test_fallback_reference_entity_counts_do_not_capture_case_counts(question, intent):
+    plan = FallbackPlanner().plan(question, "crime_analyst", "en", [])
+    assert plan.intent == intent
+    assert plan.sql and guard.validate_select(plan.sql)
 
 
 def test_fallback_aggregate_only_list_becomes_aggregate(aggregate_only_role):

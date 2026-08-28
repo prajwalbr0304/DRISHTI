@@ -87,17 +87,18 @@
   body {
     background-color: var(--bg);
     color: var(--text);
-    /* Inter for Latin; Noto Sans Kannada for Kannada, with local system Kannada
-       faces (Windows/Linux) as fallbacks so KN renders even if the webfont CDN
-       is blocked on a restricted police network (doc 01 §9, field-readiness). */
-    font-family: "Inter", "Noto Sans Kannada", "Nirmala UI", "Tunga", "Kedage",
-      system-ui, sans-serif;
+    /* AWS console face: Amazon Ember where available, else Open Sans (the
+       published Cloudscape default, webfont-loaded). Noto Sans Kannada for
+       Kannada, with local system Kannada faces (Windows/Linux) as fallbacks so
+       KN renders even if the webfont CDN is blocked on a restricted police
+       network (doc 01 §9, field-readiness). */
+    font-family: "Amazon Ember", "Open Sans", "Noto Sans Kannada", "Nirmala UI",
+      "Tunga", "Kedage", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    /* Cloudscape body-m */
     font-size: 14px;
     line-height: 20px;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* proportional text by default; numerals opt into tabular via .tnum */
-    font-feature-settings: "cv05" 1, "ss01" 1;
   }
 
   /* Kannada text keeps its own family for correct shaping. The extra line-height
@@ -105,7 +106,7 @@
      clipped in the tight fixed line-heights of the type scale — Kannada is
      first-class, not a bolt-on (doc 01 §2.2 / §9). */
   :lang(kn) {
-    font-family: "Noto Sans Kannada", "Nirmala UI", "Tunga", "Kedage", "Inter", sans-serif;
+    font-family: "Noto Sans Kannada", "Nirmala UI", "Tunga", "Kedage", "Open Sans", sans-serif;
     line-height: 1.7;
   }
 
@@ -263,26 +264,67 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Dashboard grid (react-grid-layout) — AWS-style movable/resizable cards.
-   Theme the drop placeholder and lift the tile while interacting. The resize
-   handles stay functional (edge/corner drag zones with a resize cursor) but
-   render NO arrow icon — no arrow visuals or animations.
+   Dashboard grid (react-grid-layout) — matched to the AWS console board.
+   Theme the drop placeholder and lift the tile while interacting. Edge handles
+   stay as invisible cursor zones; the south-east corner carries the Cloudscape
+   diagonal resize grip.
    ------------------------------------------------------------------------- */
 .drishti-dashboard .react-grid-item.react-grid-placeholder {
   background: var(--primary);
   opacity: 0.14;
-  border-radius: 14px;
+  border-radius: 16px;
 }
 .drishti-dashboard .react-grid-item.react-draggable-dragging,
 .drishti-dashboard .react-grid-item.resizing {
   z-index: 5;
   box-shadow: 0 12px 32px -10px rgb(0 0 0 / 0.45);
 }
-/* Hide the default resize-handle arrow icon entirely; keep the zone draggable. */
+
+/* Strip react-resizable's default arrow sprite from every handle; keep the
+   drag zone and its resize cursor. */
 .drishti-dashboard .react-resizable-handle {
   background-image: none;
   padding: 0;
 }
 .drishti-dashboard .react-resizable-handle::after {
   content: none;
+}
+
+/* AWS-style corner grip: three diagonal strokes clipped to the bottom-right
+   triangle, quiet by default and brighter on hover. */
+.drishti-dashboard .react-resizable-handle-se {
+  width: 20px;
+  height: 20px;
+  right: 0;
+  bottom: 0;
+}
+.drishti-dashboard .react-resizable-handle-se::before {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 11px;
+  height: 11px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--text-dim) 0 1.5px,
+    transparent 1.5px 4px
+  );
+  -webkit-mask-image: linear-gradient(to bottom right, transparent 0 46%, #000 54%);
+  mask-image: linear-gradient(to bottom right, transparent 0 46%, #000 54%);
+  opacity: 0.5;
+  transition: opacity 150ms ease-out;
+}
+.drishti-dashboard .react-grid-item:hover .react-resizable-handle-se::before,
+.drishti-dashboard .react-grid-item.resizing .react-resizable-handle-se::before {
+  opacity: 1;
+}
+
+/* Widget drag grip (the six dots at the left of a widget header). */
+.dash-drag {
+  cursor: grab;
+}
+.dash-drag:active,
+.react-draggable-dragging .dash-drag {
+  cursor: grabbing;
 }

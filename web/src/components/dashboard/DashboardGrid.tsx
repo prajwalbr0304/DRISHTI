@@ -8,10 +8,10 @@ import "react-resizable/css/styles.css";
 
 /* ============================================================================
    AWS-style dashboard: draggable + resizable card grid. Each tile declares its
-   default position on a 12-column grid; users can drag it (by its card header)
-   and resize it (edge / corner handles). The arrangement is persisted per
-   dashboard id and can be reset. Responsive: stacks to one column on narrow
-   screens.
+   default position on a 12-column grid; users can drag it (by the six-dot grip
+   in its card header) and resize it (edge / corner handles). Gutters use the
+   AWS console board spacing of 20px. The arrangement is persisted per dashboard
+   id and can be reset. Responsive: stacks to one column on narrow screens.
    ========================================================================== */
 
 const Grid = WidthProvider(Responsive);
@@ -28,7 +28,8 @@ export interface DashTile {
   h: number;
   minW?: number;
   minH?: number;
-  /** "header": the tile content owns a `.dash-drag` handle (Widget header).
+  /** "header": the tile content owns a `.dash-drag` grip (the six dots in the
+   *  Widget header).
    *  "self": the whole tile is the drag handle (e.g. a stat card). */
   handle?: "self" | "header";
 }
@@ -95,7 +96,8 @@ export function DashboardGrid({
         breakpoints={BREAKPOINTS}
         cols={COLS}
         rowHeight={rowHeight}
-        margin={[12, 12]}
+        /* AWS console board gutter (Cloudscape space-scaled-l) */
+        margin={[20, 20]}
         containerPadding={[0, 0]}
         draggableHandle=".dash-drag"
         draggableCancel=".no-drag"

@@ -18,7 +18,7 @@ import hashlib
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
 from psycopg2.extras import Json
@@ -26,7 +26,8 @@ from psycopg2.extras import Json
 from .. import db, models
 from ..config import get_settings
 from .briefing import build_briefing, is_briefing_request
-from .executor import ExecutionError, execute_select
+from .executor import (ExecutionError, authorize_model_case_aggregate,
+                       execute_select, needs_case_aggregate_seal)
 from .guard import GuardError
 from .planner import Turn, fallback_planner, get_planner
 from .schema import requires_aggregate
@@ -127,23 +128,42 @@ def ask(role: str, question: str, language: Optional[str] = None,
         planner_source = "deterministic-fallback"
     lang = plan.language or lang
 
-    # The semantic model resolves the language and intent, while these recognized
-    # high-risk shapes use the server-authored equivalent SQL. Long FIR numbers
-    # must never be coerced into the integer CaseMasterID, and model-authored case
-    # aggregates cannot carry the executor's process-local authorization seal.
+    # The semantic model resolves the language, intent and SQL. These recognized
+    # high-risk shapes are the narrow exceptions that stay server-authored.
     fb_plan = fallback_planner().plan(question, role, lang, history)
-    if (fb_plan.sql and (
-            fb_plan.intent == "case_details"
-            or (plan.sql and is_aggregate(plan.sql) and is_aggregate(fb_plan.sql)))):
+
+    # 1. Case lookup by reference. Long FIR/crime numbers are TEXT identifiers; a
+    #    model that coerces one into the small integer CaseMasterID answers about
+    #    a DIFFERENT case, so this exact shape is always server-authored.
+    if fb_plan.sql and fb_plan.intent == "case_details":
         plan = fb_plan
+        planner_source = fallback_planner().name
+
+    # 2. Case aggregates. The executor refuses an aggregate over "CaseMaster" that
+    #    is not sealed as policy-filtered, so a model-authored aggregate cannot run
+    #    as written. Rather than DISCARD the model's analysis (which silently made
+    #    the deterministic planner answer nearly every analytical question), the
+    #    server composes its analytics-eligibility policy around the model's SQL
+    #    and seals that. Only if the composition cannot be made exactly do we fall
+    #    back to the deterministic aggregate — and then we say so.
+    elif plan.sql and needs_case_aggregate_seal(plan.sql):
+        sealed = authorize_model_case_aggregate(plan.sql)
+        if sealed is not None:
+            plan = replace(plan, sql=sealed)
+        elif fb_plan.sql and is_aggregate(fb_plan.sql):
+            plan = fb_plan
+            planner_source = fallback_planner().name
 
     # --- Deterministic override for reference-entity counts ------------------
-    # The LLM sometimes confuses "how many stations" with "how many FIRs".
-    # The offline planner maps these DETERMINISTICALLY and CORRECTLY, so prefer
-    # it whenever the question is clearly about stations/districts (not cases).
-    if fb_plan.intent in ("count_stations", "count_districts") and fb_plan.sql:
+    # The LLM sometimes confuses "how many stations" with "how many FIRs". The
+    # offline planner maps these DETERMINISTICALLY and CORRECTLY, so prefer it
+    # when the question is clearly about stations/districts AND the model
+    # actually got the entity wrong (it counted cases). A model plan that already
+    # counts the reference table is kept.
+    if (fb_plan.intent in ("count_stations", "count_districts") and fb_plan.sql
+            and (not plan.sql or "CaseMaster" in referenced_tables(plan.sql))):
         plan = fb_plan
-        planner_source = "deterministic-fallback"
+        planner_source = fallback_planner().name
 
     # Aggregate-only roles (schema.AGGREGATE_ONLY_ROLES) must receive an aggregate query.
     # The semantic planner is NOT trusted to honour that on its own: if it

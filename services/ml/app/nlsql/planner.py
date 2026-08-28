@@ -246,13 +246,20 @@ class FallbackPlanner:
         if re.search(r"how many|count|number of|total|how much|ಎಷ್ಟು|ಸಂಖ್ಯೆ|"
                      r"\beshtu\b|\bestu\b|sankhye", ql):
             # --- reference-entity counts (stations, districts, officers) -----
-            if re.search(r"station|ಠಾಣೆ|thane|unit|ಘಟಕ", ql):
+            # A question that NAMES cases/FIRs/crimes is a case count even when it
+            # also names a station or district ("how many FIRs in Mysuru district"),
+            # so the reference-entity branches must not claim it.
+            counts_cases = bool(re.search(
+                r"case|\bfirs?\b|f\.i\.r|crime|offence|offense|complaint|"
+                r"ಪ್ರಕರಣ|ಅಪರಾಧ|ದೂರು|prakarana|apradha|dooru", ql))
+            if not counts_cases and re.search(r"station|ಠಾಣೆ|thane|unit|ಘಟಕ", ql):
                 place_cond = (f' WHERE d."DistrictName" ILIKE {_lit("%" + f["place"] + "%")}'
                               if f.get("place") else "")
                 sql = (f'SELECT COUNT(*) AS station_count FROM "Unit" u '
                        f'JOIN "District" d ON d."DistrictID"=u."DistrictID"{place_cond}')
                 return Plan(sql=sql, intent="count_stations", confidence=0.78, language=language, filters=f)
-            if re.search(r"\bdistrict|ಜಿಲ್ಲೆ|jille\b", ql) and not re.search(r"by district|per district|each district|across district", ql):
+            if (not counts_cases and re.search(r"\bdistrict|ಜಿಲ್ಲೆ|jille\b", ql)
+                    and not re.search(r"by district|per district|each district|across district", ql)):
                 sql = 'SELECT COUNT(*) AS district_count FROM "District"'
                 return Plan(sql=sql, intent="count_districts", confidence=0.78, language=language, filters=f)
             # --- end reference-entity counts ---------------------------------

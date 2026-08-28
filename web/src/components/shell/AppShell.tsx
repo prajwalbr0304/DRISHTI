@@ -21,7 +21,7 @@ export function AppShell() {
           <TopBar />
           <Breadcrumbs />
           <main className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[1600px] p-4">
+            <div className="mx-auto w-full max-w-[1600px] p-5">
               <Outlet />
             </div>
           </main>

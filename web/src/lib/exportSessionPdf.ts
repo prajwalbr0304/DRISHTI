@@ -24,13 +24,13 @@ export interface SessionPdfMeta {
 const FONTS =
   '<link rel="preconnect" href="https://fonts.googleapis.com">' +
   '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
-  '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&display=swap" rel="stylesheet">';
+  '<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&display=swap" rel="stylesheet">';
 
 const STYLE = `
 @page { size: A4; margin: 16mm; }
 * { box-sizing: border-box; }
-body { font-family:'Inter','Noto Sans Kannada','Nirmala UI','Tunga',sans-serif; color:#12141c; font-size:12px; line-height:1.5; margin:0; }
-:lang(kn){ font-family:'Noto Sans Kannada','Nirmala UI','Tunga','Inter',sans-serif; line-height:1.75; }
+body { font-family:'Amazon Ember','Open Sans','Noto Sans Kannada','Nirmala UI','Tunga',Helvetica,Arial,sans-serif; color:#12141c; font-size:12px; line-height:1.5; margin:0; }
+:lang(kn){ font-family:'Noto Sans Kannada','Nirmala UI','Tunga','Open Sans',sans-serif; line-height:1.75; }
 .brand { font-size:16px; font-weight:700; letter-spacing:.01em; }
 .sub { font-size:10.5px; color:#5a6478; }
 .doc-header { border-bottom:2px solid #12141c; padding-bottom:10px; margin-bottom:14px; }

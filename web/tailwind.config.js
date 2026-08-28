@@ -112,13 +112,40 @@ export default {
         },
       },
       fontFamily: {
+        // AWS console typography: Amazon Ember is the console face and resolves
+        // locally on machines that have it; Open Sans is Cloudscape's published
+        // default and is webfont-loaded, so the metrics match everywhere else.
         // Local system Kannada faces (Nirmala UI/Tunga/Kedage) are fallbacks so
         // Kannada renders even when the webfont CDN is unreachable (doc 01 §9).
-        sans: ["Inter", "Noto Sans Kannada", "Nirmala UI", "Tunga", "Kedage", "system-ui", "sans-serif"],
-        kannada: ["Noto Sans Kannada", "Nirmala UI", "Tunga", "Kedage", "Inter", "sans-serif"],
+        sans: [
+          "Amazon Ember",
+          "Open Sans",
+          "Noto Sans Kannada",
+          "Nirmala UI",
+          "Tunga",
+          "Kedage",
+          "Helvetica Neue",
+          "Helvetica",
+          "Arial",
+          "sans-serif",
+        ],
+        kannada: ["Noto Sans Kannada", "Nirmala UI", "Tunga", "Kedage", "Open Sans", "sans-serif"],
+        mono: ["Monaco", "Menlo", "Consolas", "Courier Prime", "Courier", "Courier New", "monospace"],
       },
-      // The deliberate, tight scale from doc 01 §2.2 (px, named by size).
       fontSize: {
+        /* --- Cloudscape / AWS console type scale (the canonical set) ---------
+           Heading styles are Bold (700); body styles Normal (400).
+           https://cloudscape.design/foundation/visual-foundation/typography/ */
+        "heading-xl": ["24px", { lineHeight: "30px" }], // page title (h1)
+        "heading-l": ["20px", { lineHeight: "24px" }], // container / widget title (h2)
+        "heading-m": ["18px", { lineHeight: "22px" }], // card section header (h3)
+        "heading-s": ["16px", { lineHeight: "20px" }], // paragraph title (h4)
+        "heading-xs": ["14px", { lineHeight: "18px" }], // sub-paragraph (h5)
+        "body-m": ["14px", { lineHeight: "20px" }], // body + paragraph text
+        "body-s": ["12px", { lineHeight: "16px" }], // description / constraint text
+        "display-l": ["42px", { lineHeight: "48px" }], // dashboard number highlights
+
+        // Legacy px-named scale (doc 01 §2.2) kept so existing screens compile.
         12: ["12px", { lineHeight: "16px" }],
         13: ["13px", { lineHeight: "18px" }],
         14: ["14px", { lineHeight: "20px" }],
@@ -129,15 +156,18 @@ export default {
         // Tremor scale bridge
         "tremor-label": ["12px", { lineHeight: "16px" }],
         "tremor-default": ["14px", { lineHeight: "20px" }],
-        "tremor-title": ["20px", { lineHeight: "28px" }],
+        "tremor-title": ["20px", { lineHeight: "24px" }],
         "tremor-metric": ["28px", { lineHeight: "34px" }],
       },
       borderRadius: {
-        // doc 01 §2.3 — 10px cards, 8px controls
-        card: "10px",
+        // Cloudscape visual-refresh radii: 16px containers, 8px inputs/items,
+        // 4px badges, pill buttons.
+        card: "16px",
         control: "8px",
+        item: "8px",
+        badge: "4px",
         "tremor-small": "8px",
-        "tremor-default": "10px",
+        "tremor-default": "16px",
         "tremor-full": "9999px",
       },
       spacing: {
@@ -150,12 +180,13 @@ export default {
         subnav: "13rem",
       },
       boxShadow: {
-        card: "0 1px 2px 0 rgb(0 0 0 / 0.20), 0 1px 3px 0 rgb(0 0 0 / 0.12)",
+        // Cloudscape container elevation: flat and wide, not a tight drop shadow.
+        card: "0 1px 8px 2px rgb(0 0 0 / 0.20)",
         rail: "0 0 0 1px var(--border)",
         peek: "-8px 0 24px -12px rgb(0 0 0 / 0.45)",
         pop: "0 8px 28px -8px rgb(0 0 0 / 0.45), 0 0 0 1px var(--border)",
         "tremor-input": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
-        "tremor-card": "0 1px 2px 0 rgb(0 0 0 / 0.20)",
+        "tremor-card": "0 1px 8px 2px rgb(0 0 0 / 0.20)",
         "tremor-dropdown": "0 8px 28px -8px rgb(0 0 0 / 0.45)",
       },
       keyframes: {
