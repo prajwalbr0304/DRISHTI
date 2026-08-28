@@ -107,7 +107,7 @@ export function OverviewPage({
               {Object.entries(currentVersion.official_references)
                 .filter((entry): entry is [string, string] => typeof entry[1] === "string")
                 .map(([key, value]) => (
-                  <MetaFact key={key} label={key.replaceAll("_", " ")} value={value} mono />
+                  <MetaFact key={key} label={key.replace(/_/g, " ")} value={value} mono />
                 ))}
             </dl>
             {proxyReferences && (
