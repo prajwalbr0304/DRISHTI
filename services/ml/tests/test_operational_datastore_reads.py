@@ -77,6 +77,14 @@ def test_admin_feature_flags_code_based_offline(monkeypatch):
     assert {"rag_assistant", "notifications_email", "reports_smartbrowz"} <= keys
 
 
+def test_rag_feature_flag_enables_offline_approved_text_runtime(monkeypatch):
+    from app.admin import service as adm
+    monkeypatch.setattr(adm, "rag_enabled", lambda: False)
+
+    assert adm._flag_runtime_effective("rag_assistant", True) is True
+    assert adm._flag_runtime_effective("rag_assistant", False) is False
+
+
 def test_admin_usage_plan_baseline_offline(monkeypatch):
     from app.admin import service as adm
     from app.config import get_settings
