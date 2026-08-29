@@ -29,6 +29,9 @@ _BRIEFING_RE = re.compile(
     r"\b(briefing|brief me|brief for|dashboard brief|admin dashboard|dashboard overview|"
     r"overview|sitrep|situation report|situation overview|status report|status update|daily brief)\b"
     r"|for my scope|what'?s happening|whats happening"
+    r"|\b(?:tell me about|describe|explain|summari[sz]e)\s+(?:the\s+)?(?:current\s+)?dashboard\b"
+    r"|\bdashboard\s+(?:you are|we are|i am)\s+(?:currently\s+)?(?:in|using|viewing)\b"
+    r"|\bwhat(?:'s| is)\s+(?:on\s+)?(?:the\s+)?(?:current\s+)?dashboard\b"
     r"|ಬ್ರೀಫಿಂಗ್|ಸಾರಾಂಶ|ಅವಲೋಕನ|ಪರಿಸ್ಥಿತಿ ವರದಿ|ಸ್ಥಿತಿ ವರದಿ",
     re.IGNORECASE,
 )

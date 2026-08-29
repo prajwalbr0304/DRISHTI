@@ -29,7 +29,8 @@ from .briefing import build_briefing, is_briefing_request
 from .executor import (ExecutionError, authorize_model_case_aggregate,
                        execute_select, needs_case_aggregate_seal)
 from .guard import GuardError
-from .planner import Turn, fallback_planner, get_planner
+from .planner import (Plan, Turn, fallback_planner, get_planner,
+                      sql_covers_resolved_jurisdictions)
 from .schema import requires_aggregate
 from .scope import ScopeError, is_aggregate, referenced_tables
 from .viz import build_visualization
@@ -80,6 +81,20 @@ class AskOutcome:
 
 def detect_language(text: str) -> str:
     return "kn" if _KANNADA.search(text or "") else "en"
+
+
+def _must_use_grounded_jurisdiction_plan(plan: Plan, fallback: Plan) -> bool:
+    """Keep canonical place filters and requested per-district breakdowns exact."""
+    if not fallback.sql or not fallback.filters.get("jurisdiction_resolved"):
+        return False
+    resolved_places = fallback.filters.get("places") or []
+    loses_breakdown = (
+        len(resolved_places) > 1
+        and fallback.intent == "count_by_district"
+        and plan.intent != "count_by_district"
+    )
+    return loses_breakdown or not sql_covers_resolved_jurisdictions(
+        plan.sql, fallback.filters)
 
 
 # --------------------------------------------------------------------------- #
@@ -153,6 +168,14 @@ def ask(role: str, question: str, language: Optional[str] = None,
         elif fb_plan.sql and is_aggregate(fb_plan.sql):
             plan = fb_plan
             planner_source = fallback_planner().name
+
+    # Canonical aliases, regions and multi-district questions are resolved by
+    # server-owned jurisdiction data. Keep a semantic plan only when its SQL
+    # demonstrably contains every canonical district; otherwise use the exact
+    # grounded route without pretending the Bedrock provider was unavailable.
+    if _must_use_grounded_jurisdiction_plan(plan, fb_plan):
+        plan = fb_plan
+        planner_source = "server-grounded-routing"
 
     # --- Deterministic override for reference-entity counts ------------------
     # The LLM sometimes confuses "how many stations" with "how many FIRs". The
