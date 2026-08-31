@@ -452,7 +452,9 @@ def _budget() -> dict:
 def _flag_runtime_effective(key: str, db_enabled: bool) -> Optional[bool]:
     """Some flags are ALSO gated by server env; report the effective runtime state."""
     if key == "rag_assistant":
-        return db_enabled and rag_enabled()
+        # The approved-text assistant supports either the database feature flag
+        # (safe offline knowledge base) or the QuickML environment gate.
+        return db_enabled or rag_enabled()
     if key in ("notifications_email", "notifications_push"):
         return db_enabled and notify_enabled()
     if key == "signals_enabled":

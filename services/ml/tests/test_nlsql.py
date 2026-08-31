@@ -14,7 +14,7 @@ holds, answers are grounded + cited + persisted, and multi-turn memory works.
 import pytest
 
 from app.nlsql import briefing, engine, executor, glossary, guard, planner, scope
-from app.nlsql.planner import FallbackPlanner, LLMPlanner, Turn
+from app.nlsql.planner import FallbackPlanner, LLMPlanner, Plan, Turn
 from conftest import requires_db
 
 
@@ -350,7 +350,72 @@ def test_fallback_aggregate_only_case_details_clarifies(aggregate_only_role):
 
 def test_briefing_detects_admin_dashboard_without_case_brief_collision():
     assert briefing.is_briefing_request("give me the dashboard brief of admin dashboard")
+    assert briefing.is_briefing_request("can you tell me about the dashboard you are currently in")
+    assert briefing.is_briefing_request("describe the current dashboard")
     assert not briefing.is_briefing_request("brief facts of case 100010033202600001")
+
+
+@pytest.mark.parametrize("question,canonical", [
+    ("how many cases are there in Mysore", "Mysuru"),
+    ("how many cases are there in Belgaum", "Belagavi"),
+    ("how many cases are there in Bellary", "Ballari"),
+    ("how many cases are there in Gulbarga", "Kalaburagi"),
+    ("how many cases are there in Bangalore", "Bengaluru City"),
+    ("Mangaluru alli eshtu cases", "Dakshina Kannada"),
+])
+def test_fallback_normalizes_common_district_aliases(question, canonical):
+    plan = FallbackPlanner().plan(question, "system_admin", "en", [])
+    assert plan.intent == "count"
+    assert plan.filters["places"] == [canonical]
+    assert canonical in str(plan.sql)
+
+
+def test_fallback_counts_multiple_named_districts_separately():
+    plan = FallbackPlanner().plan(
+        "how many cases are there in Mysore and Belgaum", "system_admin", "en", [])
+    assert plan.intent == "count_by_district"
+    assert plan.filters["places"] == ["Mysuru", "Belagavi"]
+    assert "Mysuru" in str(plan.sql) and "Belagavi" in str(plan.sql)
+    assert "GROUP BY" in str(plan.sql)
+
+
+def test_fallback_resolves_north_karnataka_to_explicit_districts():
+    plan = FallbackPlanner().plan(
+        "how many cases are there in North Karnataka", "system_admin", "en", [])
+    assert plan.intent == "count"
+    assert plan.filters["region"] == "North Karnataka"
+    assert len(plan.filters["region_districts"]) == 14
+    assert all(name in str(plan.sql) for name in ("Belagavi", "Kalaburagi", "Vijayapura"))
+
+
+def test_semantic_sql_must_cover_every_resolved_district():
+    filters = planner._extract("cases in Mysore and Belgaum")
+    assert planner.sql_covers_resolved_jurisdictions(
+        'SELECT COUNT(*) FROM "District" WHERE "DistrictName" IN (\'Mysuru\', \'Belagavi\')',
+        filters,
+    )
+    assert not planner.sql_covers_resolved_jurisdictions(
+        'SELECT COUNT(*) FROM "District" WHERE "DistrictName" = \'Mysore\'',
+        filters,
+    )
+
+
+def test_engine_preserves_multi_district_breakdown():
+    semantic = Plan(
+        sql=(
+            'SELECT COUNT(*) FROM "CaseMaster" cm '
+            'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
+            'JOIN "District" d ON d."DistrictID"=u."DistrictID" '
+            'WHERE d."DistrictName" IN (\'Mysuru\', \'Belagavi\')'
+        ),
+        intent="count",
+        confidence=0.95,
+        language="en",
+    )
+    fallback = FallbackPlanner().plan(
+        "how many cases are there in Mysore and Belgaum", "system_admin", "en", [])
+
+    assert engine._must_use_grounded_jurisdiction_plan(semantic, fallback)
 
 
 def test_fallback_multiturn_pronoun_resolution():
@@ -379,7 +444,10 @@ def test_arbitrary_openai_compatible_planner_fails_closed():
 # ============================ integration (DB) =============================
 @requires_db
 def test_executor_runs_valid_select_read_only():
-    sql, columns, rows = executor.execute_select(VALID, "crime_analyst")
+    sealed = executor.authorize_model_case_aggregate(VALID)
+    assert sealed is not None
+    sql, columns, rows = executor.execute_select(sealed, "crime_analyst")
+    assert "drishti_case_master_policy" in sql
     assert "DistrictName" in columns and "case_count" in columns
     assert isinstance(rows, list)
 

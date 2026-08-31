@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useAskStore, type AskLang } from "@/stores/useAskStore";
+import { VOICE_LOW_CONFIDENCE, useAskStore, type AskLang } from "@/stores/useAskStore";
 import { useSpeech, type SpeechFinalResult } from "@/components/ask/useSpeech";
 import { useTts } from "@/components/ask/useTts";
 
@@ -136,7 +136,7 @@ export function VoiceModeDialog({
   }, [clearRestartTimer]);
 
   const submitTurn = useCallback(
-    async (text: string, resultConfidence: number | null) => {
+    async (text: string, resultConfidence: number | null, voiceConfirmed = false) => {
       const cleaned = text.trim();
       if (!cleaned || submittingRef.current) return;
       submittingRef.current = true;
@@ -151,9 +151,7 @@ export function VoiceModeDialog({
         voiceMode: true,
         voiceConfidence: resultConfidence ?? undefined,
         voiceLanguage: language,
-        // Entering continuous Voice Mode opts into automatic finalized turns.
-        // The transcript still remains visible and interruptible in the dialog.
-        voiceConfirmed: true,
+        voiceConfirmed: voiceConfirmed || undefined,
       });
       submittingRef.current = false;
       if (!openRef.current || lifecycle !== lifecycleRef.current) return;
@@ -188,8 +186,18 @@ export function VoiceModeDialog({
     setTranscript(finalResult.text);
     setConfidence(finalResult.confidence);
     setFinalResult(null);
+    if (finalResult.confidence == null || finalResult.confidence < VOICE_LOW_CONFIDENCE) {
+      stopSpeech();
+      setErrorMessage(
+        finalResult.confidence == null
+          ? "Recognition confidence is unavailable. Review the transcript before sending."
+          : `Low-confidence transcription (${Math.round(finalResult.confidence * 100)}%). Review it before sending.`,
+      );
+      setPhase("idle");
+      return;
+    }
     void submitTurn(finalResult.text, finalResult.confidence);
-  }, [finalResult, open, submitTurn]);
+  }, [finalResult, open, stopSpeech, submitTurn]);
 
   useEffect(() => {
     if (!open) return;
@@ -224,8 +232,14 @@ export function VoiceModeDialog({
     }
     if (phase === "listening") {
       stopSpeech();
-      if (transcript.trim()) void submitTurn(transcript, confidence);
-      else setPhase("idle");
+      if (!transcript.trim()) {
+        setPhase("idle");
+      } else if (confidence == null || confidence < VOICE_LOW_CONFIDENCE) {
+        setErrorMessage("Review the transcript before sending.");
+        setPhase("idle");
+      } else {
+        void submitTurn(transcript, confidence);
+      }
       return;
     }
     if (phase !== "thinking") beginListening();
@@ -241,6 +255,12 @@ export function VoiceModeDialog({
     ) : (
       <Mic className="size-8" />
     );
+
+  const reviewPending =
+    phase === "idle" &&
+    !!transcript.trim() &&
+    !assistantText &&
+    (confidence == null || confidence < VOICE_LOW_CONFIDENCE);
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
@@ -302,6 +322,16 @@ export function VoiceModeDialog({
                 <div className="flex gap-2 text-13 text-severity-high">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <span>{errorMessage}</span>
+                </div>
+              )}
+              {reviewPending && (
+                <div className="flex flex-wrap justify-end gap-2 border-t border-hairline pt-3">
+                  <Button variant="outline" size="sm" onClick={beginListening}>
+                    Try again
+                  </Button>
+                  <Button size="sm" onClick={() => void submitTurn(transcript, confidence, true)}>
+                    Send transcript
+                  </Button>
                 </div>
               )}
             </div>

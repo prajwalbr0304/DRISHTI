@@ -73,20 +73,70 @@ _CRIME_KEYWORDS: list[tuple[str, str, str]] = [
     (r"missing|ನಾಪತ್ತೆ|napatte", "sub", "%missing%"),
 ]
 
-# common Kannada district cues -> English name fragment for ILIKE
+# Common Kannada district cues -> canonical DistrictName values.
 _KN_DISTRICTS = {
-    "ಬೆಂಗಳೂರ": "Bengaluru", "ಮೈಸೂರ": "Mysuru", "ಕಲಬುರಗಿ": "Kalaburagi",
-    "ಬಳ್ಳಾರಿ": "Ballari", "ಮಂಗಳೂರ": "Mangaluru", "ಹುಬ್ಬಳ್ಳಿ": "Hubballi",
+    "ಬೆಂಗಳೂರ": "Bengaluru City", "ಮೈಸೂರ": "Mysuru", "ಕಲಬುರಗಿ": "Kalaburagi",
+    "ಬಳ್ಳಾರಿ": "Ballari", "ಮಂಗಳೂರ": "Dakshina Kannada", "ಹುಬ್ಬಳ್ಳಿ": "Dharwad",
     "ಬೆಳಗಾವಿ": "Belagavi", "ತುಮಕೂರು": "Tumakuru", "ಶಿವಮೊಗ್ಗ": "Shivamogga",
     "ದಾವಣಗೆರೆ": "Davanagere", "ವಿಜಯಪುರ": "Vijayapura", "ಉಡುಪಿ": "Udupi",
     "ಹಾಸನ": "Hassan", "ಮಂಡ್ಯ": "Mandya", "ಚಿತ್ರದುರ್ಗ": "Chitradurga",
     "ಕೋಲಾರ": "Kolar", "ರಾಯಚೂರು": "Raichur", "ಬೀದರ್": "Bidar",
 }
 
-# English district names (for transliterated word-order like "Mysuru alli …",
-# where there is no "in <place>" cue). Longest first so multi-word names win.
-_DISTRICT_NAMES: tuple[str, ...] = tuple(
-    sorted(set(_KN_DISTRICTS.values()), key=len, reverse=True))
+# Canonical names plus common current, historical and city-name aliases used by
+# citizens and browser speech recognition. Values always match DistrictName.
+_DISTRICT_ALIASES: dict[str, tuple[str, ...]] = {
+    "Bagalkot": ("Bagalkot",),
+    "Ballari": ("Ballari", "Bellary"),
+    "Belagavi": ("Belagavi", "Belgaum"),
+    "Bengaluru City": ("Bengaluru City", "Bangalore City", "Bengaluru", "Bangalore"),
+    "Bengaluru Rural": ("Bengaluru Rural", "Bangalore Rural"),
+    "Bengaluru Urban": ("Bengaluru Urban", "Bangalore Urban"),
+    "Bidar": ("Bidar",),
+    "Chamarajanagar": ("Chamarajanagar", "Chamaraja Nagar"),
+    "Chikkaballapur": ("Chikkaballapur", "Chikballapur"),
+    "Chikkamagaluru": ("Chikkamagaluru", "Chikmagalur", "Chickmagalur"),
+    "Chitradurga": ("Chitradurga",),
+    "Dakshina Kannada": ("Dakshina Kannada", "South Canara", "Mangaluru", "Mangalore"),
+    "Davanagere": ("Davanagere", "Davangere"),
+    "Dharwad": ("Dharwad", "Hubballi", "Hubli"),
+    "Gadag": ("Gadag",),
+    "Hassan": ("Hassan",),
+    "Haveri": ("Haveri",),
+    "Kalaburagi": ("Kalaburagi", "Gulbarga"),
+    "Kodagu": ("Kodagu", "Coorg"),
+    "Kolar": ("Kolar",),
+    "Koppal": ("Koppal",),
+    "Mandya": ("Mandya",),
+    "Mysuru": ("Mysuru", "Mysore"),
+    "Raichur": ("Raichur",),
+    "Ramanagara": ("Ramanagara", "Ramanagaram"),
+    "Shivamogga": ("Shivamogga", "Shimoga"),
+    "Tumakuru": ("Tumakuru", "Tumkur"),
+    "Udupi": ("Udupi",),
+    "Uttara Kannada": ("Uttara Kannada", "North Canara", "Karwar"),
+    "Vijayanagara": ("Vijayanagara", "Vijayanagar", "Hosapete", "Hospet"),
+    "Vijayapura": ("Vijayapura", "Bijapur"),
+    "Yadgir": ("Yadgir", "Yadgiri"),
+}
+
+# Operational grouping used when a user asks for North Karnataka. Keeping the
+# membership explicit makes the answer reproducible and visible in executed SQL.
+_REGION_DISTRICTS: dict[str, tuple[str, ...]] = {
+    "North Karnataka": (
+        "Bagalkot", "Ballari", "Belagavi", "Bidar", "Dharwad", "Gadag",
+        "Haveri", "Kalaburagi", "Koppal", "Raichur", "Uttara Kannada",
+        "Vijayanagara", "Vijayapura", "Yadgir",
+    ),
+}
+_REGION_ALIASES = {
+    "North Karnataka": ("north karnataka", "northern karnataka", "uttara karnataka", "ಉತ್ತರ ಕರ್ನಾಟಕ"),
+}
+
+_ALIAS_INDEX: tuple[tuple[str, str], ...] = tuple(sorted(
+    ((alias, canonical) for canonical, aliases in _DISTRICT_ALIASES.items() for alias in aliases),
+    key=lambda item: len(item[0]), reverse=True,
+))
 
 _PLACE_RE = re.compile(
     r"\bin\s+([A-Za-z][\w .]*?)(?=\s+(?:this|last|during|for|over|in|by|with|and|the|between)\b|[?.,;]|$)",
@@ -131,24 +181,50 @@ def _extract(question: str) -> dict:
             out["crime_cond"] = f"{col} ILIKE {_lit(ilike)}"
             out["crime_label"] = ilike.strip("%")
             break
-    # place (English "in <place>", then Kannada cues)
-    m = _PLACE_RE.search(q)
-    if m:
-        place = m.group(1).strip()
-        if place and place.lower() not in {"the", "this", "state", "india", "karnataka"}:
-            out["place"] = place
-    if "place" not in out:
-        for cue, name in _KN_DISTRICTS.items():
-            if cue in q:
-                out["place"] = name
-                break
-    # transliterated word-order fallback: a bare district name anywhere
-    # ("Mysuru alli kalla estu"), when no "in <place>" cue matched.
-    if "place" not in out:
-        for name in _DISTRICT_NAMES:
-            if re.search(rf"\b{re.escape(name)}\b", q, re.IGNORECASE):
-                out["place"] = name
-                break
+    # Resolve named regions and every district mention, including historical
+    # spellings (Mysore/Belgaum/Bellary) and multiple locations joined by "and".
+    for region, aliases in _REGION_ALIASES.items():
+        if any(alias in ql for alias in aliases):
+            out["region"] = region
+            out["region_districts"] = list(_REGION_DISTRICTS[region])
+            out["jurisdiction_resolved"] = True
+            break
+
+    places: list[str] = []
+    occupied: list[tuple[int, int]] = []
+    candidates: list[tuple[int, int, str, str]] = []
+    for alias, canonical in _ALIAS_INDEX:
+        for match in re.finditer(rf"(?<!\w){re.escape(alias)}(?!\w)", q, re.IGNORECASE):
+            candidates.append((match.start(), match.end(), alias, canonical))
+    # Textual order first; when aliases overlap at the same location, prefer the
+    # longest ("Bengaluru Rural" over bare "Bengaluru").
+    for start, end, alias, canonical in sorted(
+            candidates, key=lambda item: (item[0], -(item[1] - item[0]))):
+        if any(start < used_end and used_start < end for used_start, used_end in occupied):
+            continue
+        occupied.append((start, end))
+        if canonical not in places:
+            places.append(canonical)
+        if alias.casefold() != canonical.casefold():
+            out["jurisdiction_alias_used"] = True
+
+    for cue, canonical in _KN_DISTRICTS.items():
+        if cue in q and canonical not in places:
+            places.append(canonical)
+            out["jurisdiction_alias_used"] = True
+
+    if places:
+        out["places"] = places
+        out["place"] = places[0]  # backwards-compatible single-place context
+        out["jurisdiction_resolved"] = True
+    elif "region" not in out:
+        # Preserve useful free-form locations for the semantic planner/fallback,
+        # but only canonical names above are trusted for exact multi-place SQL.
+        m = _PLACE_RE.search(q)
+        if m:
+            place = m.group(1).strip()
+            if place and place.lower() not in {"the", "this", "state", "india", "karnataka"}:
+                out["place"] = place
     # gravity / status
     if re.search(r"heinous|ಘೋರ", ql):
         out["gravity_cond"] = "g.\"LookupValue\" = 'Heinous'"
@@ -166,7 +242,7 @@ def _extract(question: str) -> dict:
 def _carry_context(question: str, current: dict, history: list[Turn]) -> dict:
     """Multi-turn memory: if the follow-up omits place/crime but refers back
     ('how many THERE?', 'his other cases'), reuse the last user turn's entities."""
-    if current.get("place") and current.get("crime_cond"):
+    if (current.get("place") or current.get("region")) and current.get("crime_cond"):
         return current
     followup = bool(_PRONOUN_RE.search(question)) or len(question.split()) <= 4
     if not followup:
@@ -175,8 +251,11 @@ def _carry_context(question: str, current: dict, history: list[Turn]) -> dict:
         if turn.sender != "user":
             continue
         prior = _extract(turn.text)
-        if "place" not in current and prior.get("place"):
-            current["place"] = prior["place"]
+        if "place" not in current and "region" not in current:
+            for key in ("place", "places", "region", "region_districts",
+                        "jurisdiction_resolved", "jurisdiction_alias_used"):
+                if key in prior:
+                    current[key] = prior[key]
         if "crime_cond" not in current and prior.get("crime_cond"):
             current["crime_cond"] = prior["crime_cond"]
             current["crime_label"] = prior.get("crime_label")
@@ -186,9 +265,27 @@ def _carry_context(question: str, current: dict, history: list[Turn]) -> dict:
 
 def _where(filters: dict) -> str:
     conds = [filters[k] for k in ("crime_cond", "gravity_cond", "status_cond") if k in filters]
-    if filters.get("place"):
+    jurisdiction: list[str] = []
+    if filters.get("places"):
+        values = ", ".join(_lit(v) for v in filters["places"])
+        jurisdiction.append(f'd."DistrictName" IN ({values})')
+    if filters.get("region_districts"):
+        values = ", ".join(_lit(v) for v in filters["region_districts"])
+        jurisdiction.append(f'd."DistrictName" IN ({values})')
+    if jurisdiction:
+        conds.append("(" + " OR ".join(jurisdiction) + ")")
+    elif filters.get("place"):
         conds.append(f'd."DistrictName" ILIKE {_lit("%" + filters["place"] + "%")}')
     return (" WHERE " + " AND ".join(conds)) if conds else ""
+
+
+def sql_covers_resolved_jurisdictions(sql: Optional[str], filters: dict) -> bool:
+    """Whether semantic SQL contains every server-resolved district value."""
+    if not sql:
+        return False
+    required = list(filters.get("places") or []) + list(filters.get("region_districts") or [])
+    folded = sql.casefold()
+    return bool(required) and all(name.casefold() in folded for name in required)
 
 
 class FallbackPlanner:
@@ -265,7 +362,8 @@ class FallbackPlanner:
             # --- end reference-entity counts ---------------------------------
             if re.search(r"by district|per district|each district|across districts", ql) or (
                 not f.get("place") and re.search(r"district", ql)
-            ):
+            ) or (len(f.get("places") or []) > 1 and not re.search(
+                r"combined|together|grand total|total across|ಒಟ್ಟು ಸೇರಿ", ql)):
                 sql = (f'SELECT d."DistrictName", COUNT(*) AS case_count {_BASE_FROM}{aggregate_where} '
                        f'GROUP BY d."DistrictName" ORDER BY case_count DESC')
                 return Plan(sql=authorize_case_aggregate(sql), intent="count_by_district",
@@ -331,6 +429,14 @@ def build_system_prompt(role: str) -> str:
         'DISTRICT — filter on "District"."DistrictName" ILIKE \'%name%\', joining '
         '"CaseMaster" -> "Unit" -> "District". "Unit"."UnitName" is an individual '
         'POLICE STATION name; never use it to match a district.',
+        'PLACE NORMALIZATION: Mysore=Mysuru, Belgaum=Belagavi, Bellary=Ballari, '
+        'Gulbarga=Kalaburagi, Bijapur=Vijayapura, Shimoga=Shivamogga, '
+        'Tumkur=Tumakuru, Bangalore/Bengaluru=Bengaluru City. When several places '
+        'are named, include every canonical district and GROUP BY DistrictName unless '
+        'the user explicitly asks for one combined total.',
+        'REGIONS: "North Karnataka" means exactly Bagalkot, Ballari, Belagavi, Bidar, '
+        'Dharwad, Gadag, Haveri, Kalaburagi, Koppal, Raichur, Uttara Kannada, '
+        'Vijayanagara, Vijayapura and Yadgir. Filter with those DistrictName values.',
         'SCOPE OF DATA: the database covers exactly ONE state (Karnataka). '
         '"in Karnataka" / "in the state" / "overall" therefore means NO place '
         'filter at all — do not ask for clarification about which state.',
