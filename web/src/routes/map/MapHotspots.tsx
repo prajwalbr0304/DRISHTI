@@ -26,6 +26,7 @@ import { useRole } from "@/providers/RoleProvider";
 import { useTimeStore } from "@/stores/useTimeStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { usePeekStore } from "@/stores/usePeekStore";
+import { useDistrictNamer } from "@/hooks/useDistricts";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
 import { ExportViewButton, PrintHeader } from "@/components/common/PrintExport";
@@ -133,6 +134,8 @@ function haversineKm(a: [number, number], b: [number, number]) {
 }
 
 export function MapHotspots() {
+  // District aggregates carry only district_id; resolve real names for labels.
+  const districtName = useDistrictNamer();
   const { role } = useRole();
   const push = usePeekStore((s) => s.push);
   const playhead = useTimeStore((s) => s.playhead);
@@ -497,7 +500,7 @@ export function MapHotspots() {
     }
     else if (id === "hotspot-hex-3d") html = `${(o as { points?: unknown[] }).points?.length ?? ""} incidents`;
     else if (id === "forecast-cells") html = `~${Math.round(((o as MapCell).predicted_count ?? 0) * horizonScale)} predicted · ${Math.round(((o as MapCell).confidence ?? 0) * 100)}% conf`;
-    else if (id === "district-symbols") html = `District ${(o as DistrictAgg).district_id} · ~${Math.round((o as DistrictAgg).predicted * horizonScale)} predicted`;
+    else if (id === "district-symbols") html = `${districtName((o as DistrictAgg).district_id)} · ~${Math.round((o as DistrictAgg).predicted * horizonScale)} predicted`;
     else if (id === "coverage-gaps") html = `Coverage gap · ~${Math.round((o as { predicted: number }).predicted)} predicted, no nearby hotspot`;
     else if (id === "alert-core") html = `${(o as AlertFeature).severity.toUpperCase()} · ${(o as AlertFeature).title}`;
     else if (id === "bnd-districts") html = `${(o as { properties?: { district?: string } }).properties?.district ?? "District"}`;

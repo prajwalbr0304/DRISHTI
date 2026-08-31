@@ -2,31 +2,30 @@ import { useDistrictLabel } from "@/hooks/useDistricts";
 import { useScopeStore } from "@/stores/useScopeStore";
 
 /* ============================================================================
-   Context-chip text for dashboard widgets, so each card states the scope it is
-   ACTUALLY showing rather than the scope the top-bar selector implies.
+   Context-chip text for dashboard widgets.
 
-   `scoped`     — follows the district selector (server- or client-side)
-   `stateWide`  — cannot be narrowed; always the whole state
+   Chips appear ONLY while a district is selected. With no selection every card
+   would read "all districts", which is the default state and therefore says
+   nothing — it just crowds the header and truncates the title.
+
+   Once a district IS selected the chip starts earning its place, because that
+   is the only moment the widgets disagree: most follow the selection, while the
+   socio-economic correlation and graph centrality cannot (see districtSupport
+   in useScopeStore). Those say "state-wide" so the selector never implies a
+   filter that was not applied.
    ========================================================================== */
 
 export function useScopeChips() {
   const districtId = useScopeStore((s) => s.districtId);
   const label = useDistrictLabel();
-  const scoped = districtId == null ? "all districts" : label;
+  const narrowed = districtId != null;
+
   return {
-    /** widgets whose data follows the selector */
-    scoped,
-    /** widgets that can never follow it */
-    stateWide: "state-wide",
     /** true when a single district is selected */
-    narrowed: districtId != null,
-    /** aliases kept explicit so a widget cannot mislabel itself by accident */
-    trends: scoped,
-    forecast: scoped,
-    hotspots: scoped,
-    alerts: scoped,
-    caseload: scoped,
-    socio: "state-wide",
-    centrality: "state-wide",
+    narrowed,
+    /** widgets that follow the selector — names the district, else no chip */
+    scoped: narrowed ? label : undefined,
+    /** widgets that cannot follow it — flags itself only when that matters */
+    stateWide: narrowed ? "state-wide" : undefined,
   };
 }

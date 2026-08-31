@@ -100,7 +100,7 @@ export function AnalystHome() {
         <Widget
           gridTile
           title="Emerging trend"
-          contextChip={`${scopeChip.trends} · window`}
+          contextChip={scopeChip.scoped}
           provenance={trends.data?.result}
           loading={trends.isLoading}
           error={trends.error}
@@ -134,7 +134,7 @@ export function AnalystHome() {
         <Widget
           gridTile
           title="Network of interest"
-          contextChip={scopeChip.centrality}
+          contextChip={scopeChip.stateWide}
           info={
             <div className="space-y-2">
               <p>Top entities by graph centrality (PageRank / betweenness).</p>

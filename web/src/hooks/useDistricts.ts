@@ -54,10 +54,23 @@ export function useDistricts() {
   };
 }
 
+/** Resolve ANY district id to its name.
+ *
+ *  Several API responses carry `district_id` without a name (forecast MapCell,
+ *  for one), so widgets used to print "District 12". This turns those ids into
+ *  the real names, falling back to the id only when it is genuinely unknown. */
+export function useDistrictNamer(): (id?: number | null) => string {
+  const { districts } = useDistricts();
+  return useMemo(() => {
+    const byId = new Map(districts.map((d) => [d.id, d.name]));
+    return (id?: number | null) =>
+      id == null ? "Unknown district" : byId.get(id) ?? `District ${id}`;
+  }, [districts]);
+}
+
 /** Display name for the active district ("All districts" when unscoped). */
 export function useDistrictLabel(): string {
   const districtId = useScopeStore((s) => s.districtId);
-  const { districts } = useDistricts();
-  if (districtId == null) return "All districts";
-  return districts.find((d) => d.id === districtId)?.name ?? `District ${districtId}`;
+  const name = useDistrictNamer();
+  return districtId == null ? "All districts" : name(districtId);
 }

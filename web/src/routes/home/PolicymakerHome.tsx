@@ -87,7 +87,7 @@ export function PolicymakerHome() {
         <Widget
           gridTile
           title="State crime trend"
-          contextChip={`${scopeChip.trends} · window`}
+          contextChip={scopeChip.scoped}
           provenance={trends.data?.result}
           loading={trends.isLoading}
           error={trends.error}
@@ -108,7 +108,7 @@ export function PolicymakerHome() {
         <Widget
           gridTile
           title="District forecast"
-          contextChip={`fused · ${scopeChip.forecast}`}
+          contextChip={scopeChip.scoped}
           provenance={forecast.data?.result}
           loading={forecast.isLoading}
           error={forecast.error}
@@ -126,7 +126,7 @@ export function PolicymakerHome() {
         <Widget
           gridTile
           title="Socio-economic signal"
-          contextChip={`correlational · ${scopeChip.socio}`}
+          contextChip={scopeChip.stateWide}
           provenance={socio.data?.result}
           loading={socio.isLoading}
           error={socio.error}

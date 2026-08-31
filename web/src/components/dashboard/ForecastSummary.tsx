@@ -1,5 +1,6 @@
 import type { ForecastMapResponse } from "@/api/types";
 import { formatNumber, formatPercent } from "@/lib/utils";
+import { useDistrictNamer } from "@/hooks/useDistricts";
 
 /* ============================================================================
    District-aggregate forecast (doc 01 §4.5/§4.6, policymaker = district only).
@@ -16,6 +17,9 @@ interface DistrictAgg {
 }
 
 export function ForecastSummary({ data }: { data: ForecastMapResponse }) {
+  // Forecast cells carry only district_id, so names are resolved here rather
+  // than printing raw ids.
+  const districtName = useDistrictNamer();
   const byDistrict = new Map<number, DistrictAgg>();
   let total = 0;
   let confWeighted = 0;
@@ -61,7 +65,12 @@ export function ForecastSummary({ data }: { data: ForecastMapResponse }) {
         <div className="space-y-1.5">
           {districts.map((d) => (
             <div key={d.district_id} className="flex items-center gap-3">
-              <span className="w-24 shrink-0 truncate text-13 text-content">District {d.district_id}</span>
+              <span
+                className="w-32 shrink-0 truncate text-13 text-content"
+                title={districtName(d.district_id)}
+              >
+                {districtName(d.district_id)}
+              </span>
               <span className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
                 <span
                   className="absolute inset-y-0 left-0 rounded-full bg-primary"
