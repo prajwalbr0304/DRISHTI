@@ -2,6 +2,7 @@ import { useMemo, useRef } from "react";
 import { Responsive, WidthProvider, type Layout, type Layouts } from "react-grid-layout";
 import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { useDashboardStore } from "@/stores/useDashboardStore";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -79,17 +80,17 @@ export function DashboardGrid({
 
   return (
     <div>
-      <div className="mb-1.5 flex min-h-[20px] items-center justify-end">
-        {saved && (
-          <button
-            type="button"
-            onClick={() => reset(id)}
-            className="inline-flex items-center gap-1 rounded-control px-1.5 py-0.5 text-12 text-content-dim transition-colors hover:bg-surface-2 hover:text-content"
-          >
-            <RotateCcw className="size-3.5" /> Reset layout
-          </button>
-        )}
-      </div>
+      {/* "Reset to default layout" — a secondary action that appears only once
+          the layout has been customised. No placeholder row when it is absent:
+          reserving space for a hidden control just leaves a gap under the page
+          header. */}
+      {saved && (
+        <div className="mb-3 flex items-center justify-end">
+          <Button variant="outline" size="sm" onClick={() => reset(id)}>
+            <RotateCcw /> Reset to default layout
+          </Button>
+        </div>
+      )}
       <Grid
         className="drishti-dashboard"
         layouts={layouts}

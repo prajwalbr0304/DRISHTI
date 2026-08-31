@@ -5,6 +5,7 @@ import {
   FolderKanban,
   Gauge,
   LayoutDashboard,
+  LifeBuoy,
   ListChecks,
   Map,
   MessageSquareText,
@@ -38,6 +39,10 @@ export interface Destination {
   short: string;
   icon: LucideIcon;
   description: string;
+  /** side-nav group heading (AWS console side navigation sections). Consecutive
+   *  destinations sharing a section render under one heading, separated from the
+   *  next group by a divider. */
+  section: string;
   /** only super_admin sees this destination */
   adminOnly?: boolean;
   /** optional explicit role allow-list (future scoping) */
@@ -51,6 +56,7 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   {
     id: "command",
+    section: "Overview",
     path: "/command",
     label: "Command Center",
     short: "Home",
@@ -60,6 +66,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "cases",
+    section: "Case work",
     path: "/cases",
     label: "Cases",
     short: "Cases",
@@ -69,6 +76,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "intake",
+    section: "Case work",
     path: "/intake",
     label: "Intake",
     short: "Intake",
@@ -78,6 +86,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "people",
+    section: "Case work",
     path: "/people",
     label: "People & Entities",
     short: "People",
@@ -87,6 +96,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "network",
+    section: "Analysis",
     path: "/network",
     label: "Network Analysis",
     short: "Network",
@@ -96,6 +106,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "board",
+    section: "Analysis",
     path: "/board",
     label: "Investigation Board",
     short: "Board",
@@ -105,6 +116,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "map",
+    section: "Analysis",
     path: "/map",
     label: "Map & Hotspots",
     short: "Map",
@@ -114,6 +126,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "analytics",
+    section: "Analysis",
     path: "/analytics",
     label: "Analytics & Forecasting",
     short: "Analytics",
@@ -123,6 +136,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "ask",
+    section: "Assistant",
     path: "/ask",
     label: "Ask DRISHTI",
     short: "Ask",
@@ -131,7 +145,18 @@ export const DESTINATIONS: Destination[] = [
     keywords: ["chat", "ask", "nl", "query", "voice", "question"],
   },
   {
+    id: "support",
+    section: "Administration",
+    path: "/support",
+    label: "Support",
+    short: "Support",
+    icon: LifeBuoy,
+    description: "Raise and track cases for technical issues, data problems, access and feature requests.",
+    keywords: ["support", "help", "ticket", "case", "issue", "bug", "problem", "contact", "feedback"],
+  },
+  {
     id: "admin",
+    section: "Administration",
     path: "/admin",
     label: "Admin",
     short: "Admin",
@@ -144,6 +169,7 @@ export const DESTINATIONS: Destination[] = [
   /* --- Emergency Response context (Prompt 17) --------------------------- */
   {
     id: "er-overview",
+    section: "Situation",
     path: "/er",
     label: "Situation Overview",
     short: "Situation",
@@ -154,6 +180,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "er-live",
+    section: "Situation",
     path: "/er/live",
     label: "Live Situation",
     short: "Live",
@@ -164,6 +191,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "er-forecast",
+    section: "Analysis",
     path: "/er/forecast",
     label: "Forecast & Risk",
     short: "Forecast",
@@ -174,6 +202,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "er-resources",
+    section: "Response",
     path: "/er/resources",
     label: "Resources",
     short: "Resources",
@@ -184,6 +213,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     id: "er-plans",
+    section: "Response",
     path: "/er/plans",
     label: "Response Plans",
     short: "Plans",
@@ -219,6 +249,21 @@ export function visibleDestinations(
     if (d.roles && !d.roles.includes(role)) return false;
     return true;
   });
+}
+
+/** Group destinations into consecutive side-nav sections, preserving order.
+ *  Mirrors the AWS console side navigation: a bold section heading per group,
+ *  with a divider between groups. */
+export function groupDestinations(
+  destinations: Destination[],
+): { section: string; items: Destination[] }[] {
+  const groups: { section: string; items: Destination[] }[] = [];
+  for (const d of destinations) {
+    const last = groups[groups.length - 1];
+    if (last && last.section === d.section) last.items.push(d);
+    else groups.push({ section: d.section, items: [d] });
+  }
+  return groups;
 }
 
 export function destinationByPath(path: string): Destination | undefined {

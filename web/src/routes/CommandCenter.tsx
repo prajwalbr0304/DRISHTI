@@ -1,11 +1,8 @@
-import { Sparkles } from "lucide-react";
 import { useRole } from "@/providers/RoleProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
-import { useUIStore } from "@/stores/useUIStore";
 import { PRESETS, useTimeStore } from "@/stores/useTimeStore";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
+import { TimeScrubber } from "@/components/shell/TimeScrubber";
 import { InvestigatorHome } from "@/routes/home/InvestigatorHome";
 import { AnalystHome } from "@/routes/home/AnalystHome";
 import { SupervisorHome } from "@/routes/home/SupervisorHome";
@@ -27,29 +24,25 @@ function greeting() {
 export function CommandCenter() {
   const { role, def } = useRole();
   const { t } = useLanguage();
-  const askAbout = useUIStore((s) => s.askAbout);
   const { preset } = useTimeStore();
   const rangeLabel = preset === "custom" ? t("Custom range") : t(PRESETS.find((p) => p.id === preset)?.label ?? "");
 
+  /* No header actions: the seat, its scope and the active time range are all
+     already shown in the top bar, so repeating them here was duplication. The
+     PageHeader's own bottom margin is the only gap before the board. */
   return (
-    <div className="space-y-4">
+    <div>
       <PageHeader
         title={`${t(greeting())}, ${t(def.label)}`}
         description={def.blurb}
-        actions={
-          <>
-            <Badge variant="neutral">{t(def.scope)}</Badge>
-            <Badge variant="neutral">{rangeLabel}</Badge>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => askAbout(`Give me a ${def.label.toLowerCase()} briefing for my scope`)}
-            >
-              <Sparkles />
-              {t("Ask about this view")}
-            </Button>
-          </>
+        info={
+          <p>
+            Widgets are assembled for the {t(def.label)} seat and scoped server-side to{" "}
+            {t(def.scope)} over the last {rangeLabel}. Drag a widget by the grip in its header to
+            rearrange the board, or resize it from its bottom-right corner.
+          </p>
         }
+        actions={<TimeScrubber />}
       />
 
       <RoleHome role={role} />

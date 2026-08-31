@@ -26,6 +26,8 @@ import { JurisdictionReview } from "@/routes/review/jurisdiction/JurisdictionRev
 import { CanonicalProfile } from "@/routes/entities/CanonicalProfile";
 import { GovernanceRegistry } from "@/routes/governance/GovernanceRegistry";
 import { AdminConsole } from "@/routes/admin/AdminConsole";
+import { Support } from "@/routes/support/Support";
+import { Profile } from "@/routes/profile/Profile";
 import { LoginPage } from "@/routes/login/LoginPage";
 import { SituationOverview } from "@/routes/emergency/SituationOverview";
 import { LiveSituation } from "@/routes/emergency/LiveSituation";
@@ -98,6 +100,8 @@ export default function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/governance" element={<GovernanceRegistry />} />
         <Route path="/ask" element={<AskDrishti />} />
+        <Route path="/support" element={<Support />} />
+        <Route path="/profile" element={<Profile />} />
         {/* Emergency Response context (Prompt 17) — separate workspace. */}
         <Route path="/er" element={<SituationOverview />} />
         <Route path="/er/live" element={<LiveSituation />} />

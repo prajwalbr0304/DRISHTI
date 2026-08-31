@@ -83,24 +83,45 @@ test.describe("(a) Login & role context", () => {
     await page.waitForURL(new RegExp(`${ROLE_HOME[firstRole].replace(/\//g, "\\/")}(\\?|$)`));
   });
 
-  test("signs in (offline) and switches the demo view from the profile menu", async ({ page }) => {
+  /* The account avatar offers exactly two actions. Seat selection deliberately
+     happens at sign-in, not mid-session, so there is no in-shell role switcher
+     to exercise any more. */
+  test("signs in (offline) and the account avatar offers profile + log out", async ({ page }) => {
     await signInViaLoginPage(page, "investigating_officer");
 
     await expect(page.getByText(DEMO_BADGE, { exact: false }).first()).toBeVisible();
-    const profile = page.getByRole("button", { name: "Profile and role" });
-    await expect(profile).toBeVisible();
-    await expect(profile).toContainText(ROLE_LABEL.investigating_officer);
+    const account = page.getByRole("button", { name: "Account" });
+    await expect(account).toBeVisible();
 
-    await profile.click();
-    await page.getByRole("menuitemradio", { name: new RegExp(escapeRe(ROLE_LABEL.cyber_cell)) }).click();
-    await expect(profile).toContainText(ROLE_LABEL.cyber_cell);
+    await account.click();
+    await expect(page.getByRole("menuitem", { name: /View profile/i })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Log out/i })).toBeVisible();
+    // the seat is stated, but cannot be changed from here
+    await expect(page.getByText(ROLE_LABEL.investigating_officer).first()).toBeVisible();
+    await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+
+    await page.getByRole("menuitem", { name: /View profile/i }).click();
+    await page.waitForURL(/\/profile$/);
+    await expect(page.getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
+  });
+
+  test("logging out from the account avatar returns to the login page", async ({ page }) => {
+    await signInViaLoginPage(page, "investigating_officer");
+
+    await page.getByRole("button", { name: "Account" }).click();
+    await page.getByRole("menuitem", { name: /Log out/i }).click();
+
+    await page.waitForURL(/\/login$/);
+    await expect(page.getByRole("heading", { name: /Choose your operational view/i })).toBeVisible();
   });
 
   test("a11y: the shell exposes labeled landmarks and controls", async ({ page }) => {
     await signInViaLoginPage(page, "investigating_officer");
 
     await expect(page.getByRole("navigation").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Profile and role" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Interface language/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /District scope/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /open command palette/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /Alerts \(/ })).toBeVisible();
   });

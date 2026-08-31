@@ -86,16 +86,22 @@ export function SituationOverview() {
       {ov && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           <KpiTile label="Active hazards" value={ov.active_hazards}
-                   tone={ov.active_hazards ? "warn" : "neutral"} />
+                   tone={ov.active_hazards ? "warn" : "neutral"}
+                   info="Hazards currently in an active or watch state for this district. Area- and period-level only — this is decision support, not an official warning." />
           <KpiTile label="Open alerts" value={ov.open_alerts}
-                   tone={ov.open_alerts ? "critical" : "neutral"} />
+                   tone={ov.open_alerts ? "critical" : "neutral"}
+                   info="Alerts raised for this district that no one has acknowledged yet. Every alert needs a human to confirm or dismiss it before it becomes a warning." />
           <KpiTile label="Low-confidence" value={ov.low_confidence_warnings}
                    tone={ov.low_confidence_warnings ? "warn" : "neutral"}
-                   hint="escalated to a human" />
+                   hint="escalated to a human"
+                   info="Predictions whose confidence fell below the escalation threshold. Rather than acting automatically, these are routed to a human for a decision." />
           <KpiTile label="Stale feeds" value={ov.stale_feeds}
-                   tone={ov.stale_feeds ? "warn" : "good"} />
-          <KpiTile label="Available resources" value={ov.readiness.available_resources ?? 0} tone="good" />
-          <KpiTile label="Open tasks" value={ov.open_tasks} />
+                   tone={ov.stale_feeds ? "warn" : "good"}
+                   info="External data feeds that have not refreshed inside their expected window. Stale inputs are surfaced rather than hidden, so you can judge how much to trust the figures above." />
+          <KpiTile label="Available resources" value={ov.readiness.available_resources ?? 0} tone="good"
+                   info="Resources in this district recorded as available for allocation — neither already dispatched nor marked unavailable." />
+          <KpiTile label="Open tasks" value={ov.open_tasks}
+                   info="Response-plan tasks for this district that are not yet complete, across every active hazard." />
         </div>
       )}
 

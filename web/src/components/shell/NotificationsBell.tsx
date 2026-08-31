@@ -41,7 +41,7 @@ export function NotificationsBell() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label={t("Active alerts") + ` (${urgent})`}>
+        <Button variant="ghost" size="icon-sm" className="relative size-8" aria-label={t("Active alerts") + ` (${urgent})`}>
           <Bell />
           {urgent > 0 && (
             <span className="absolute right-1 top-1 grid min-w-[16px] place-items-center rounded-full bg-severity-critical px-1 text-[10px] font-semibold leading-4 text-white tnum">

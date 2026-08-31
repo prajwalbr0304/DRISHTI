@@ -7,12 +7,15 @@ import { ForecastSummary } from "@/components/dashboard/ForecastSummary";
 import { SocioNarrativeCard } from "@/components/dashboard/SocioNarrativeCard";
 import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { useForecastMap, useSocio, useTrends } from "@/routes/home/useDashboardData";
+import { STATE_WIDE_NOTE } from "@/stores/useScopeStore";
+import { useScopeChips } from "@/routes/home/useScopeChips";
 
 /* Policymaker Command Center (doc 01 §4.1 + §7): AGGREGATE-ONLY. District-level
    KPIs, trends, forecasts and socio-economic signal. No case list, no point-level
    map, no individual profiles — de-anonymisation is designed out. */
 export function PolicymakerHome() {
   const askAbout = useUIStore((s) => s.askAbout);
+  const scopeChip = useScopeChips();
   const trends = useTrends();
   const socio = useSocio();
   const forecast = useForecastMap();
@@ -32,6 +35,7 @@ export function PolicymakerHome() {
           spark={trends.data?.series.map((p) => p.count)}
           loading={trends.isLoading}
           error={trends.error}
+          hint="Total recorded incidents across the range for the selected time window. The delta compares against the prior period of equal length; the sparkline shows the last 12 periods."
         />
       ),
     },
@@ -59,6 +63,7 @@ export function PolicymakerHome() {
           value={socio.data?.districts_analysed}
           loading={socio.isLoading}
           error={socio.error}
+          hint={`Districts with enough volume to support district-level correlation. Districts below the k-anonymity threshold are excluded rather than estimated. ${STATE_WIDE_NOTE}`}
         />
       ),
     },
@@ -72,7 +77,7 @@ export function PolicymakerHome() {
           value={socio.data?.suppressed_cells}
           loading={socio.isLoading}
           error={socio.error}
-          hint="Small-count cells hidden for k-anonymity — privacy by design."
+          hint={`Small-count cells hidden for k-anonymity — privacy by design. ${STATE_WIDE_NOTE}`}
         />
       ),
     },
@@ -82,7 +87,7 @@ export function PolicymakerHome() {
         <Widget
           gridTile
           title="State crime trend"
-          contextChip="aggregate · window"
+          contextChip={`${scopeChip.trends} · window`}
           provenance={trends.data?.result}
           loading={trends.isLoading}
           error={trends.error}
@@ -103,7 +108,7 @@ export function PolicymakerHome() {
         <Widget
           gridTile
           title="District forecast"
-          contextChip="fused"
+          contextChip={`fused · ${scopeChip.forecast}`}
           provenance={forecast.data?.result}
           loading={forecast.isLoading}
           error={forecast.error}
@@ -121,7 +126,7 @@ export function PolicymakerHome() {
         <Widget
           gridTile
           title="Socio-economic signal"
-          contextChip="correlational"
+          contextChip={`correlational · ${scopeChip.socio}`}
           provenance={socio.data?.result}
           loading={socio.isLoading}
           error={socio.error}
@@ -133,7 +138,15 @@ export function PolicymakerHome() {
               onSelect: () => askAbout("Explain the socio-economic correlations with crime, with caveats"),
             },
           ]}
-          info={<p className="text-content-dim">Correlations of crime with socio-economic indicators. Correlational, never causal; small counts are suppressed.</p>}
+          info={
+            <div className="space-y-2">
+              <p>
+                Correlations of crime with socio-economic indicators. Correlational, never causal;
+                small counts are suppressed.
+              </p>
+              <p>{STATE_WIDE_NOTE}</p>
+            </div>
+          }
         >
           {socio.data && <SocioNarrativeCard data={socio.data} />}
         </Widget>

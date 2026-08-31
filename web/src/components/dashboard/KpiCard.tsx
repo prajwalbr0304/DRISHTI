@@ -1,8 +1,8 @@
 import * as React from "react";
-import { ArrowDownRight, ArrowUpRight, Info, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn, formatCompact, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { InfoHint } from "@/components/common/InfoHint";
 
 /* ============================================================================
    KPI stat card (doc 03 §2.1): big tabular number + label + signed delta vs.
@@ -47,16 +47,12 @@ export function KpiCard({
 }: KpiCardProps) {
   return (
     <div className={cn("flex flex-col justify-between rounded-card border border-hairline bg-surface p-5 shadow-card", className)}>
-      <div className="flex items-center gap-2 text-body-s text-content-dim">
+      {/* Label row — the ⓘ hint is the same affordance the widget headers and
+          page headers use, and it always renders so no card looks half-built. */}
+      <div className="flex items-center gap-1.5 text-body-s text-content-dim">
         {icon && <span className="[&_svg]:size-4">{icon}</span>}
         <span className="truncate">{label}</span>
-        {(hint || pending) && (
-          <SimpleTooltip label={pending ? pendingNote ?? "Awaiting a Wave-B endpoint." : hint}>
-            <span className="ml-auto cursor-help text-content-dim/70">
-              <Info className="size-3.5" />
-            </span>
-          </SimpleTooltip>
-        )}
+        <InfoHint>{pending ? (pendingNote ?? "Awaiting a Wave-B endpoint.") : hint}</InfoHint>
       </div>
 
       <div className="mt-2 flex items-end justify-between gap-2">

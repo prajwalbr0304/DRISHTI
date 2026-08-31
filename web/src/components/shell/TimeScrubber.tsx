@@ -1,29 +1,7 @@
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, Pause, Play, RotateCcw } from "lucide-react";
-import { api } from "@/api";
+import { CalendarClock, ChevronDown, Pause, Play, RotateCcw } from "lucide-react";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
-import {
-  PRESETS,
-  playheadDate,
-  useTimeStore,
-  type TimePreset,
-} from "@/stores/useTimeStore";
-
-/** Anchor the global time window to the latest data date (the dataset is
-    historical; the wall clock may be months ahead). Runs once, app-wide. */
-function useDataAnchor() {
-  const setAnchor = useTimeStore((s) => s.setAnchor);
-  const { data } = useQuery({
-    queryKey: ["geo", "coverage"],
-    queryFn: ({ signal }) => api.geo.coverage(signal),
-    staleTime: Infinity,
-    retry: false,
-  });
-  useEffect(() => {
-    if (data?.max_date) setAnchor(data.max_date);
-  }, [data?.max_date, setAnchor]);
-}
+import { PRESETS, playheadDate, useTimeStore } from "@/stores/useTimeStore";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -39,7 +17,6 @@ const PLAY_STEP = 0.02; // per tick
 const PLAY_INTERVAL = 220; // ms
 
 export function TimeScrubber() {
-  useDataAnchor();
   const { preset, start, end, playhead, playing } = useTimeStore();
   const setPreset = useTimeStore((s) => s.setPreset);
   const setPlayhead = useTimeStore((s) => s.setPlayhead);
@@ -68,19 +45,24 @@ export function TimeScrubber() {
   return (
     <Popover>
       <PopoverTrigger asChild>
+        {/* Two-line control: the preset on top, the window it resolves to below,
+            so the header states the actual period instead of just "12 months". */}
         <button
           type="button"
-          className="flex h-8 items-center gap-2 rounded-control border border-hairline bg-surface-2 px-2.5 text-12 text-content transition-colors hover:border-primary/50"
+          className={cn(
+            "group flex h-10 items-center gap-2.5 rounded-control border border-hairline bg-surface px-3 text-left",
+            "transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+          )}
           aria-label={t("Time range")}
         >
-          <CalendarClock className="size-4 text-content-dim" />
-          <span className="font-medium">{label}</span>
-          {(playing || scrubbing) && (
-            <>
-              <span className="text-hairline">·</span>
-              <span className="tnum text-content-dim">{formatDateTime(headDate)}</span>
-            </>
-          )}
+          <CalendarClock className="size-4 shrink-0 text-content-dim" />
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-body-s font-bold text-content">{label}</span>
+            <span className="tnum block truncate text-body-s text-content-dim">
+              {playing || scrubbing ? formatDateTime(headDate) : `${formatDate(start)} – ${formatDate(end)}`}
+            </span>
+          </span>
+          <ChevronDown className="size-3.5 shrink-0 text-content-dim" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-80">

@@ -1,4 +1,5 @@
 import { Outlet } from "react-router-dom";
+import { useDataAnchor } from "@/hooks/useDataAnchor";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TopBar } from "@/components/shell/TopBar";
@@ -12,6 +13,10 @@ import { CommandBar } from "@/components/shell/CommandBar";
    ========================================================================== */
 
 export function AppShell() {
+  // Anchors the global time window to the latest data date. Must live here (not
+  // in the scrubber) so it runs on every route.
+  useDataAnchor();
+
   return (
     <TooltipProvider delayDuration={200} skipDelayDuration={400}>
       <div className="flex h-screen w-full overflow-hidden bg-bg text-content">

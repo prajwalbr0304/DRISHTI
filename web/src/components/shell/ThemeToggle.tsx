@@ -12,7 +12,7 @@ export function ThemeToggle() {
   const isOps = theme === "ops";
   return (
     <SimpleTooltip label={isOps ? t("Switch to Desk (light)") : t("Switch to Ops (dark)")}>
-      <Button variant="ghost" size="icon" onClick={toggle} aria-label={t("Toggle theme")}>
+      <Button variant="ghost" size="icon-sm" className="size-8" onClick={toggle} aria-label={t("Toggle theme")}>
         {isOps ? <Moon /> : <Sun />}
       </Button>
     </SimpleTooltip>

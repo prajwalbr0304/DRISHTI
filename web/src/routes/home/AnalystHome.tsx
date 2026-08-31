@@ -10,6 +10,8 @@ import { PersonsOfInterest } from "@/components/dashboard/PersonsOfInterest";
 import { SavedCohorts } from "@/components/dashboard/SavedCohorts";
 import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { useAlerts, useCentrality, useHotspots, useTrends } from "@/routes/home/useDashboardData";
+import { STATE_WIDE_NOTE } from "@/stores/useScopeStore";
+import { useScopeChips } from "@/routes/home/useScopeChips";
 
 const EMERGING_TYPES = ["emerging_hotspot", "spike", "anomaly", "emerging", "trend"];
 
@@ -19,6 +21,7 @@ export function AnalystHome() {
   const navigate = useNavigate();
   const askAbout = useUIStore((s) => s.askAbout);
   const push = usePeekStore((s) => s.push);
+  const scopeChip = useScopeChips();
 
   const trends = useTrends();
   const hotspots = useHotspots();
@@ -45,6 +48,7 @@ export function AnalystHome() {
           spark={trends.data?.series.map((p) => p.count)}
           loading={trends.isLoading}
           error={trends.error}
+          hint="Total recorded incidents in your analytical scope for the selected time window. The delta compares against the prior period of equal length; the sparkline shows the last 12 periods."
         />
       ),
     },
@@ -58,6 +62,7 @@ export function AnalystHome() {
           value={hotspots.data?.count}
           loading={hotspots.isLoading}
           error={hotspots.error}
+          hint="Spatial clusters detected for the selected window. Area-level patterns only — hotspots describe places, not people."
         />
       ),
     },
@@ -71,6 +76,7 @@ export function AnalystHome() {
           value={alerts.data?.count}
           loading={alerts.isLoading}
           error={alerts.error}
+          hint="Alerts currently open across your scope. A live queue, so it ignores the time window."
         />
       ),
     },
@@ -84,7 +90,7 @@ export function AnalystHome() {
           value={centrality.data ? poi.length : undefined}
           loading={centrality.isLoading}
           error={centrality.error}
-          hint="Top entities by graph centrality (PageRank / betweenness)."
+          hint={`Top entities by graph centrality (PageRank / betweenness). ${STATE_WIDE_NOTE}`}
         />
       ),
     },
@@ -94,7 +100,7 @@ export function AnalystHome() {
         <Widget
           gridTile
           title="Emerging trend"
-          contextChip="window"
+          contextChip={`${scopeChip.trends} · window`}
           provenance={trends.data?.result}
           loading={trends.isLoading}
           error={trends.error}
@@ -128,6 +134,13 @@ export function AnalystHome() {
         <Widget
           gridTile
           title="Network of interest"
+          contextChip={scopeChip.centrality}
+          info={
+            <div className="space-y-2">
+              <p>Top entities by graph centrality (PageRank / betweenness).</p>
+              <p>{STATE_WIDE_NOTE}</p>
+            </div>
+          }
           provenance={centrality.data?.result}
           loading={centrality.isLoading}
           error={centrality.error}

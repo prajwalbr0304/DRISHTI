@@ -25,9 +25,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfoHint } from "@/components/common/InfoHint";
 import { EvidenceTrail } from "@/components/widget/EvidenceTrail";
 
 /* ============================================================================
@@ -131,25 +131,15 @@ export function Widget({
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="truncate text-heading-l font-bold text-content">{title}</h2>
 
-          {/* Info — an AWS-style text link, not an icon button */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="no-drag shrink-0 rounded text-body-s font-normal text-primary underline-offset-2 hover:underline"
-              >
-                Info
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="text-body-m text-content">
-              {info ?? (
-                <p className="text-content-dim">
-                  Live data from the DRISHTI services. Expand the provenance strip to see the
-                  evidence behind these figures.
-                </p>
-              )}
-            </PopoverContent>
-          </Popover>
+          {/* ⓘ hover hint — the same affordance every card uses */}
+          <InfoHint>
+            {info ?? (
+              <p>
+                Live data from the DRISHTI services. Expand the provenance strip to see the
+                evidence behind these figures.
+              </p>
+            )}
+          </InfoHint>
 
           {contextChip != null && (
             <Badge variant="neutral" className="shrink-0">

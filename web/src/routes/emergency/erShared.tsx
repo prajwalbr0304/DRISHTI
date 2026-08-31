@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, CircleSlash, Clock, WifiOff } from "lucide
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
+import { InfoHint } from "@/components/common/InfoHint";
 import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { DISTRICT_NAMES, districtName, useDisasterStore } from "@/stores/useDisasterStore";
@@ -79,17 +80,25 @@ export function Panel({ title, actions, children, className }: {
   );
 }
 
-export function KpiTile({ label, value, tone = "neutral", hint }: {
-  label: string; value: ReactNode; tone?: "neutral" | "warn" | "critical" | "good"; hint?: string;
+export function KpiTile({ label, value, tone = "neutral", hint, info }: {
+  label: string; value: ReactNode; tone?: "neutral" | "warn" | "critical" | "good";
+  /** inline sub-label under the value (not help text) */
+  hint?: string;
+  /** help content for the "Info" link beside the label */
+  info?: ReactNode;
 }) {
   const toneCls = {
     neutral: "text-content", warn: "text-severity-high", critical: "text-severity-critical",
     good: "text-severity-low",
   }[tone];
   return (
-    /* Matches the dashboard KpiCard shell: 16px radius, 20px padding. */
+    /* Matches the dashboard KpiCard shell: 16px radius, 20px padding, and the
+       same always-present ⓘ hint beside the label. */
     <div className="rounded-card border border-hairline bg-surface p-5 shadow-card">
-      <div className="text-body-s uppercase tracking-wide text-content-dim">{label}</div>
+      <div className="flex items-center gap-1.5 text-body-s uppercase tracking-wide text-content-dim">
+        <span className="truncate">{label}</span>
+        <InfoHint>{info}</InfoHint>
+      </div>
       <div className={cn("mt-1 text-28 font-bold tabular-nums", toneCls)}>{value}</div>
       {hint && <div className="mt-1 text-body-s text-content-dim">{hint}</div>}
     </div>

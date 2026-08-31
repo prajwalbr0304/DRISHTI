@@ -182,7 +182,8 @@ export default {
       },
       spacing: {
         // 8-pt grid helpers (Tailwind's 4px base already covers 2/4/6 = 8/16/24)
-        rail: "13rem", // 208px expanded sidebar
+        rail: "15rem", // 240px expanded side nav (AWS uses ~280px; 240 fits the
+        //                 longest destination label without truncation)
         "rail-collapsed": "3.5rem", // 56px icon rail
         peek: "26rem", // 416px peek rail
         topbar: "3.25rem", // 52px

@@ -4,12 +4,18 @@ import { destinationByPath } from "@/config/destinations";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/providers/LanguageProvider";
 
-/* Breadcrumb bar — reflects the active destination and any sub-path. */
+/* Breadcrumb bar — reflects the active destination and any sub-path.
+   Hidden on the Command Center: there the trail collapses to a single crumb
+   linking to the page you are already on, so the bar is 40px of noise directly
+   above the greeting. Deeper routes keep it, where it carries real navigation
+   (DRISHTI › Cases › 1024). */
 export function Breadcrumbs() {
   const { pathname } = useLocation();
   const { t } = useLanguage();
   const dest = destinationByPath(pathname);
   const isHome = pathname === "/command";
+
+  if (isHome) return null;
 
   // extra path segments beyond the destination root (e.g. /cases/1024)
   const rest = dest ? pathname.slice(dest.path.length).split("/").filter(Boolean) : [];
@@ -21,10 +27,10 @@ export function Breadcrumbs() {
         className="inline-flex items-center gap-1 text-content-dim transition-colors hover:text-content"
       >
         <Home className="size-3.5" />
-        <span className={cn(isHome && "text-content")}>DRISHTI</span>
+        <span>DRISHTI</span>
       </Link>
 
-      {!isHome && dest && (
+      {dest && (
         <>
           <ChevronRight className="size-3.5 text-content-dim/60" />
           <Link

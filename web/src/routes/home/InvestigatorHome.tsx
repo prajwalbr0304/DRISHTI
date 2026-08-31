@@ -67,6 +67,7 @@ export function InvestigatorHome() {
           loading={alerts.isLoading}
           error={alerts.error}
           improveWhenDown
+          hint="Open alerts raised on cases or areas in your jurisdiction. This is a live queue, so it ignores the time window."
         />
       ),
     },
@@ -80,6 +81,7 @@ export function InvestigatorHome() {
           value={alerts.data ? urgent : undefined}
           loading={alerts.isLoading}
           error={alerts.error}
+          hint="The subset of your open alerts at critical or high severity — the queue to work first."
         />
       ),
     },
@@ -93,6 +95,7 @@ export function InvestigatorHome() {
           value={hotspots.data?.count}
           loading={hotspots.isLoading}
           error={hotspots.error}
+          hint="Spatial clusters detected in your jurisdiction for the selected window. A hotspot is an area-level pattern, never an individual-level judgement."
         />
       ),
     },

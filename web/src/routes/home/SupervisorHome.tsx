@@ -53,6 +53,7 @@ export function SupervisorHome() {
           spark={trends.data?.series.map((p) => p.count)}
           loading={trends.isLoading}
           error={trends.error}
+          hint="Total recorded incidents across your unit for the selected time window. The delta compares against the prior period of equal length; the sparkline shows the last 12 periods."
         />
       ),
     },
@@ -66,6 +67,7 @@ export function SupervisorHome() {
           value={alerts.data?.count}
           loading={alerts.isLoading}
           error={alerts.error}
+          hint="Alerts awaiting action across your unit. A live queue, so it ignores the time window."
         />
       ),
     },
@@ -79,6 +81,7 @@ export function SupervisorHome() {
           value={alerts.data ? urgent : undefined}
           loading={alerts.isLoading}
           error={alerts.error}
+          hint="The subset of open alerts at critical or high severity — the queue to triage first."
         />
       ),
     },
@@ -92,6 +95,7 @@ export function SupervisorHome() {
           value={hotspots.data?.count}
           loading={hotspots.isLoading}
           error={hotspots.error}
+          hint="Spatial clusters detected across your unit for the selected window. Area-level patterns only — hotspots describe places, not people."
         />
       ),
     },
