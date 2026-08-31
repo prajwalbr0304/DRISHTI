@@ -3,8 +3,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  // Cloudscape badge: 4px radius, 12px text — not a pill.
-  "inline-flex items-center gap-1 rounded-badge border px-2 py-0.5 text-body-s font-normal leading-4 transition-colors",
+  // Cloudscape badge: 4px radius, 12px text, never wraps — not a pill.
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-badge border px-2 py-0.5 text-body-s font-normal leading-4 transition-colors",
   {
     variants: {
       variant: {

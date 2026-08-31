@@ -54,8 +54,9 @@ export function NetworkAnalysis() {
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-20 font-semibold tracking-tight text-content">Network Analysis</h1>
+      {/* Hand-rolled header (it owns a mode switcher) — kept in step with PageHeader. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-heading-xl font-bold text-content">Network Analysis</h1>
         {mode === "explore" && (
           <div className="flex overflow-hidden rounded-control border border-hairline">
             <ColorToggle active={colorMode === "type"} onClick={() => setParam({ color: "type" })} label="By type" />

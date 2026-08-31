@@ -34,10 +34,11 @@ export function SectionCard({ title, description, children }: {
   title: string; description?: string; children: ReactNode;
 }) {
   return (
-    <section className="rounded-card border border-hairline bg-surface p-4">
-      <div className="mb-3">
-        <h3 className="text-14 font-semibold text-content">{title}</h3>
-        {description && <p className="mt-0.5 text-12 text-content-dim">{description}</p>}
+    /* Cloudscape "card section header" = heading-m (18/22 bold), 20px gutters. */
+    <section className="rounded-card border border-hairline bg-surface p-5 shadow-card">
+      <div className="mb-4">
+        <h3 className="text-heading-m font-bold text-content">{title}</h3>
+        {description && <p className="mt-1 text-body-s text-content-dim">{description}</p>}
       </div>
       {children}
     </section>

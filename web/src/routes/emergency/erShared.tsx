@@ -65,14 +65,16 @@ export function Panel({ title, actions, children, className }: {
   title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string;
 }) {
   return (
-    <section className={cn("rounded-control border border-hairline bg-surface", className)}>
+    /* Same container language as the dashboard Widget (AWS console container):
+       16px radius, heading-l title, 20px gutters, no divider rule. */
+    <section className={cn("rounded-card border border-hairline bg-surface shadow-card", className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-2 border-b border-hairline px-3 py-2">
-          {title && <h2 className="text-13 font-semibold text-content">{title}</h2>}
+        <header className="flex min-h-14 items-center justify-between gap-2 px-5 py-3">
+          {title && <h2 className="text-heading-l font-bold text-content">{title}</h2>}
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className="p-3">{children}</div>
+      <div className={cn("px-5 pb-5", !(title || actions) && "pt-5")}>{children}</div>
     </section>
   );
 }
@@ -85,10 +87,11 @@ export function KpiTile({ label, value, tone = "neutral", hint }: {
     good: "text-severity-low",
   }[tone];
   return (
-    <div className="rounded-control border border-hairline bg-surface px-3 py-2.5">
-      <div className="text-11 uppercase tracking-wide text-content-dim">{label}</div>
-      <div className={cn("mt-0.5 text-20 font-semibold tabular-nums", toneCls)}>{value}</div>
-      {hint && <div className="mt-0.5 text-11 text-content-dim">{hint}</div>}
+    /* Matches the dashboard KpiCard shell: 16px radius, 20px padding. */
+    <div className="rounded-card border border-hairline bg-surface p-5 shadow-card">
+      <div className="text-body-s uppercase tracking-wide text-content-dim">{label}</div>
+      <div className={cn("mt-1 text-28 font-bold tabular-nums", toneCls)}>{value}</div>
+      {hint && <div className="mt-1 text-body-s text-content-dim">{hint}</div>}
     </div>
   );
 }

@@ -300,13 +300,16 @@ function ProvenanceStrip({
         className="flex w-full items-center gap-2 px-5 py-2 text-body-s text-content-dim transition-colors hover:bg-surface-2/50"
       >
         <span
-          className={cn("size-1.5 rounded-full", band === "low" ? "bg-content-dim" : "bg-primary")}
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            band === "low" ? "bg-content-dim" : "bg-primary",
+          )}
           aria-hidden
         />
-        <span className="tnum font-medium text-content">{formatPercent(result.confidence, 0)}</span>
-        <span>confidence</span>
+        <span className="tnum font-bold text-content">{formatPercent(result.confidence, 0)}</span>
+        <span className="whitespace-nowrap">confidence</span>
         <span className="text-hairline">·</span>
-        <span className="tnum">{count} sources</span>
+        <span className="tnum whitespace-nowrap">{count} sources</span>
         <code className="ml-auto hidden truncate rounded-badge bg-surface-2 px-1.5 py-0.5 font-mono text-body-s text-content-dim sm:inline">
           {result.model_version}
         </code>

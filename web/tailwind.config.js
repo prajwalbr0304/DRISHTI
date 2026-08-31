@@ -145,13 +145,23 @@ export default {
         "body-s": ["12px", { lineHeight: "16px" }], // description / constraint text
         "display-l": ["42px", { lineHeight: "48px" }], // dashboard number highlights
 
-        // Legacy px-named scale (doc 01 §2.2) kept so existing screens compile.
+        /* --- Legacy px-named scale (doc 01 §2.2) kept so existing screens
+           compile. NOTE: 11/15/17/18/32 were referenced across the app but were
+           never declared here, so `text-11` & friends emitted NO css and those
+           call sites silently inherited their parent size. They are declared now
+           and snapped onto the Cloudscape scale — including its "never below
+           12px" rule, which is why `11` resolves to 12px. */
+        11: ["12px", { lineHeight: "16px" }], // → body-s (12px floor)
         12: ["12px", { lineHeight: "16px" }],
         13: ["13px", { lineHeight: "18px" }],
         14: ["14px", { lineHeight: "20px" }],
+        15: ["14px", { lineHeight: "20px" }], // → body-m
         16: ["16px", { lineHeight: "24px" }],
+        17: ["16px", { lineHeight: "20px" }], // → heading-s
+        18: ["18px", { lineHeight: "22px" }], // → heading-m
         20: ["20px", { lineHeight: "28px" }],
         28: ["28px", { lineHeight: "34px" }],
+        32: ["32px", { lineHeight: "40px" }], // landing hero only
         36: ["36px", { lineHeight: "42px" }],
         // Tremor scale bridge
         "tremor-label": ["12px", { lineHeight: "16px" }],
