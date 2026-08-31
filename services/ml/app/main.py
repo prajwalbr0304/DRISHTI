@@ -27,6 +27,7 @@ from .money.router import router as money_router
 from .forecast.router import router as forecast_router
 from .explain.router import router as explain_router
 from .chat.router import router as chat_router
+from .sonic import router as sonic_router
 from .intake.router import router as intake_router
 from .identity.router import router as identity_router
 from .evidence.router import router as evidence_router
@@ -75,6 +76,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+app.include_router(sonic_router)
 
 # API errors must never return SQL, stack traces or credentials.
 install_error_handlers(app)

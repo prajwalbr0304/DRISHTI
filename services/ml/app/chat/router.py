@@ -73,7 +73,8 @@ def ask(
     if req.voice is not None:
         threshold = float(get_settings().voice_low_confidence_threshold)
         confidence = req.voice.confidence
-        if (confidence is None or confidence < threshold) and not req.voice.confirmed:
+        unscored_opt_in = confidence is None and req.voice.auto_send
+        if (confidence is None or confidence < threshold) and not (req.voice.confirmed or unscored_opt_in):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={

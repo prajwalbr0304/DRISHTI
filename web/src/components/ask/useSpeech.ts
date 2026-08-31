@@ -74,6 +74,7 @@ export function useSpeech({
   const abort = useCallback(() => {
     const rec = recRef.current;
     recRef.current = null;
+    if (rec) { rec.onresult = null; rec.onerror = null; rec.onend = null; }
     try {
       rec?.abort();
     } catch {
@@ -96,7 +97,9 @@ export function useSpeech({
     if (!Ctor) return false;
 
     try {
-      recRef.current?.abort();
+      const previous = recRef.current;
+      if (previous) { previous.onresult = null; previous.onerror = null; previous.onend = null; }
+      previous?.abort();
     } catch {
       // Ignore an already-closed previous recognizer.
     }
@@ -110,6 +113,7 @@ export function useSpeech({
     setError(null);
 
     rec.onresult = (event) => {
+      if (recRef.current !== rec) return;
       let full = "";
       let finalConfidence: number | null = null;
       let lastResultFinal = false;
@@ -134,13 +138,15 @@ export function useSpeech({
     };
 
     rec.onerror = (event) => {
+      if (recRef.current !== rec) return;
       const code = event.error || "speech-recognition-error";
       setError(code);
       setListening(false);
       callbacksRef.current.onError?.(code);
     };
     rec.onend = () => {
-      if (recRef.current === rec) recRef.current = null;
+      if (recRef.current !== rec) return;
+      recRef.current = null;
       setListening(false);
       callbacksRef.current.onEnd?.();
     };

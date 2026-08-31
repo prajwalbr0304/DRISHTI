@@ -73,9 +73,12 @@ class VoiceIn(BaseModel):
     language: Optional[str] = None          # en | kn
     transcript: Optional[str] = None        # defaults to the question text
     is_low_confidence: Optional[bool] = None
-    # Required when confidence is missing or below the configured threshold.
+    # Required for low scores, or missing scores without session opt-in.
     # The server enforces this; the browser gate is only the first UX layer.
     confirmed: bool = False
+    # Explicit session opt-in for browsers that omit recognition confidence.
+    # Never bypasses review for a reported low-confidence score.
+    auto_send: bool = False
 
 
 # --- Phase 2: the live NL->SQL conversational engine ------------------------

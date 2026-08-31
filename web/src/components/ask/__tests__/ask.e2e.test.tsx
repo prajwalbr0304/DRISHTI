@@ -120,6 +120,24 @@ describe("Ask DRISHTI deterministic-provider E2E (Prompt 19 §G.4)", () => {
     useAskStore.getState().reset();
   });
 
+  it("keeps voice follow-ups in the same session and preserves unscored metadata", async () => {
+    await useAskStore.getState().send("Mysuru cases", { spoken: true, voiceMode: true, voiceAutoSend: true });
+    await useAskStore.getState().send("And Belagavi?", { spoken: true, voiceMode: true, voiceConfidence: 0.9 });
+    expect(ask.mock.calls[0][0].voice).toMatchObject({ auto_send: true });
+    expect(ask.mock.calls[0][0].voice.confirmed).toBeUndefined();
+    expect(ask.mock.calls[1][0].session_id).toBe(GROUNDED.session_id);
+    expect(useAskStore.getState().messages[0].voice?.confidence).toBeNull();
+    expect(useAskStore.getState().messages).toHaveLength(4);
+  });
+
+  it("does not let hands-free consent override an explicit low score", async () => {
+    const result = await useAskStore.getState().send("unclear", {
+      spoken: true, voiceAutoSend: true, voiceConfidence: 0.2,
+    });
+    expect(result).toBeNull();
+    expect(ask).not.toHaveBeenCalled();
+  });
+
   it("asks a question and renders a grounded, cited answer with a typed visualization", async () => {
     renderApp();
 

@@ -129,15 +129,16 @@ def voice_capability_status() -> dict:
     a labelled, feature-detected browser-voice fallback."""
     s = get_settings()
     zia_on = zia_voice_enabled()
+    from .sonic import configuration
+    sonic = configuration()
     return {
+        **sonic,
         "voice_query_enabled": bool(s.query_voice_enabled),
-        # The submitted STT/TTS provider. Browser recognition is NEVER called Zia.
-        "provider": "catalyst-zia" if zia_on else "browser-web-speech",
-        # The shipped continuous Voice Mode loops browser STT -> guarded Ask ->
-        # browser TTS over ordinary HTTPS. It is not a server audio stream.
-        "mode": "server-streaming" if zia_on else "browser-continuous-turns",
+        "provider": "amazon-nova-2-sonic" if sonic["sonic_available"] else ("catalyst-zia" if zia_on else "browser-web-speech"),
+        "mode": "server-streaming" if sonic["sonic_available"] or zia_on else "browser-continuous-turns",
         "continuous_mode_available": bool(s.query_voice_enabled),
-        "server_audio_streaming": bool(zia_on),
+        "unscored_auto_send_available": bool(s.query_voice_enabled),
+        "server_audio_streaming": bool(sonic["sonic_available"] or zia_on),
         "zia_voice_available": zia_on,
         "zia_translation_available": zia_on,
         "browser_fallback": True,

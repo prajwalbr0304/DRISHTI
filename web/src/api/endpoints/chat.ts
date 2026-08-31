@@ -6,6 +6,7 @@ export interface AskVoiceBody {
   language?: string;
   transcript?: string;
   confirmed?: boolean;
+  auto_send?: boolean;
 }
 export interface AskBody {
   question: string;
@@ -31,6 +32,8 @@ export interface ExplainBody {
  * (X-Role, sent by the client). History reads stored sessions/messages.
  */
 export const chatApi = {
+  voiceSession: (body: { voice: string; language: string; audio_consent: boolean; session_id?: number }) =>
+    apiClient.post<{ url: string; ticket: string; expires_in: number; session_seconds: number; model: string }>("/chat/voice/session", body),
   /** POST /chat/ask — grounded NL->SQL answer (reply + SQL + citations + confidence). */
   ask: (body: AskBody, signal?: AbortSignal) =>
     apiClient.post<AskResponse>("/chat/ask", body, undefined, signal),

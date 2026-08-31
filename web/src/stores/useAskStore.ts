@@ -85,11 +85,14 @@ interface AskState {
       voiceLanguage?: string;
       /** explicit user confirmation for a low/unknown-confidence spoken query. */
       voiceConfirmed?: boolean;
+      /** Session opt-in for unscored transcripts, never a low-score override. */
+      voiceAutoSend?: boolean;
       /** continuous Voice Mode owns playback, so ChatView must not auto-speak again. */
       voiceMode?: boolean;
     },
   ) => Promise<AskResponse | null>;
   loadSession: (detail: ChatSessionDetail) => void;
+  appendVoiceAnswer: (question: string, answer: AskResponse) => void;
   reset: () => void;
   setPendingSeed: (seed: string) => void;
   consumePendingSeed: () => string | null;
@@ -128,6 +131,12 @@ export const useAskStore = create<AskState>((set, get) => ({
   pendingSeed: null,
 
   setLanguage: (language) => set({ language }),
+  appendVoiceAnswer: (question, answer) => set((state) => ({
+    sourceSessionId: answer.session_id,
+    messages: [...state.messages,
+      { id: nextId(), sender: "user", text: question, spoken: true, voiceMode: true, language: "en", createdAt: Date.now() },
+      { ...answerFromResponse(nextId(), answer), voiceMode: true }],
+  })),
 
   setLanguageMode: (languageMode) =>
     set((s) => ({ languageMode, language: languageMode === "auto" ? s.language : languageMode })),
@@ -141,12 +150,13 @@ export const useAskStore = create<AskState>((set, get) => ({
   send: async (text, opts) => {
     const trimmed = text.trim();
     if (!trimmed || get().busy) return null;
-    // Low or unknown-confidence speech must be explicitly confirmed. This
-    // client guard mirrors the server boundary; it is not the security check.
+    // Low scores require review; unscored speech can use explicit session consent.
+    // The server repeats this check independently.
     if (
       opts?.spoken &&
       (opts.voiceConfidence == null || opts.voiceConfidence < VOICE_LOW_CONFIDENCE) &&
-      !opts.voiceConfirmed
+      !opts.voiceConfirmed &&
+      !(opts.voiceConfidence == null && opts.voiceAutoSend)
     ) {
       return null;
     }
@@ -190,6 +200,7 @@ export const useAskStore = create<AskState>((set, get) => ({
                 language: opts.voiceLanguage ?? lang,
                 transcript: trimmed,
                 confirmed: opts.voiceConfirmed,
+                auto_send: opts.voiceAutoSend,
               }
             : undefined,
       });

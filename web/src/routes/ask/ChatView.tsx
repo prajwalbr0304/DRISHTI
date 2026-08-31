@@ -64,6 +64,9 @@ export function ChatView() {
 
   // --- Text-to-speech: read answers back in the detected language (Phase 4) ---
   const tts = useTts();
+  useEffect(() => {
+    if (voiceModeOpen) tts.stop();
+  }, [voiceModeOpen, tts.stop]);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const autoSpokenRef = useRef<string | null>(null);
 
@@ -229,6 +232,8 @@ export function ChatView() {
         language={language}
         providerLabel={speechProviderLabel}
         plannerLabel={plannerLabel}
+        unscoredAutoSendAvailable={voiceCapability?.unscored_auto_send_available === true}
+        sonicAvailable={voiceCapability?.sonic_available === true}
       />
     </div>
   );

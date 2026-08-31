@@ -508,8 +508,13 @@ export interface CapabilitiesVoice {
   mode?: string;
   /** Older deployments advertise the equivalent through `browser_fallback`. */
   continuous_mode_available?: boolean;
-  /** False for the HTTPS/browser loop; reserved for a future audio relay. */
+  unscored_auto_send_available?: boolean;
+  /** True when the server-side Nova audio relay is enabled. */
   server_audio_streaming?: boolean;
+  sonic_available?: boolean;
+  sonic_model?: string;
+  sonic_languages?: string[];
+  sonic_voices?: Record<string, string>;
   zia_voice_available: boolean;
   zia_translation_available: boolean;
   browser_fallback: boolean;
