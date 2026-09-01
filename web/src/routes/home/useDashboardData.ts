@@ -93,11 +93,18 @@ export function useCentrality(top = 20) {
 /** Socio-economic correlations + narrative (policymaker turf). District-level
     correlation needs volume, so it reads the FULL operational period rather than
     the trailing scrubber window (which would be too sparse / k-anon suppressed).
-    STATE-WIDE: a correlation across districts cannot be narrowed to one. */
-export function useSocio() {
+    STATE-WIDE: a correlation across districts cannot be narrowed to one.
+
+    `focusIndicator` only changes which indicator the SCATTER series are built
+    for — the matrix, district count and suppression count are identical. So the
+    KPI cards call this with no argument and keep the shared "auto" cache entry,
+    while the chart panel re-queries when the user picks another indicator; with
+    no override both land on the same key and one request serves both. */
+export function useSocio(focusIndicator?: string) {
   return useQuery({
-    queryKey: ["analytics", "socio", "full"],
-    queryFn: ({ signal }) => api.analytics.socioeconomic({}, signal),
+    queryKey: ["analytics", "socio", "full", focusIndicator ?? "auto"],
+    queryFn: ({ signal }) =>
+      api.analytics.socioeconomic(focusIndicator ? { focus_indicator: focusIndicator } : {}, signal),
   });
 }
 

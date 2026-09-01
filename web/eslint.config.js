@@ -75,4 +75,23 @@ export default tseslint.config(
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
+
+  // --- (4) AudioWorklet processors (public/audio/*.js) ----------------------
+  // These execute in the AudioWorklet global scope — not Node, not the main
+  // window — so block (3)'s Node globals leave the worklet API undeclared and
+  // `no-undef` fires on AudioWorkletProcessor / registerProcessor. Declared
+  // explicitly rather than via a globals preset so this does not depend on the
+  // `globals` package shipping an audioworklet set.
+  {
+    files: ["public/audio/**/*.js"],
+    languageOptions: {
+      globals: {
+        AudioWorkletProcessor: "readonly",
+        registerProcessor: "readonly",
+        currentFrame: "readonly",
+        currentTime: "readonly",
+        sampleRate: "readonly",
+      },
+    },
+  },
 );

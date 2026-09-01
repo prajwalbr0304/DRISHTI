@@ -9,11 +9,21 @@ import { cn } from "@/lib/utils";
    doc 03 §1/§7). A policymaker's home turf.
    ========================================================================== */
 
-export function SocioNarrativeCard({ data }: { data: SocioEconomicResponse }) {
-  const top = [...data.correlation_matrix]
-    .filter((c) => c.r != null)
-    .sort((a, b) => Math.abs(b.r ?? 0) - Math.abs(a.r ?? 0))
-    .slice(0, 5);
+export function SocioNarrativeCard({
+  data,
+  /** Hide the top-5 ranked list when a correlation chart already carries it
+   *  (the Command Center panel), so the same numbers aren't shown twice. */
+  compact = false,
+}: {
+  data: SocioEconomicResponse;
+  compact?: boolean;
+}) {
+  const top = compact
+    ? []
+    : [...data.correlation_matrix]
+        .filter((c) => c.r != null)
+        .sort((a, b) => Math.abs(b.r ?? 0) - Math.abs(a.r ?? 0))
+        .slice(0, 5);
 
   return (
     <div className="space-y-3">

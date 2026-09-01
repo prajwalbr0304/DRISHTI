@@ -1,14 +1,17 @@
+import { useState } from "react";
 import { useUIStore } from "@/stores/useUIStore";
 import { Building2, Radar, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { Widget } from "@/components/widget/Widget";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { ForecastSummary } from "@/components/dashboard/ForecastSummary";
-import { SocioNarrativeCard } from "@/components/dashboard/SocioNarrativeCard";
+import { SocioSignalPanel } from "@/components/dashboard/SocioSignalPanel";
 import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useForecastMap, useSocio, useTrends } from "@/routes/home/useDashboardData";
 import { STATE_WIDE_NOTE } from "@/stores/useScopeStore";
 import { useScopeChips } from "@/routes/home/useScopeChips";
+import { humanizeKey } from "@/lib/utils";
 
 /* Policymaker Command Center (doc 01 §4.1 + §7): AGGREGATE-ONLY. District-level
    KPIs, trends, forecasts and socio-economic signal. No case list, no point-level
@@ -17,8 +20,26 @@ export function PolicymakerHome() {
   const askAbout = useUIStore((s) => s.askAbout);
   const scopeChip = useScopeChips();
   const trends = useTrends();
-  const socio = useSocio();
   const forecast = useForecastMap();
+
+  /* Socio panel selection. Empty string = "let the service pick the strongest
+     signal"; only an explicit override re-queries (see useSocio). */
+  const [indicator, setIndicator] = useState("");
+  const [category, setCategory] = useState("");
+
+  // KPI cards read the un-focused (shared) entry so switching indicator in the
+  // panel below never blanks the two counters, which don't depend on it.
+  const socio = useSocio();
+  const socioPanel = useSocio(indicator || undefined);
+  const socioData = socioPanel.data;
+
+  const activeIndicator = indicator || socioData?.focus_indicator || "";
+  const activeCategory =
+    category ||
+    socioData?.narrative.crime_category ||
+    socioData?.crime_categories.find((c) => c !== "All Crime") ||
+    socioData?.crime_categories[0] ||
+    "";
 
   const predicted = (forecast.data?.cells ?? []).reduce((s, c) => s + (c.predicted_count ?? 0), 0);
 
@@ -121,34 +142,76 @@ export function PolicymakerHome() {
       ),
     },
     {
-      key: "socio", handle: "header", x: 0, y: 9, w: 12, h: 7, minW: 4, minH: 4,
+      key: "socio", handle: "header", x: 0, y: 9, w: 12, h: 10, minW: 4, minH: 6,
       el: (
         <Widget
           gridTile
           title="Socio-economic signal"
           contextChip={scopeChip.stateWide}
-          provenance={socio.data?.result}
-          loading={socio.isLoading}
-          error={socio.error}
-          onRefresh={() => socio.refetch()}
+          provenance={socioData?.result}
+          loading={socioPanel.isLoading}
+          error={socioPanel.error}
+          empty={!socioPanel.isLoading && !socioPanel.error && !socioData}
+          onRefresh={() => socioPanel.refetch()}
+          actions={
+            <div className="flex items-center gap-2">
+              <NativeSelect
+                value={indicator}
+                onChange={setIndicator}
+                options={(socioData?.indicators ?? []).map((i) => ({ value: i, label: humanizeKey(i) }))}
+                placeholder={
+                  socioData?.focus_indicator
+                    ? `Auto · ${humanizeKey(socioData.focus_indicator)}`
+                    : "Indicator"
+                }
+                aria-label="Focus indicator"
+                className="w-44"
+              />
+              <NativeSelect
+                value={category}
+                onChange={setCategory}
+                options={(socioData?.crime_categories ?? []).map((c) => ({ value: c, label: c }))}
+                placeholder={activeCategory || "Crime category"}
+                aria-label="Crime category"
+                className="w-40"
+              />
+            </div>
+          }
           menuItems={[
             {
               label: "Ask DRISHTI about this",
               icon: <Sparkles />,
-              onSelect: () => askAbout("Explain the socio-economic correlations with crime, with caveats"),
+              onSelect: () =>
+                askAbout(
+                  activeIndicator && activeCategory
+                    ? `Explain how ${humanizeKey(activeIndicator)} correlates with per-capita ` +
+                        `${activeCategory.toLowerCase()} across districts, with caveats — make clear ` +
+                        `this is correlational, not causal.`
+                    : "Explain the socio-economic correlations with crime, with caveats",
+                ),
             },
           ]}
           info={
             <div className="space-y-2">
               <p>
-                Correlations of crime with socio-economic indicators. Correlational, never causal;
-                small counts are suppressed.
+                Correlations of crime with socio-economic indicators, shown three ways: the
+                plain-language read-out, r against every indicator for the chosen crime category, and
+                the district scatter with its linear fit. Correlational, never causal; small counts
+                are suppressed and omitted rather than estimated.
               </p>
+              <p>Rates are per 100,000 population, so the charts don't just redraw the population map.</p>
               <p>{STATE_WIDE_NOTE}</p>
             </div>
           }
         >
-          {socio.data && <SocioNarrativeCard data={socio.data} />}
+          {socioData && activeCategory && (
+            <SocioSignalPanel
+              data={socioData}
+              crimeCategory={activeCategory}
+              focusIndicator={activeIndicator}
+              onSelectIndicator={setIndicator}
+            />
+          )}
         </Widget>
       ),
     },

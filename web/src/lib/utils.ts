@@ -83,6 +83,11 @@ export function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
+/** snake_case API key -> readable label, e.g. "per_capita_income" -> "per capita income". */
+export function humanizeKey(key: string) {
+  return key.replace(/_/g, " ").trim();
+}
+
 /** Deterministic small hash for stable colour/id assignment. */
 export function hashString(input: string) {
   let h = 2166136261;
