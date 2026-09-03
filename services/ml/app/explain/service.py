@@ -376,6 +376,7 @@ def contract_audit() -> ContractAuditResponse:
         "/graph/communities/list", "/graph/communities/{community_id}/subgraph",
         "/chat/sessions", "/chat/sessions/{session_id}",
         "/chat/translate",   # a mechanical EN<->KN utility for PDF export, not an AI answer
+        "/chat/voice/session",  # short-lived Nova transport ticket, not an AI answer
         # Capability / contract descriptors (Prompt 19-20). These return the
         # SPA's truthful self-description — which semantic planner/voice provider
         # is active, and which forecast horizons are advertised + how validated —

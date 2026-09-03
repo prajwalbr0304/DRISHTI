@@ -12,6 +12,8 @@ Column names/casing mirror police_fir_schema.sql / *_extensions.sql /
 """
 from __future__ import annotations
 
+import re
+
 from ..roles import FUNCTIONAL_ROLES
 
 # --- Table catalogue: only these are ever exposed to NL->SQL -----------------
@@ -133,6 +135,53 @@ ROLES = FUNCTIONAL_ROLES
 # Roles restricted to aggregate answers (no individual rows / PII tables).
 # INTERIM ("all roles have access to everything"): none.
 AGGREGATE_ONLY_ROLES: frozenset[str] = frozenset()
+
+
+class SchemaReferenceError(ValueError):
+    """A qualified column does not belong to the table behind its alias."""
+
+
+_RELATION = re.compile(
+    r'\b(?:FROM|JOIN)\s+"([^"]+)"(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?',
+    re.IGNORECASE,
+)
+_QUALIFIED = re.compile(r'(?:(\b[A-Za-z_][A-Za-z0-9_]*)|"([^"]+)")\s*\.\s*"([^"]+)"')
+_SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
+_LINE_COMMENT = re.compile(r"--[^\n\r]*")
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+_SQL_WORDS = frozenset({
+    "where", "join", "left", "right", "full", "inner", "outer", "cross", "on",
+    "group", "order", "having", "limit", "offset", "union", "intersect", "except",
+})
+
+
+def validate_qualified_columns(sql: str) -> None:
+    """Reject known ``alias."Column"`` mismatches before PostgreSQL sees them.
+
+    This deliberately validates only aliases whose source is in the allow-listed
+    catalogue. CTE/result aliases remain the database parser's responsibility.
+    """
+    code = _LINE_COMMENT.sub(" ", _BLOCK_COMMENT.sub(" ", sql or ""))
+    code = _SQL_LITERAL.sub(" '' ", code)
+    aliases: dict[str, str] = {}
+    for match in _RELATION.finditer(code):
+        table, alias = match.groups()
+        if table not in TABLES:
+            continue
+        if alias and alias.lower() in _SQL_WORDS:
+            alias = None
+        aliases[table] = table
+        if alias:
+            aliases[alias] = table
+    errors = []
+    for match in _QUALIFIED.finditer(code):
+        qualifier = match.group(1) or match.group(2)
+        column = match.group(3)
+        table = aliases.get(qualifier)
+        if table and column not in TABLES[table]["columns"]:
+            errors.append(f'{qualifier}."{column}" is not a column of "{table}"')
+    if errors:
+        raise SchemaReferenceError("; ".join(sorted(set(errors))))
 
 
 def forbidden_tables(role: str) -> frozenset[str]:

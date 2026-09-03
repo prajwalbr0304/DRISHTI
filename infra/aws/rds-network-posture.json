@@ -38,5 +38,42 @@
     "browser_leak_check": "python infra/aws/check_no_db_url_in_web.py  (fails CI if a DB URL/5432/RDS host/server secret key appears in the web source or committed env).",
     "bundle_check": "web/scripts/check-bundle-secrets.mjs  (fails the build if a secret-shaped string reaches dist/).",
     "app_side": "services/ml/app/config.py keeps database_url server-side (sslmode=require); /health/ready never hard-requires RDS; appsail.deploy.json must_not_set_for_crud=[DATABASE_URL]."
-  }
+  },
+  "live_deviations": [
+    {
+      "date": "2026-09-03",
+      "scope": "instance drishti-db in AWS account 022499043641, ap-south-1 (the post-migration database)",
+      "deviates_from": [
+        "network.publicly_accessible=false",
+        "network.placement 'private subnets only'",
+        "network.security_group.forbidden_ingress 0.0.0.0/0:5432",
+        "access_rules.database_url_scope claim that DATABASE_URL is in must_not_set_for_crud (that array is now empty)"
+      ],
+      "actual_configuration": {
+        "publicly_accessible": true,
+        "placement": "default VPC vpc-00499e1baf650a39a, public subnets across ap-south-1a/1b/1c",
+        "security_group": "sg-06d79799d57821b31",
+        "ingress": [
+          "0.0.0.0/0 tcp/5432 (rule sgr-0e914e3e9d3158948)",
+          "103.89.74.25/32 tcp/5432 (a single observed Catalyst AppSail egress IP)",
+          "122.171.23.124/32 tcp/5432 (operator laptop)"
+        ]
+      },
+      "why": "The deployed Zoho Catalyst AppSail reaches RDS server-to-server, but Zoho does not publish a static egress IP range for Catalyst, so SG-to-SG and CIDR allow-listing are both impossible. Pinning the one observed Catalyst IP (103.89.74.25) proved insufficient because that egress rotates. Open IPv4 ingress was accepted deliberately by the project owner to keep the live demo on RDS.",
+      "compensating_controls": [
+        "The database holds ONLY synthetic data - synthetic_meta.app_environment='synthetic_hackathon', demo_data_only=true, no real PII. verify_hackathon_startup() refuses to boot against a database not explicitly marked synthetic.",
+        "rds.force_ssl=1 is active, so unencrypted connections are rejected at pg_hba: verified by an explicit sslmode=disable attempt being refused with 'no pg_hba.conf entry ... no encryption'. Live app connections negotiate TLSv1.3 / TLS_AES_256_GCM_SHA384 / 256-bit.",
+        "StorageEncrypted=true (KMS at rest).",
+        "The browser never receives DATABASE_URL: enforced by infra/aws/check_no_db_url_in_web.py and web/scripts/check-bundle-secrets.mjs, both passing.",
+        "Application reads go through the NOLOGIN drishti_readonly role (0 INSERT/UPDATE/DELETE grants); only the server-side master user writes.",
+        "IPv6 is not reachable at all - the VPC has no IPv6 CIDR association."
+      ],
+      "residual_risk": "TCP/5432 is reachable from the entire IPv4 internet, so the instance is exposed to credential-guessing and to any future PostgreSQL pre-auth vulnerability. The drishti_admin master credential is full read/write and is stored in plaintext in gitignored local files (.env, .env.drishti-target, infra/catalyst/secrets/appsail-env.local.json).",
+      "remediation": [
+        "Rotate the drishti_admin password now that the endpoint is world-reachable, then update .env and infra/catalyst/secrets/appsail-env.local.json and re-paste into the Catalyst Console.",
+        "Revoke rule sgr-0e914e3e9d3158948 after the demo: aws ec2 revoke-security-group-ingress --group-id sg-06d79799d57821b31 --protocol tcp --port 5432 --cidr 0.0.0.0/0 --profile prajwal-sso --region ap-south-1  (the two /32 rules are intentionally retained so laptop access survives that revoke).",
+        "Longer term, restore the reviewed posture by fronting RDS with the AWS adapter (API Gateway/Lambda in private subnets) and removing DATABASE_URL from AppSail, per database_url_policy's documented revert path."
+      ]
+    }
+  ]
 }

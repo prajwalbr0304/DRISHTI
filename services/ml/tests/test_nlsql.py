@@ -429,6 +429,38 @@ def test_fallback_escapes_literals():
     assert planner._lit("O'Brien") == "'O''Brien'"
 
 
+def test_schema_validator_rejects_column_from_wrong_table():
+    from app.nlsql.schema import SchemaReferenceError, validate_qualified_columns
+    bad = ('SELECT cm."DistrictID" FROM "CaseMaster" cm '
+           'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID"')
+    with pytest.raises(SchemaReferenceError, match="not a column"):
+        validate_qualified_columns(bad)
+    validate_qualified_columns(
+        'SELECT d."DistrictID" FROM "CaseMaster" cm '
+        'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
+        'JOIN "District" d ON d."DistrictID"=u."DistrictID"')
+    validate_qualified_columns(
+        'SELECT cm."CaseMasterID" FROM "CaseMaster" cm '
+        'WHERE cm."BriefFacts" ILIKE \'%cm."DistrictID"%\'')
+
+
+def test_socioeconomic_and_project_context_routes_are_detected():
+    from app.nlsql import project_context
+    assert engine._is_socioeconomic_request("Explain the socio-economic correlations with crime, with caveats")
+    assert engine._is_socioeconomic_request("Does rainfall have a relationship with crime?")
+    assert engine._requested_socioeconomic_indicator(
+        "Explain the relationship between literacy and crime") == "literacy_rate"
+    assert engine._requested_socioeconomic_indicator(
+        "Does rainfall have a relationship with crime?") == "rainfall_mm"
+    assert project_context.is_project_context_request("What architecture does DRISHTI use?")
+    assert project_context.is_project_context_request("Is this real-time data or synthetic data?")
+    assert project_context.is_project_context_request("Is the crime data real-time or synthetic data?")
+    assert not project_context.is_project_context_request("How many cases are in Mysuru?")
+    assert not project_context.is_project_context_request("How many cases does DRISHTI have?")
+    combined = project_context.answer("What architecture and data sources does DRISHTI use?")
+    assert "React/Vite" in combined and "synthetic demonstration data" in combined
+
+
 def test_arbitrary_openai_compatible_planner_fails_closed():
     class _S:
         llm_model = "qwen2.5-14b-instruct"

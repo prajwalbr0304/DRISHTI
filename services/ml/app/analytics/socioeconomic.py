@@ -137,9 +137,12 @@ def compute(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None
                 ys.append(rate[(did, cat)])
         return np.array(xs), np.array(ys)
 
+    requested_focus = focus_indicator if focus_indicator in INDICATORS else None
+
     # correlation matrix (category x indicator)
     matrix = []
     best = None  # (abs_r, cell dict)
+    focused_best = None
     for cat in categories_all:
         for indicator in INDICATORS:
             x, y = vectors(cat, indicator)
@@ -155,10 +158,13 @@ def compute(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None
                 if cat != "All Crime" and n >= max(min_districts, 10) and p < 0.1:
                     if best is None or abs(r) > best[0]:
                         best = (abs(r), cell.copy())
+                    if indicator == requested_focus and (
+                            focused_best is None or abs(r) > focused_best[0]):
+                        focused_best = (abs(r), cell.copy())
             matrix.append(cell)
 
     # focus indicator for scatter (auto = the strongest narrative indicator)
-    if focus_indicator not in INDICATORS:
+    if requested_focus is None:
         focus_indicator = best[1]["indicator"] if best else "unemployment_rate"
 
     scatter = []
@@ -182,7 +188,8 @@ def compute(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None
         scatter.append({"crime_category": cat, "indicator": focus_indicator, "r": r,
                         "fit_slope": slope, "fit_intercept": intercept, "points": pts})
 
-    narrative = _narrative(best, ind, rate, districts, names)
+    narrative = _narrative(focused_best if requested_focus else best,
+                           ind, rate, districts, names)
     return {
         "period_start": str(start), "period_end": str(end),
         "indicators": list(INDICATORS), "crime_categories": categories_all,
@@ -216,9 +223,10 @@ def _narrative(best, ind, rate, districts, names) -> dict:
     direction = "more" if (pct or 0) >= 0 else "less"
     headline = (f"Districts with {ind_label} above {med:.1f} show "
                 f"{abs(pct) if pct is not None else '?'}% {direction} {cat.lower()} per capita.")
+    p_text = "<0.00001" if cell["p_value"] == 0 else f"={cell['p_value']}"
     detail = (f"Across {len(vals)} districts, {ind_label} and per-capita {cat.lower()} "
               f"have a {cell['strength']} {cell['direction']} correlation (r={r}, "
-              f"p={cell['p_value']}). This is a district-level statistical association.")
+              f"p{p_text}). This is a district-level statistical association.")
     return {"headline": headline, "detail": detail, "disclaimer": CAUSATION_DISCLAIMER,
             "indicator": indicator, "crime_category": cat, "r": r,
             "threshold_value": round(med, 2), "pct_difference": pct}

@@ -155,6 +155,12 @@ _REGISTRY: tuple[DomainBoundary, ...] = (
     DomainBoundary("chat", CATALYST_OPERATIONAL, "Catalyst Data Store (target); RDS today",
                    "Assistant chat session/message metadata (data-minimised).",
                    migration=MIG_PENDING),
+    DomainBoundary("sonic", CATALYST_OPERATIONAL,
+                   "Amazon Bedrock Nova voice transport; Ask DRISHTI data path",
+                   "Short-lived Nova Sonic voice sessions and the streaming voice "
+                   "transport. The transport stores no raw audio; finalized questions "
+                   "and answers follow the guarded chat/NL-to-SQL data boundary.",
+                   migration=MIG_PENDING),
     DomainBoundary("notifications", CATALYST_OPERATIONAL, "Catalyst Data Store (target); RDS today",
                    "In-app notifications/work items.", migration=MIG_PENDING),
     DomainBoundary("reports", CATALYST_OPERATIONAL, "Catalyst Data Store + Stratus (target); RDS today",

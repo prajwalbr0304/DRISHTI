@@ -49,3 +49,21 @@ def test_k_anonymity_suppression_increases_with_threshold():
     high = service.socioeconomic_report(k_threshold=500)
     assert high.suppressed_cells >= low.suppressed_cells
     assert high.k_threshold == 500
+
+
+@requires_db
+def test_narrative_formats_rounded_zero_p_value_as_bound():
+    from app.analytics import service
+    r = service.socioeconomic_report(k_threshold=25)
+    if r.narrative.r is not None and "p" in r.narrative.detail:
+        assert "p=0.0" not in r.narrative.detail
+
+
+@requires_db
+def test_requested_indicator_drives_the_narrative_and_scatter():
+    from app.analytics import service
+    r = service.socioeconomic_report(k_threshold=25, focus_indicator="literacy_rate")
+    assert r.focus_indicator == "literacy_rate"
+    assert r.narrative.indicator == "literacy_rate"
+    assert "literacy rate" in r.narrative.detail.lower()
+    assert all(series.indicator == "literacy_rate" for series in r.scatter)

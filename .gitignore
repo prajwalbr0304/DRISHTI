@@ -137,3 +137,10 @@ artifacts/**/_*.mjs
 artifacts/**/_*.state.json
 artifacts/**/_creds*
 artifacts/**/_*.png
+
+# ---------------------------------------------------------------------------
+# Cross-account database migration artifacts (pg_dump archive, restore list,
+# TOC and logs). The dump contains the full synthetic dataset - large, and
+# regenerable with pg_dump - so it is kept locally but never committed.
+# ---------------------------------------------------------------------------
+_migration/

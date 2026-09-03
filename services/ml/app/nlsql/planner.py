@@ -429,6 +429,9 @@ def build_system_prompt(role: str) -> str:
         'DISTRICT — filter on "District"."DistrictName" ILIKE \'%name%\', joining '
         '"CaseMaster" -> "Unit" -> "District". "Unit"."UnitName" is an individual '
         'POLICE STATION name; never use it to match a district.',
+        'DISTRICT JOIN: "CaseMaster" has NO "DistrictID" column. For case-to-district '
+        'analysis always join cm."PoliceStationID" -> u."UnitID", then '
+        'u."DistrictID" -> d."DistrictID". Never write cm."DistrictID".',
         'PLACE NORMALIZATION: Mysore=Mysuru, Belgaum=Belagavi, Bellary=Ballari, '
         'Gulbarga=Kalaburagi, Bijapur=Vijayapura, Shimoga=Shivamogga, '
         'Tumkur=Tumakuru, Bangalore/Bengaluru=Bengaluru City. When several places '

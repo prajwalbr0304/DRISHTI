@@ -489,44 +489,119 @@ def _inferences(cur, cfg, rng: RNG, models, sample) -> int:
 
 
 def _indicators(cur, cfg, ctx: Context, rng: RNG) -> int:
+    """Seed stable district profiles with modest, explainable time movement.
+
+    Values are synthetic and deliberately generated from district traits rather
+    than from observed crime counts. That keeps the correlation widget useful
+    without baking its answer into the covariates. Each district owns an
+    independent RNG stream so upstream generator changes cannot reshuffle its
+    social/economic history.
+    """
     social, weather, econ = [], [], []
     sid = wid = eid = 0
-    # monthly series over the window per district
     months = _month_starts(cfg.start_date, cfg.end_date)
     for d in ctx.districts:
-        urban = "metro" in d["tags"] or "urban" in d["tags"]
-        pop = int(d["pop_weight"] * 1_000_000)
+        tags = set(d["tags"])
+        metro = "metro" in tags
+        urban = metro or "urban" in tags
+        periurban = "periurban" in tags
+        rural = "rural" in tags
+        coastal = "coastal" in tags
+        hilly = "hilly" in tags
+        border = "border" in tags
+        mining = "mining" in tags
+
+        # Reproducible district-specific offsets; no dependence on call order.
+        dseed = cfg.seed * 100_003 + d["id"] * 997
+        drng = np.random.default_rng(dseed)
+        offset = lambda scale: float(drng.normal(0.0, scale))
+
+        base_pop = int(d["pop_weight"] * 1_000_000)
+        annual_growth = 0.022 if metro else (0.017 if periurban else (0.012 if urban else 0.007))
+        density = (8200 if metro else 1250 if urban else 720 if periurban else 260)
+        if coastal:
+            density += 180
+        if hilly:
+            density *= 0.62
+        density *= 0.88 + min(d["pop_weight"], 4.0) * 0.04
+
+        literacy = (88 if metro else 80 if urban else 75 if coastal else 69) + offset(2.2)
+        if border and rural:
+            literacy -= 2.5
+        unemployment = (5.7 if metro else 6.8 if urban else 7.5 if periurban else 8.6) + offset(0.7)
+        if border:
+            unemployment += 0.5
+        youth = (26.5 if metro else 28.5 if urban else 31.0) + offset(1.5)
+        migration = (76 if metro else 48 if urban else 55 if periurban else 21) + offset(5)
+
+        income = (330_000 if metro else 190_000 if urban else 155_000 if coastal
+                  else 122_000 if mining else 105_000) * (1 + offset(0.06))
+        poverty = (0.075 if metro else 0.14 if urban else 0.18 if coastal else 0.255)
+        poverty += (0.035 if border and rural else 0) + offset(0.018)
+        business = (42 if metro else 22 if urban else 15 if periurban else 8.5)
+        business += (3 if coastal else 0) + (2 if mining else 0) + offset(1.5)
+
         for m in months:
+            years = (m.year - cfg.start_date.year) + (m.month - cfg.start_date.month) / 12
+            season = np.sin(2 * np.pi * (m.month - 1) / 12)
+            pop = int(base_pop * ((1 + annual_growth) ** years))
+            profile = {
+                "synthetic": True,
+                "profile_version": "district-context-v2",
+                "district": d["name"],
+                "tags": sorted(tags),
+            }
             sid += 1
             social.append((sid, d["id"], None, m.isoformat(), pop,
-                           round(d["pop_weight"] * (4000 if urban else 400), 2),
-                           round(float(np.clip(rng.gaussian(75 if urban else 65, 6), 40, 95)), 2),
-                           round(float(np.clip(rng.gaussian(6 if urban else 9, 2), 1, 25)), 2),
-                           round(float(np.clip(rng.gaussian(28, 4), 15, 45)), 2),
-                           round(float(rng.random()) * 100, 2),
-                           Json({}), "census-proj",
+                           round(float(np.clip(density * (1 + annual_growth * years)
+                                               + offset(density * 0.008), 40, 15000)), 2),
+                           round(float(np.clip(literacy + 0.35 * years + offset(0.22), 45, 96)), 2),
+                           round(float(np.clip(unemployment + 0.45 * season + offset(0.18), 2, 18)), 2),
+                           round(float(np.clip(youth - 0.12 * years + offset(0.2), 18, 40)), 2),
+                           round(float(np.clip(migration + 2.0 * season + offset(0.7), 2, 95)), 2),
+                           Json({**profile, "units": {"population_density": "persons_per_sq_km",
+                                                      "rates": "percent",
+                                                      "migration_index": "0_to_100"}}),
+                           "drishti-synthetic-district-profile-v2",
                            Geom.point(d["lon"], d["lat"])))
             eid += 1
             econ.append((eid, d["id"], None, m.isoformat(),
                          (m + dt.timedelta(days=27)).isoformat(),
-                         round(float(np.clip(rng.gaussian(180000 if urban else 90000, 20000), 30000, 500000)), 2),
-                         round(float(np.clip(rng.gaussian(6 if urban else 9, 2), 1, 25)), 2),
-                         round(float(rng.random()) * 0.4, 3),
-                         round(float(np.clip(rng.gaussian(5, 1.5), 0, 12)), 2),
-                         round(float(rng.random()) * 100, 2),
-                         Json({}), "econ-survey", Geom.point(d["lon"], d["lat"])))
-        # weekly-ish weather (sample 1 per month to bound volume)
+                         round(float(np.clip(income * ((1.055) ** years)
+                                             * (1 + 0.012 * season) + offset(income * 0.008),
+                                             45_000, 600_000)), 2),
+                         round(float(np.clip(unemployment + 0.4 * season + offset(0.16), 2, 18)), 2),
+                         round(float(np.clip(poverty - 0.006 * years + offset(0.004), 0.03, 0.45)), 3),
+                         round(float(np.clip(5.4 + 0.8 * season + offset(0.25), 2.5, 9.5)), 2),
+                         round(float(np.clip(business * (1 + 0.025 * years) + offset(0.3), 3, 65)), 2),
+                         Json({**profile, "units": {"per_capita_income": "inr_per_year",
+                                                    "poverty_index": "0_to_1",
+                                                    "business_density": "establishments_per_1000"}}),
+                         "drishti-synthetic-district-profile-v2",
+                         Geom.point(d["lon"], d["lat"])))
+
         for m in months:
             wid += 1
             monsoon = m.month in (6, 7, 8, 9)
+            summer = m.month in (3, 4, 5)
+            temp_base = 27.5 - max(0, d["lat"] - 12) * 0.22
+            if hilly:
+                temp_base -= 3.5
+            rain_base = 250 if (coastal or hilly) else (105 if d["lat"] < 14 else 72)
+            rainfall = rain_base if monsoon else (28 if coastal else 10)
             weather.append((wid, d["id"], None,
                             m.strftime("%Y-%m-%d %H:%M:%S+00"),
-                            round(float(np.clip(rng.gaussian(26 if monsoon else 30, 4), 12, 42)), 2),
-                            round(float(np.clip(rng.gaussian(85 if monsoon else 55, 10), 20, 100)), 2),
-                            round(float(abs(rng.gaussian(120 if monsoon else 10, 40))), 2),
-                            round(float(abs(rng.gaussian(12, 5))), 2),
+                            round(float(np.clip(temp_base + (3.2 if summer else -1.2 if monsoon else 0)
+                                                + offset(0.8), 14, 41)), 2),
+                            round(float(np.clip((82 if monsoon else 64 if coastal else 50)
+                                                + offset(4), 25, 98)), 2),
+                            round(float(np.clip(rainfall * (1 + offset(0.18)), 0, 650)), 2),
+                            round(float(np.clip(11 + (4 if monsoon else 0) + offset(2), 2, 35)), 2),
                             "Rain" if monsoon else "Clear",
-                            Json({}), "imd", Geom.point(d["lon"], d["lat"])))
+                            Json({"synthetic": True, "profile_version": "district-climate-v2",
+                                  "district": d["name"], "units": {"rainfall": "mm_monthly"}}),
+                            "drishti-synthetic-district-climate-v2",
+                            Geom.point(d["lon"], d["lat"])))
     copy_rows(cur, "SocialIndicator",
               ["SocialIndicatorID", "DistrictID", "UnitID", "ObservedDate",
                "Population", "PopulationDensity", "LiteracyRate",

@@ -127,6 +127,11 @@ def _outcome_to_response(o: "_engine.AskOutcome") -> AskResponse:
                      "no rows were returned.")
     elif o.needs_clarification:
         reasoning = "Ambiguous request — asked a clarifying question rather than guessing."
+    elif o.planner_source == "deterministic-socioeconomic":
+        reasoning = ("Computed by the governed district-level socio-economic analytics "
+                     "service using per-capita rates, suppression and Pearson correlation.")
+    elif o.planner_source == "deterministic-project-context":
+        reasoning = "Answered from the curated DRISHTI project capability and limitation facts."
     else:
         reasoning = (f"Translated to a read-only SELECT, executed under the drishti_readonly "
                      f"role and scoped to the caller's role; reply grounded in {o.row_count} "

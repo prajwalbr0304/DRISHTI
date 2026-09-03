@@ -31,11 +31,16 @@ from .executor import (ExecutionError, authorize_model_case_aggregate,
 from .guard import GuardError
 from .planner import (Plan, Turn, fallback_planner, get_planner,
                       sql_covers_resolved_jurisdictions)
-from .schema import requires_aggregate
+from .project_context import answer as project_context_answer
+from .project_context import is_project_context_request
+from .schema import (SchemaReferenceError, requires_aggregate,
+                     validate_qualified_columns)
 from .scope import ScopeError, is_aggregate, referenced_tables
 from .viz import build_visualization
 
 _NLSQL_MODEL = ("drishti-nlsql", "nlp", "1.0.0")
+_SOCIO_MODEL = ("drishti-socioeconomic", "regression", "1.0.0")
+_CONTEXT_MODEL = ("drishti-project-context", "nlp", "1.0.0")
 _ROWS_PREVIEW_CAP = 50      # rows sent to the browser for the answer table/chart
 _DEFAULT_OWNER_SUBJECT = "local:engine"
 _LOG = logging.getLogger("drishti.nlsql")
@@ -115,6 +120,14 @@ def ask(role: str, question: str, language: Optional[str] = None,
         return _briefing(
             role, question, lang, session_id, voice, t0, primary_name, owner_subject)
 
+    if _is_socioeconomic_request(question):
+        return _socioeconomic(
+            role, question, lang, session_id, voice, t0, primary_name, owner_subject)
+
+    if is_project_context_request(question):
+        return _project_context(
+            role, question, lang, session_id, voice, t0, primary_name, owner_subject)
+
     history = (_load_history(session_id, settings.nlsql_max_history_turns,
                              owner_subject, role) if session_id else [])
 
@@ -142,6 +155,29 @@ def ask(role: str, question: str, language: Optional[str] = None,
         planner_degraded = planner_source != "deterministic-fallback"
         planner_source = "deterministic-fallback"
     lang = plan.language or lang
+
+    # Catch table/column hallucinations before execution and give the configured
+    # planner one bounded correction attempt. Every repaired query still crosses
+    # all independent read-only, scope and aggregate-policy guards below.
+    if plan.sql:
+        try:
+            validate_qualified_columns(plan.sql)
+        except SchemaReferenceError as schema_error:
+            try:
+                repair_question = (
+                    question + "\n\nThe previous SQL proposal was rejected by the schema "
+                    f"validator: {schema_error}. Generate a corrected proposal using only the "
+                    "listed schema. Do not repeat the invalid column reference."
+                )
+                plan = planner.plan(repair_question, role, lang, history)
+                if plan.sql:
+                    validate_qualified_columns(plan.sql)
+            except Exception as exc:  # noqa: BLE001 - labelled fallback below
+                _LOG.warning("semantic_schema_repair_failed provider=%s error_code=%s",
+                             planner_source, type(exc).__name__)
+                plan = fallback_planner().plan(question, role, lang, history)
+                planner_source = "deterministic-fallback"
+                planner_degraded = primary_name != "deterministic-fallback"
 
     # The semantic model resolves the language, intent and SQL. These recognized
     # high-risk shapes are the narrow exceptions that stay server-authored.
@@ -281,6 +317,95 @@ def _briefing(role: str, question: str, lang: str, session_id: Optional[int],
         row_count=len(result.metrics), columns=cols, rows_preview=result.metrics,
         visualization=viz, planner_source="deterministic-briefing",
         planner_primary=primary_name, planner_degraded=False)
+
+
+def _is_socioeconomic_request(question: str) -> bool:
+    q = (question or "").lower()
+    return bool(re.search(
+        r"(?:socio.?economic|social\s+(?:and|or|/)\s*economic|unemployment|poverty|"
+        r"literacy|per.?capita income|youth ratio|population density|migration index|"
+        r"business density|rainfall|temperature).{0,80}(?:crime|fir|correl|association|"
+        r"relationship)|(?:crime|fir).{0,80}(?:socio.?economic|unemployment|poverty|"
+        r"literacy|income|youth|population density|migration|business density|rainfall|"
+        r"temperature|correl)", q))
+
+
+def _requested_socioeconomic_indicator(question: str) -> Optional[str]:
+    q = (question or "").lower()
+    patterns = (
+        (r"unemploy", "unemployment_rate"),
+        (r"literacy|literate", "literacy_rate"),
+        (r"poverty|poor\b", "poverty_index"),
+        (r"per.?capita income|\bincome\b", "per_capita_income"),
+        (r"youth", "youth_ratio"),
+        (r"population density", "population_density"),
+        (r"migration", "migration_index"),
+        (r"business density", "business_density"),
+        (r"rainfall|rain\b", "rainfall_mm"),
+        (r"temperature|heat\b", "temperature_c"),
+    )
+    return next((indicator for pattern, indicator in patterns if re.search(pattern, q)), None)
+
+
+def _socioeconomic(role: str, question: str, lang: str, session_id: Optional[int],
+                   voice: Optional[dict], t0: float, primary_name: str,
+                   owner_subject: str) -> AskOutcome:
+    from ..analytics import service as analytics_service
+
+    requested_indicator = _requested_socioeconomic_indicator(question)
+    report = analytics_service.socioeconomic_report(
+        k_threshold=25, focus_indicator=requested_indicator)
+    n = report.narrative
+    reply = (
+        f"{n.headline} {n.detail}\n\nCaveats: {n.disclaimer} "
+        f"This uses district-level per-capita rates across {report.districts_analysed} "
+        f"districts for {report.period_start} to {report.period_end}; Pearson r measures "
+        "linear association and may be affected by confounding, measurement quality, "
+        "spatial dependence and ecological fallacy. "
+        f"Cells below k={report.k_threshold} are suppressed "
+        f"({report.suppressed_cells} suppressed). This deployment uses synthetic demo data."
+    )
+    ranked = sorted(
+        (c for c in report.correlation_matrix
+         if c.r is not None
+         and (requested_indicator is None or c.indicator == requested_indicator)),
+        key=lambda c: abs(c.r), reverse=True)[:10]
+    columns = ["Crime category", "Indicator", "Pearson r", "p-value", "Districts"]
+    rows = [[c.crime_category, c.indicator, c.r, c.p_value, c.n] for c in ranked]
+    cites = [str(c) for c in report.result.source_record_ids]
+    sid, mv = _persist(
+        session_id, role, lang, question, reply, persisted_sql=None, cites=cites,
+        confidence=report.result.confidence, kind="answer", voice=voice,
+        owner_subject=owner_subject, latency_ms=int((time.time() - t0) * 1000),
+        row_count=len(rows), planner_source="deterministic-socioeconomic",
+        model=_SOCIO_MODEL, model_framework="scipy-pearson")
+    viz = build_visualization(
+        columns, rows, intent="socioeconomic", language=lang, citations=cites,
+        confidence=report.result.confidence, role=role, row_total=len(rows)) if rows else None
+    return AskOutcome(
+        session_id=sid, reply=reply, language=lang, sql=None,
+        cited_record_ids=cites, confidence=report.result.confidence,
+        model_version=mv, row_count=len(rows), columns=columns, rows_preview=rows,
+        visualization=viz, planner_source="deterministic-socioeconomic",
+        planner_primary=primary_name, planner_degraded=False)
+
+
+def _project_context(role: str, question: str, lang: str, session_id: Optional[int],
+                     voice: Optional[dict], t0: float, primary_name: str,
+                     owner_subject: str) -> AskOutcome:
+    reply = project_context_answer(question)
+    cites = ["DRISHTI:project-context"]
+    sid, mv = _persist(
+        session_id, role, lang, question, reply, persisted_sql=None, cites=cites,
+        confidence=1.0, kind="answer", voice=voice, owner_subject=owner_subject,
+        latency_ms=int((time.time() - t0) * 1000),
+        planner_source="deterministic-project-context", model=_CONTEXT_MODEL,
+        model_framework="curated-project-facts")
+    return AskOutcome(
+        session_id=sid, reply=reply, language=lang, sql=None,
+        cited_record_ids=cites, confidence=1.0, model_version=mv,
+        planner_source="deterministic-project-context", planner_primary=primary_name,
+        planner_degraded=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -480,13 +605,15 @@ def _persist(session_id: Optional[int], role: str, language: str, question: str,
              reply: str, *, persisted_sql: Optional[str], cites: list[str],
              confidence: float, kind: str, latency_ms: int, owner_subject: str,
              row_count: int = 0, voice: Optional[dict] = None,
-             planner_source: str = "deterministic-fallback") -> tuple[int, str]:
+             planner_source: str = "deterministic-fallback",
+             model: tuple[str, str, str] = _NLSQL_MODEL,
+             model_framework: str = "nl2sql-guarded") -> tuple[int, str]:
     """Atomically authorize the thread and persist both finalized turns."""
-    name, mtype, ver = _NLSQL_MODEL
+    name, mtype, ver = model
     conf = round(max(0.0, min(1.0, float(confidence))), 5)
     with db.rw_conn() as conn:
         mv_id = models.get_or_create_model_version(
-            conn, name, mtype, ver, framework="nl2sql-guarded",
+            conn, name, mtype, ver, framework=model_framework,
             hyperparameters={"read_only": True, "whitelist": "SELECT", "role_scoped": True})
         mv_label = models.model_version_label(conn, mv_id)
         with conn.cursor() as cur:
