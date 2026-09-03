@@ -142,7 +142,10 @@ export function PolicymakerHome() {
       ),
     },
     {
-      key: "socio", handle: "header", x: 0, y: 9, w: 12, h: 10, minW: 4, minH: 6,
+      /* h=8: the tallest pane is the 10-row bar chart (~290px) plus its caption,
+         so h=10 (620px at rowHeight 44 + 20px gutters) left ~200px of dead space
+         under the charts. The gridTile body scrolls, so this cannot clip. */
+      key: "socio", handle: "header", x: 0, y: 9, w: 12, h: 8, minW: 4, minH: 6,
       el: (
         <Widget
           gridTile
@@ -165,7 +168,9 @@ export function PolicymakerHome() {
                     : "Indicator"
                 }
                 aria-label="Focus indicator"
-                className="w-44"
+                /* Wide enough for the longest "Auto · <indicator>" placeholder
+                   (e.g. "Auto · population density"); w-44 clipped it mid-word. */
+                className="w-56"
               />
               <NativeSelect
                 value={category}
@@ -173,7 +178,8 @@ export function PolicymakerHome() {
                 options={(socioData?.crime_categories ?? []).map((c) => ({ value: c, label: c }))}
                 placeholder={activeCategory || "Crime category"}
                 aria-label="Crime category"
-                className="w-40"
+                /* Fits the longest category ("Crimes Against Property"); w-40 clipped it. */
+                className="w-48"
               />
             </div>
           }

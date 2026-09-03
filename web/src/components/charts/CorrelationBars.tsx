@@ -87,14 +87,24 @@ export function CorrelationBars({
         <BarChart
           data={rows}
           layout="vertical"
-          margin={{ top: 4, right: 44, bottom: 2, left: 2 }}
+          /* Symmetric gutters: this is a diverging chart, so zero must sit in the
+             middle of the plot and both open ends need equal room for the r
+             label. The old 44/2 split pushed zero off-centre and left the
+             negative side with nowhere to print. */
+          margin={{ top: 4, right: 10, bottom: 2, left: 8 }}
           barCategoryGap="20%"
         >
           <CartesianGrid {...gridProps(theme)} vertical horizontal={false} />
           <XAxis
             type="number"
             dataKey="r"
-            domain={[-1, 1]}
+            /* Padded past ±1 so the r value printed at a bar's open end lands
+               INSIDE the plot. In a vertical layout the plot area starts exactly
+               at the y-axis line, so with a hard [-1, 1] domain a strong negative
+               bar (r = -0.90) ended flush against that line and its label was
+               drawn over the indicator name — "per capita income-0.90". Ticks
+               still stop at ±1, the true bounds of Pearson r. */
+            domain={[-1.3, 1.3]}
             ticks={[-1, -0.5, 0, 0.5, 1]}
             tickFormatter={(v: number) => v.toFixed(1)}
             height={18}
@@ -103,7 +113,9 @@ export function CorrelationBars({
           <YAxis
             type="category"
             dataKey="label"
-            width={122}
+            /* 136 keeps the longest indicator ("unemployment rate") on one line;
+               at 122 it wrapped to two rows and broke the row rhythm. */
+            width={136}
             interval={0}
             {...axisProps(theme)}
             tick={{ fill: theme.textDim, fontSize: 11 }}
