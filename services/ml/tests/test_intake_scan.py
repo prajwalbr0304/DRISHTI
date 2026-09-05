@@ -23,7 +23,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app import zia_ocr
+from app import catalyst_rest, zia_ocr
 from app.config import get_settings
 from app.intake import extract, guards, resolve, scan_service
 from app.intake.schemas import DraftPayload, ScanApplyRequest
@@ -207,6 +207,162 @@ def test_kannada_complainant_name_is_kept_in_its_own_script():
 # ===========================================================================
 # OCR noise handling + confidence gating
 # ===========================================================================
+# ===========================================================================
+# Real recogniser layout (regression: Zia emits columns, not "label : value")
+# ===========================================================================
+# Verbatim shape of Catalyst Zia OCR output for the printed DRISHTI form. Zia
+# reproduces the visual column gap and emits NO colon at all. An earlier parser
+# required a separator and therefore silently dropped 17 of 22 fields on a page it
+# had read at 99% confidence. Kept byte-faithful (leading spaces, the stray "."
+# on the age line, the wrapped narrative) so the layout cannot regress.
+ZIA_COLUMN_FORM = """                                DRISHTI FIR INTAKE FORM
+                                  Synthetic end-to-end OCR test-DRISHTI-FIR-V1
+  1. Police Station                      Udupi Town Police Station
+  2. District                            Udupi
+  3. FIR No                              OCR-E2E-20260905-001
+  4. Date of Registration                25/09/2026
+  5. Time of Registration                14:30
+  6. Case Type                           Standard FIR
+  7. Acts and Sections                   BNS 303(2)
+  8. Occurrence From                    24/09/2026 20:15
+  9. Occurrence To                       24/09/2026 20:30
+  10. Information Received               25/09/2026 09:00
+  11. Place of Occurrence                MG Road, Udupi, Karnataka
+  12. Landmark                           Near City Bus Stand
+  13. Beat                               Central Beat 1
+  14. Complainant Name                   Arjun Rao
+  15. Complainant Age                 .  34
+  16. Complainant Phone                  9876543210
+  17. Complainant Address                12 Market Road, Udupi, Karnataka
+  18. Victim Name                        Arjun Rao
+  19. Accused Name                       Unknown Person
+  20. Witness Name                       Meera Nayak
+  21. Brief Facts                        A blue motorcycle was reported missing from
+                                         the parking area. This is synthetic test data
+                                         and not a real complaint.
+  22. Registering Officer                Lakshmi Prasad
+  TEST FORM -DO NOT REGISTER AS A REAL FIR
+"""
+
+
+def test_column_aligned_recogniser_output_extracts_every_field():
+    r = extract.extract_fir(ZIA_COLUMN_FORM, ocr_confidence=0.99)
+    assert r.template_matched
+    assert r.matched_label_count == len(extract.FIR_TEMPLATE_V1)
+    found = {f.path for f in r.fields}
+    missing = {s.path for s in extract.FIR_TEMPLATE_V1} - found
+    assert not missing, f"column layout dropped: {sorted(missing)}"
+
+
+def test_column_layout_values_are_the_full_cell_not_a_fragment():
+    """The old separator split produced garbage like time '30' from '14:30' and a
+    truncated reference from a hyphenated id."""
+    r = extract.extract_fir(ZIA_COLUMN_FORM, ocr_confidence=0.99)
+    payload = r.payload
+    assert payload["registration"]["registration_time"] == "14:30"
+    assert payload["source"]["external_source_id"] == "OCR-E2E-20260905-001"
+    assert payload["incident"]["address"] == "MG Road, Udupi, Karnataka"
+    assert payload["incident"]["beat"] == "Central Beat 1"
+    assert payload["classification"]["acts_sections"] == [
+        {"act_code": "BNS", "section_code": "303(2)"}]
+    # A stray recogniser dot before a number must not defeat the int parser.
+    party = next(p for p in r.parties if p["role_type"] == "complainant")
+    assert party["attributes"]["age"] == 34
+    assert party["attributes"]["phone"] == "9876543210"
+
+
+def test_column_layout_narrative_stops_at_the_next_field():
+    r = extract.extract_fir(ZIA_COLUMN_FORM, ocr_confidence=0.99)
+    facts = r.payload["narrative"]["brief_facts"]
+    assert "blue motorcycle" in facts
+    assert "not a real complaint" in facts        # both wrapped lines absorbed
+    assert "Registering Officer" not in facts     # next label ends the narrative
+    assert "Lakshmi" not in facts
+
+
+def test_all_four_party_roles_are_proposed_from_the_column_form():
+    r = extract.extract_fir(ZIA_COLUMN_FORM, ocr_confidence=0.99)
+    roles = {p["role_type"] for p in r.parties}
+    assert {"complainant", "victim", "accused", "witness"} <= roles
+
+
+def test_prose_mentioning_a_field_name_does_not_truncate_the_narrative():
+    """A form line has a column gap or a separator; prose does not. Without that
+    discriminator, 'Address of the shop...' inside a narrative would be read as an
+    Address field and cut the statement short."""
+    text = (
+        "Brief Facts : The complainant returned at night.\n"
+        "Address of the shop was visible from the road.\n"
+        "District boundaries were not in question.\n"
+    )
+    r = extract.extract_fir(text, ocr_confidence=0.95)
+    facts = r.payload["narrative"]["brief_facts"]
+    assert "Address of the shop" in facts
+    assert "District boundaries" in facts
+    assert "address" not in r.payload["incident"]
+    assert "district_id" not in r.payload["registration"]
+
+
+def test_a_bare_label_with_no_value_is_not_a_field():
+    """An unfilled line on the printed form must not produce an empty field."""
+    r = extract.extract_fir("Landmark\nBeat   \n", ocr_confidence=0.95)
+    assert r.matched_label_count == 0
+
+
+def test_ambiguous_date_never_auto_fills_even_on_a_pristine_scan():
+    """Confidence is scored so a perfect recogniser score cannot lift a DD/MM
+    coin-flip into a pre-filled field."""
+    r = extract.extract_fir("Date of Registration : 05/09/2026\n", ocr_confidence=1.0)
+    f = next(f for f in r.fields if f.path == "registration.registration_date")
+    assert f.auto_filled is False
+    assert f.requires_review is True
+    assert "registration_date" not in r.payload["registration"]
+
+
+def test_boxed_character_cells_are_read_for_dates_times_and_stamps():
+    """The printed form gives date/time fields character cells and tells the
+    officer to write one digit per box, so a recogniser returns the digits with no
+    separator. The parser must accept the layout its own form asks for."""
+    r = extract.extract_fir(
+        "Date of Registration        25092026\n"
+        "Time of Registration        1430\n"
+        "Occurrence From             24092026 2015\n",
+        ocr_confidence=0.95)
+    payload = r.payload
+    assert payload["registration"]["registration_date"] == "2026-09-25"
+    assert payload["registration"]["registration_time"] == "14:30"
+    assert payload["incident"]["incident_from"] == "2026-09-24T20:15:00"
+
+
+def test_boxed_cells_with_kannada_numerals_and_gaps():
+    """Digits spaced one per box, in Kannada numerals."""
+    kn = "\u0ce8\u0ce6 \u0ce6\u0ce9 \u0ce8\u0ce6\u0ce8\u0ce6"   # 20 03 2020
+    r = extract.extract_fir(f"Date of Registration        {kn}\n", ocr_confidence=0.95)
+    assert r.payload["registration"]["registration_date"] == "2020-03-20"
+
+
+def test_boxed_cells_reject_an_impossible_value_instead_of_guessing():
+    r = extract.extract_fir("Time of Registration        9999\n", ocr_confidence=0.95)
+    f = next(f for f in r.fields if f.path == "registration.registration_time")
+    assert f.value is None
+    assert f.requires_review is True
+
+
+def test_numbered_form_lines_are_matched_regardless_of_numbering_style():
+    for prefix in ("1.", "12.", "3)", "7]", ""):
+        r = extract.extract_fir(f"{prefix} District   Udupi\n", ocr_confidence=0.95)
+        assert r.matched_label_count == 1, prefix
+
+
+def test_specific_label_beats_a_shorter_alias():
+    """'Date of Registration' and the bare alias 'Date' both match; the longer,
+    more specific label must win so the value is not 'of Registration 25/09/2026'."""
+    r = extract.extract_fir("Date of Registration        25/12/2026\n", ocr_confidence=0.95)
+    f = next(f for f in r.fields if f.path == "registration.registration_date")
+    assert f.raw_text == "25/12/2026"
+    assert f.value == "2026-12-25"
+
+
 def test_mangled_labels_still_match_fuzzily():
     r = parse("Pollce Statlon : Udupi Town PS\nDnte of Registration : 2026-01-09\n",
               confidence=0.9)
@@ -401,6 +557,13 @@ def test_zia_document_confidence_is_normalised_to_zero_one():
     assert 0.79 < (result.confidence or 0) < 0.80
     assert result.detected_language == "en"
     assert result.provider == "catalyst-zia-ocr"
+
+
+def test_zia_rest_uses_one_language_hint_or_auto_detects_bilingual_pages():
+    assert catalyst_rest._ocr_form_data("OCR", ["eng"]) == {
+        "model_type": "OCR", "language": "eng"}
+    assert catalyst_rest._ocr_form_data("OCR", ["eng", "kan"]) == {
+        "model_type": "OCR"}
 
 
 def test_adapter_surfaces_failures_without_leaking_the_response_body():

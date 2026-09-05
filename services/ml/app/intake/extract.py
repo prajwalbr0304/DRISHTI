@@ -50,9 +50,20 @@ _KANNADA_DIGITS = str.maketrans("\u0ce6\u0ce7\u0ce8\u0ce9\u0cea\u0ceb\u0cec\u0ce
 _DIGIT_LOOKALIKES = {"O": "0", "o": "0", "l": "1", "I": "1", "|": "1",
                      "S": "5", "B": "8"}
 
-# Label/value separators used on the printed form (ASCII + Devanagari danda +
-# fullwidth colon, all of which show up in OCR output).
-_SEPARATORS = (":", "\uff1a", "-", "\u2013", "\u2014", "=")
+# Label/value separators seen on the printed form and in OCR output (ASCII colon,
+# fullwidth colon, dashes, equals). A recogniser may also drop the separator
+# entirely and keep only the column gap, which _match_form_line handles.
+_SEPARATOR_CHARS = (":", "\uff1a", "-", "\u2013", "\u2014", "=", "|", ".")
+
+# Leading run of separator/whitespace/rule characters to strip off a value.
+_LEADING_SEP_RE = re.compile(r"^[\s:\uff1a=|.\-\u2013\u2014_]+")
+
+# A form line may be numbered: "12.", "3)", "7]".
+_NUMBERING_RE = re.compile(r"^\s*\d{1,2}\s*[.)\]]\s*")
+
+# Longest label in the template is 5 tokens ("Brief Facts of the Case"); allow a
+# little headroom for a recogniser inserting a stray token.
+_MAX_LABEL_TOKENS = 6
 
 _LABEL_MATCH_MIN = 0.72        # fuzzy ratio floor for a Latin label
 _LABEL_MATCH_MIN_KN = 0.80     # stricter for Kannada (fuzzy is less reliable)
@@ -303,20 +314,9 @@ def _has_kannada(text: str) -> bool:
     return any("\u0c80" <= ch <= "\u0cff" for ch in text or "")
 
 
-def _split_label_value(line: str) -> tuple[str, str, bool]:
-    """Split ``label : value``. Returns (label, value, found_separator)."""
-    best_idx, best_sep = -1, ""
-    for sep in _SEPARATORS:
-        idx = line.find(sep)
-        # A separator only counts if a plausible label precedes it. Guards
-        # against splitting on a hyphen inside a date or a name.
-        if idx > 0 and (best_idx == -1 or idx < best_idx):
-            if sep in "-\u2013\u2014" and idx < 3:
-                continue
-            best_idx, best_sep = idx, sep
-    if best_idx == -1:
-        return line.strip(), "", False
-    return line[:best_idx].strip(), line[best_idx + len(best_sep):].strip(), True
+def _strip_numbering(line: str) -> str:
+    """Remove a leading form-line number: ``12.``, ``3)``, ``7]``."""
+    return _NUMBERING_RE.sub("", line, count=1)
 
 
 def _label_score(candidate: str, spec: FieldSpec) -> tuple[float, str]:
@@ -360,17 +360,73 @@ def _label_score(candidate: str, spec: FieldSpec) -> tuple[float, str]:
     return best, best_label
 
 
-def _match_line(label_text: str) -> tuple[Optional[FieldSpec], float, str]:
-    """Find the template field a line's label refers to."""
-    best_spec, best_score, best_label = None, 0.0, ""
-    for spec in FIR_TEMPLATE_V1:
-        score, label = _label_score(label_text, spec)
-        if score > best_score:
-            best_spec, best_score, best_label = spec, score, label
-    floor = _LABEL_MATCH_MIN_KN if _has_kannada(label_text) else _LABEL_MATCH_MIN
-    if best_spec is None or best_score < floor:
-        return None, 0.0, ""
-    return best_spec, best_score, best_label
+@dataclass(frozen=True)
+class _LineMatch:
+    spec: FieldSpec
+    score: float
+    matched_label: str
+    value: str
+
+
+def _match_form_line(line: str) -> Optional[_LineMatch]:
+    """Identify the template field a form line carries, and its raw value.
+
+    Handles BOTH layouts a recogniser produces from the printed form:
+
+      ``Police Station : Udupi Town PS``          (explicit separator)
+      ``Police Station        Udupi Town PS``     (whitespace-aligned columns)
+
+    The second is what Zia actually returns for the DRISHTI form — it reproduces
+    the visual column gap and emits no colon at all — so requiring punctuation
+    silently dropped almost every field.
+
+    The label is matched as a PREFIX of the line, longest specific match winning.
+    A gap is then mandatory: whatever follows the label must begin with a
+    separator or two or more spaces. That gap is what distinguishes a form line
+    (``Address        12 Market Road``) from ordinary prose inside a narrative
+    (``Address of the shop was open``), which would otherwise truncate the
+    narrative at a word that happens to be a field name.
+    """
+    body = _strip_numbering(line)
+    tokens = body.split()
+    if not tokens:
+        return None
+
+    best: Optional[tuple[float, int, FieldSpec, str, str]] = None
+    for n in range(1, min(len(tokens), _MAX_LABEL_TOKENS) + 1):
+        candidate = " ".join(tokens[:n]).rstrip("".join(_SEPARATOR_CHARS) + " ")
+        if not candidate:
+            continue
+
+        floor = _LABEL_MATCH_MIN_KN if _has_kannada(candidate) else _LABEL_MATCH_MIN
+        for spec in FIR_TEMPLATE_V1:
+            score, matched = _label_score(candidate, spec)
+            if score < floor:
+                continue
+
+            # Locate the label in the ORIGINAL text so the gap can be inspected;
+            # token joining has already lost the column spacing.
+            m = re.match(r"\s*" + r"\s+".join(re.escape(t) for t in tokens[:n]), body)
+            if m is None:  # pragma: no cover — tokens came from this string
+                continue
+            rest = body[m.end():]
+            gapped = rest.startswith("  ") or rest.lstrip()[:1] in _SEPARATOR_CHARS
+            if not gapped:
+                continue
+
+            value = _LEADING_SEP_RE.sub("", rest).strip()
+            if not value:
+                continue
+
+            # Higher score wins; on a tie the longer (more specific) label wins,
+            # so "Date of Registration" beats the bare alias "Date".
+            key = (score, n)
+            if best is None or key > (best[0], best[1]):
+                best = (score, n, spec, matched, value)
+
+    if best is None:
+        return None
+    return _LineMatch(spec=best[2], score=best[0], matched_label=best[3], value=best[4])
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +484,21 @@ _DATE_PATTERNS = (
 )
 _TIME_PATTERN = re.compile(r"\b(\d{1,2})[:.\u0ca6](\d{2})\s*(am|pm|AM|PM)?\b")
 
+# The printable form gives date/time fields character CELLS and tells the officer
+# to write one digit per box, because discrete characters are far closer to the
+# "standard character shape" Zia needs than joined handwriting is. A recogniser
+# then returns those digits with no separator ("25092026") or spaced apart
+# ("2 5 0 9 2 0 2 6"), so the separator-based patterns above would miss the exact
+# layout the form asks for. These cover the boxed case.
+_BOXED_DATE_RE = re.compile(r"^(\d{2})(\d{2})(\d{4})$")                 # DDMMYYYY
+_BOXED_TIME_RE = re.compile(r"^(\d{2})(\d{2})$")                        # HHMM
+_BOXED_DATETIME_RE = re.compile(r"^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})$")  # DDMMYYYYHHMM
+
+
+def _digits_only(raw: str) -> str:
+    """Collapse a boxed-cell run to just its digits (Kannada numerals included)."""
+    return re.sub(r"\D", "", normalize_digits(raw or ""))
+
 
 def _parse_date_parts(raw: str) -> tuple[Optional[str], float, str]:
     """Return an ISO date (YYYY-MM-DD) with a confidence + caveat."""
@@ -447,20 +518,42 @@ def _parse_date_parts(raw: str) -> tuple[Optional[str], float, str]:
             continue
         note, conf = "", 1.0
         # An unambiguous day (>12) proves the order; otherwise DD/MM vs MM/DD is
-        # genuinely ambiguous and the officer has to confirm.
+        # genuinely ambiguous and the officer has to confirm. Scored below the
+        # default auto-fill threshold DELIBERATELY, so a pristine scan cannot lift
+        # a coin-flip reading into a silently pre-filled field — getting the
+        # offence date wrong by months is exactly the error worth blocking.
         if order.startswith("dmy") and d <= 12 and mo <= 12 and d != mo:
-            conf = 0.72
+            conf = 0.6
             note = "Day/month order is ambiguous — confirm."
         if not (1 <= mo <= 12 and 1 <= d <= 31):
             return None, 0.0, "Unreadable date."
         return f"{y:04d}-{mo:02d}-{d:02d}", conf, note
+
+    # Boxed cells: DDMMYYYY with the separators absent.
+    boxed = _BOXED_DATE_RE.match(_digits_only(text))
+    if boxed:
+        d, mo, y = int(boxed.group(1)), int(boxed.group(2)), int(boxed.group(3))
+        if 1 <= mo <= 12 and 1 <= d <= 31 and 1900 <= y <= 2200:
+            if d <= 12 and mo <= 12 and d != mo:
+                return (f"{y:04d}-{mo:02d}-{d:02d}", 0.6,
+                        "Day/month order is ambiguous — confirm.")
+            return f"{y:04d}-{mo:02d}-{d:02d}", 1.0, ""
+        return None, 0.0, "Unreadable date."
     return None, 0.0, ""
 
 
 def _parse_time_parts(raw: str) -> tuple[Optional[str], float, str]:
-    m = _TIME_PATTERN.search(normalize_digits(raw or ""))
+    text = normalize_digits(raw or "")
+    m = _TIME_PATTERN.search(text)
     if not m:
-        return None, 0.0, ""
+        # Boxed cells: HHMM with the colon absent.
+        boxed = _BOXED_TIME_RE.match(_digits_only(text))
+        if not boxed:
+            return None, 0.0, ""
+        hh, mm = int(boxed.group(1)), int(boxed.group(2))
+        if not (0 <= hh <= 23 and 0 <= mm <= 59):
+            return None, 0.0, "Unreadable time."
+        return f"{hh:02d}:{mm:02d}", 1.0, ""
     try:
         hh, mm = int(m.group(1)), int(m.group(2))
     except (TypeError, ValueError):
@@ -485,6 +578,20 @@ def _parse_time(raw: str) -> tuple[Optional[str], float, str]:
 
 def _parse_datetime(raw: str) -> tuple[Optional[str], float, str]:
     """Combine a date and an optional time into an ISO-8601 local timestamp."""
+    # Boxed cells run date and time together as one 12-digit sequence, which
+    # neither the date nor the time pattern would claim on its own.
+    boxed = _BOXED_DATETIME_RE.match(_digits_only(raw))
+    if boxed:
+        d, mo, y = int(boxed.group(1)), int(boxed.group(2)), int(boxed.group(3))
+        hh, mm = int(boxed.group(4)), int(boxed.group(5))
+        if (1 <= mo <= 12 and 1 <= d <= 31 and 1900 <= y <= 2200
+                and 0 <= hh <= 23 and 0 <= mm <= 59):
+            stamp = f"{y:04d}-{mo:02d}-{d:02d}T{hh:02d}:{mm:02d}:00"
+            if d <= 12 and mo <= 12 and d != mo:
+                return stamp, 0.6, "Day/month order is ambiguous — confirm."
+            return stamp, 1.0, ""
+        return None, 0.0, "Unreadable date/time."
+
     date_v, date_conf, date_note = _parse_date_parts(raw)
     if not date_v:
         return None, 0.0, date_note
@@ -639,14 +746,12 @@ def extract_fir(text: str, *, ocr_confidence: Optional[float] = None,
         if not line.strip():
             idx += 1
             continue
-        label_text, value_text, had_sep = _split_label_value(line)
-        if not had_sep:
+        match = _match_form_line(line)
+        if match is None:
             idx += 1
             continue
-        spec, label_score, matched_label = _match_line(label_text)
-        if spec is None:
-            idx += 1
-            continue
+        spec, label_score, matched_label = match.spec, match.score, match.matched_label
+        value_text = match.value
 
         if spec.multiline:
             # Absorb following lines until the next recognised label, so a
@@ -658,8 +763,7 @@ def extract_fir(text: str, *, ocr_confidence: Optional[float] = None,
                 if not nxt.strip():
                     look += 1
                     continue
-                nxt_label, _nxt_value, nxt_sep = _split_label_value(nxt)
-                if nxt_sep and _match_line(nxt_label)[0] is not None:
+                if _match_form_line(nxt) is not None:
                     break
                 parts.append(nxt.strip())
                 look += 1

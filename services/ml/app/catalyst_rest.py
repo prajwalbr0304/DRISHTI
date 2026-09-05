@@ -30,6 +30,20 @@ _TIMEOUT = (10, 30)
 _OCR_TIMEOUT = (10, 120)
 
 
+def _ocr_form_data(model_type: str, languages: Optional[list[str]]) -> dict[str, Any]:
+    """Build the multipart fields accepted by Catalyst's OCR REST endpoint.
+
+    The console and SDK can express multiple language hints, but the public REST
+    endpoint rejects repeated ``language`` fields with ``INVALID_NUMBER_OF_INPUT``.
+    For a bilingual page, omitting the hint is the documented auto-detection path.
+    """
+    data: dict[str, Any] = {"model_type": model_type or "OCR"}
+    hints = [str(v).strip() for v in languages or [] if str(v).strip()]
+    if len(hints) == 1:
+        data["language"] = hints[0]
+    return data
+
+
 def _accounts_url() -> str:
     return os.getenv("ZOHO_CATALYST_ACCOUNTS_URL", "https://accounts.zoho.in").rstrip("/")
 
@@ -211,11 +225,7 @@ class CatalystRestClient:
         is optional and speeds up recognition; omitting them lets Zia auto-detect.
         """
         files = {"image": (filename, content, content_type or "application/octet-stream")}
-        data: dict[str, Any] = {"model_type": model_type or "OCR"}
-        if languages:
-            # Zia accepts repeated language values for a multi-script page
-            # (e.g. a Kannada FIR with English section numbers).
-            data["language"] = [str(v) for v in languages if str(v).strip()]
+        data = _ocr_form_data(model_type, languages)
         r = self._req_multipart("/ml/ocr", files=files, data=data)
         return self._data(r) or {}
 
