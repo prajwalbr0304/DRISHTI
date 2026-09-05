@@ -10,7 +10,8 @@ from ..contracts import AiResult
 from . import patterns as patterns_mod
 from . import socioeconomic
 from .schemas import (CorrelationCell, CrimePatternCard, CrimePatternsResponse,
-                      NarrativeCard, ScatterPoint, ScatterSeries, SocioEconomicResponse)
+                      DistrictPanelRow, NarrativeCard, ScatterPoint, ScatterSeries,
+                      SocioEconomicResponse)
 
 SOCIO_MODEL = "drishti-socioeconomic@1.0.0"
 PATTERN_MODEL = "drishti-pattern-detection@1.0.0"
@@ -28,6 +29,7 @@ def socioeconomic_report(start: Optional[dt.date] = None, end: Optional[dt.date]
                              points=[ScatterPoint(**p) for p in s["points"]])
                for s in data["scatter"]]
     narrative = NarrativeCard(**data["narrative"])
+    panel = [DistrictPanelRow(**d) for d in data["districts"]]
 
     result = AiResult(
         answer=narrative.headline,
@@ -47,7 +49,7 @@ def socioeconomic_report(start: Optional[dt.date] = None, end: Optional[dt.date]
         indicators=data["indicators"], crime_categories=data["crime_categories"],
         districts_analysed=data["districts_analysed"], k_threshold=data["k_threshold"],
         suppressed_cells=data["suppressed_cells"], focus_indicator=data["focus_indicator"],
-        correlation_matrix=matrix, scatter=scatter, narrative=narrative,
+        correlation_matrix=matrix, scatter=scatter, narrative=narrative, districts=panel,
     )
 
 

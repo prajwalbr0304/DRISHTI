@@ -37,7 +37,7 @@ export function AnalystHome() {
 
   const tiles: DashTile[] = [
     {
-      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 0, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -53,7 +53,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "kpi-hotspots", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-hotspots", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 4, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -67,7 +67,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "kpi-alerts", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-alerts", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 8, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -81,7 +81,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "kpi-poi", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-poi", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 12, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -95,7 +95,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "emerging-trend", handle: "header", x: 0, y: 2, w: 8, h: 7, minW: 4, minH: 4,
+      key: "emerging-trend", handle: "header", x: 0, y: 2, w: 8, h: 7, minW: 4, minH: 4, xl: { x: 0, y: 2, w: 16, h: 7 },
       el: (
         <Widget
           gridTile
@@ -129,7 +129,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "network-interest", handle: "header", x: 8, y: 2, w: 4, h: 7, minW: 3, minH: 4,
+      key: "network-interest", handle: "header", x: 8, y: 2, w: 4, h: 7, minW: 3, minH: 4, xl: { x: 16, y: 0, w: 8, h: 9 },
       el: (
         <Widget
           gridTile
@@ -171,7 +171,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "emerging-feed", handle: "header", x: 0, y: 9, w: 6, h: 7, minW: 3, minH: 4,
+      key: "emerging-feed", handle: "header", x: 0, y: 9, w: 6, h: 7, minW: 3, minH: 4, xl: { x: 0, y: 9, w: 12, h: 7 },
       el: (
         <Widget
           gridTile
@@ -202,7 +202,7 @@ export function AnalystHome() {
       ),
     },
     {
-      key: "saved-lenses", handle: "header", x: 6, y: 9, w: 6, h: 7, minW: 3, minH: 4,
+      key: "saved-lenses", handle: "header", x: 6, y: 9, w: 6, h: 7, minW: 3, minH: 4, xl: { x: 12, y: 9, w: 12, h: 7 },
       el: (
         <Widget
           gridTile

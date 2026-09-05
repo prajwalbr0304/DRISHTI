@@ -20,6 +20,30 @@ class CorrelationCell(BaseModel):
     n: int                          # districts contributing (after suppression)
     strength: Optional[str] = None  # negligible/weak/moderate/strong
     direction: Optional[str] = None # positive/negative
+    # Least-squares line through this cell's district points. Carried per CELL
+    # (not just for the focus indicator) so a UI showing one box per indicator can
+    # draw every fit from a single response. None whenever r is None.
+    fit_slope: Optional[float] = None
+    fit_intercept: Optional[float] = None
+
+
+class DistrictPanelRow(BaseModel):
+    """One district's averaged indicators + its per-100k crime rates.
+
+    The raw panel the Pearson matrix is computed from. It is published so a client
+    can build any (indicator x crime-category) scatter itself — a grid of
+    per-indicator charts is then ONE request, not one per chart.
+
+    Aggregate-only: a row is a district, never a person. k-anonymity is preserved
+    because a suppressed (district, category) cell is ABSENT from ``rates`` and
+    ``counts`` rather than reported as zero.
+    """
+    district_id: int
+    district_name: str
+    population: int
+    indicators: dict[str, float]    # indicator key -> mean over the period
+    rates: dict[str, float]         # crime category -> rate per 100k
+    counts: dict[str, int]          # crime category -> raw case count
 
 
 class ScatterPoint(BaseModel):
@@ -62,8 +86,12 @@ class SocioEconomicResponse(BaseModel):
     suppressed_cells: int
     focus_indicator: str
     correlation_matrix: list[CorrelationCell]
+    # Scatter for the FOCUS indicator only, one series per crime category. Kept
+    # for callers that ask the server to pick the strongest signal; clients that
+    # render several indicators at once should read `districts` instead.
     scatter: list[ScatterSeries]
     narrative: NarrativeCard
+    districts: list[DistrictPanelRow] = []
 
 
 # --- Crime Patterns (doc 01 §4.6) -------------------------------------------

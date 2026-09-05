@@ -139,7 +139,11 @@ def compute(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None
 
     requested_focus = focus_indicator if focus_indicator in INDICATORS else None
 
-    # correlation matrix (category x indicator)
+    # correlation matrix (category x indicator). Every fittable cell also carries
+    # its regression line: the UI renders ONE BOX PER INDICATOR, and each box
+    # draws its own fit. Computing all of them here (10 indicators x ~15
+    # categories of cheap polyfits) is what lets that grid load from a single
+    # request instead of one request per indicator.
     matrix = []
     best = None  # (abs_r, cell dict)
     focused_best = None
@@ -148,12 +152,16 @@ def compute(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None
             x, y = vectors(cat, indicator)
             n = len(x)
             cell = {"crime_category": cat, "indicator": indicator, "n": n,
-                    "r": None, "p_value": None, "strength": None, "direction": None}
+                    "r": None, "p_value": None, "strength": None, "direction": None,
+                    "fit_slope": None, "fit_intercept": None}
             if n >= min_districts and x.std() > 0 and y.std() > 0:
                 r, p = pearsonr(x, y)
+                slope, intercept = np.polyfit(x, y, 1)
                 cell.update(r=round(float(r), 4), p_value=round(float(p), 5),
                             strength=_strength(r),
-                            direction=("positive" if r >= 0 else "negative"))
+                            direction=("positive" if r >= 0 else "negative"),
+                            fit_slope=round(float(slope), 5),
+                            fit_intercept=round(float(intercept), 3))
                 # candidate for the narrative: strong, significant, real category
                 if cat != "All Crime" and n >= max(min_districts, 10) and p < 0.1:
                     if best is None or abs(r) > best[0]:
@@ -190,12 +198,31 @@ def compute(conn, start: Optional[dt.date] = None, end: Optional[dt.date] = None
 
     narrative = _narrative(focused_best if requested_focus else best,
                            ind, rate, districts, names)
+
+    # The raw district panel the whole correlation is computed FROM: for each
+    # district, its averaged indicators and its (post-suppression) per-100k rate
+    # per category. Shipping the panel means the client can assemble ANY
+    # (indicator x category) scatter for itself, so a grid of per-indicator boxes
+    # costs one request rather than one per box. It stays aggregate-only — a row
+    # is a district, never a person — and a suppressed cell is simply ABSENT from
+    # `rates`/`counts` rather than sent as a zero.
+    panel = [
+        {"district_id": did, "district_name": names[did], "population": pop[did],
+         "indicators": {k: round(v, 3) for k, v in ind[did].items()},
+         "rates": {cat: round(rate[(did, cat)], 2)
+                   for cat in categories_all if (did, cat) in rate},
+         "counts": {cat: counts.get((did, cat), total_by_district[did])
+                    for cat in categories_all if (did, cat) in rate}}
+        for did in districts
+    ]
+
     return {
         "period_start": str(start), "period_end": str(end),
         "indicators": list(INDICATORS), "crime_categories": categories_all,
         "districts_analysed": len(districts), "k_threshold": k_threshold,
         "suppressed_cells": suppressed, "focus_indicator": focus_indicator,
         "correlation_matrix": matrix, "scatter": scatter, "narrative": narrative,
+        "districts": panel,
         "source_tables": (["CaseMaster", "District"]
                           + sorted({t for t, _ in INDICATORS.values()})),
     }

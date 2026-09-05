@@ -154,6 +154,21 @@ export function isUserRole(value: unknown): value is UserRole {
   return typeof value === "string" && value in ROLES;
 }
 
+/** The actor string to send as X-Demo-Actor for a seat.
+ *
+ *  This is the SEEDED username (see `demoUsername`), not a synthesised
+ *  `demo.<role>` key, because the server tries to resolve the actor against the
+ *  `users` table to derive that seat's trusted organizational scope — its
+ *  district and station (services/ml/app/org/service.py resolve_scope_for_user,
+ *  mirrored by app/roles.py DEMO_USERS). An unresolvable actor silently collapses
+ *  to a role-default scope, which is why an SP and a DGP used to look equally
+ *  un-posted to endpoints that scope by seat.
+ *
+ *  Display/audit only, and stripped at the API Gateway — never authentication. */
+export function demoActorFor(role: UserRole): string {
+  return ROLES[role]?.demoUsername ?? ROLES[DEFAULT_ROLE].demoUsername;
+}
+
 /* --------------------------------------------------------------------------
    Capabilities. Every UI gate routes through `roleCan` so the interim
    "all roles have access to everything" policy lives in exactly one place.

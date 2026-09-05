@@ -19,14 +19,29 @@ import { formatNumber } from "@/lib/utils";
    indicator, y = crime rate per 100k), with the fitted regression line and a
    clearly-labelled "correlational, not causal" caption. A fit line is the only
    overlay — never a second axis that would imply a manufactured correlation.
+
+   `highlightDistrictId` rings one district instead of filtering to it. The
+   correlation is computed ACROSS districts, so narrowing the plot to a single
+   seat would destroy the very thing being shown; ringing its dot answers "where
+   does my district sit" while every other district stays visible and countable.
    ========================================================================== */
 
-export function CorrelationScatter({ series, height = 280 }: { series: ScatterSeries; height?: number }) {
+export function CorrelationScatter({
+  series,
+  height = 280,
+  highlightDistrictId,
+}: {
+  series: ScatterSeries;
+  height?: number;
+  /** District to ring. Emphasis only — never a filter (see above). */
+  highlightDistrictId?: number | null;
+}) {
   const theme = useChartTheme();
   assertChart({ kind: "scatter", yAxes: 1, threeD: false, usesRainbow: false, redundantEncoding: true });
 
   const pts = series.points ?? [];
   const color = categoryColor(series.crime_category);
+  const highlighted = highlightDistrictId != null && pts.some((p) => p.district_id === highlightDistrictId);
 
   const xs = pts.map((p) => p.x);
   const xMin = Math.min(...xs);
@@ -70,7 +85,12 @@ export function CorrelationScatter({ series, height = 280 }: { series: ScatterSe
               ]}
             />
           )}
-          <Scatter data={pts} fill={color} fillOpacity={0.8} isAnimationActive={false} />
+          <Scatter
+            data={pts}
+            fill={color}
+            isAnimationActive={false}
+            shape={<DistrictDot highlightDistrictId={highlightDistrictId} ringColor={theme.text} />}
+          />
         </ScatterChart>
       </ResponsiveContainer>
       <p className="px-1 text-12 italic text-content-dim">
@@ -81,9 +101,49 @@ export function CorrelationScatter({ series, height = 280 }: { series: ScatterSe
             (r = <span className="tnum not-italic font-medium text-content">{series.r.toFixed(2)}</span>)
           </>
         )}
-        . Correlational, not causal.
+        .{highlighted && " The ringed dot is the selected district."} Correlational, not causal.
       </p>
     </div>
+  );
+}
+
+/* Dot renderer. Recharts clones this element per point with the resolved
+   geometry, so `size` already carries the ZAxis case-volume mapping (as an AREA,
+   which is why the radius is its sqrt — scaling the radius by volume instead
+   would exaggerate big districts quadratically).
+
+   The ring is drawn OUTSIDE the dot rather than as a fill change so it survives
+   overlapping points, and the unselected dots are only dimmed — never hidden —
+   so the district count in the caption always matches what is on screen. */
+function DistrictDot({
+  cx,
+  cy,
+  size,
+  fill,
+  payload,
+  highlightDistrictId,
+  ringColor,
+}: {
+  cx?: number;
+  cy?: number;
+  size?: number;
+  fill?: string;
+  payload?: { district_id?: number };
+  highlightDistrictId?: number | null;
+  ringColor?: string;
+}) {
+  if (cx == null || cy == null) return null;
+  const radius = Math.max(3, Math.sqrt((Number(size) || 60) / Math.PI));
+  const focusing = highlightDistrictId != null;
+  const focused = focusing && payload?.district_id === highlightDistrictId;
+
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={radius} fill={fill} fillOpacity={focusing && !focused ? 0.3 : 0.8} />
+      {focused && (
+        <circle cx={cx} cy={cy} r={radius + 3.5} fill="none" stroke={ringColor} strokeWidth={2} />
+      )}
+    </g>
   );
 }
 

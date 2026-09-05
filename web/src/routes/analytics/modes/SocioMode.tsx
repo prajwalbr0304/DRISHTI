@@ -4,106 +4,126 @@ import { useUIStore } from "@/stores/useUIStore";
 import { Widget } from "@/components/widget/Widget";
 import { NativeSelect } from "@/components/ui/native-select";
 import { SocioNarrativeCard } from "@/components/dashboard/SocioNarrativeCard";
+import { IndicatorCrimeCard } from "@/components/dashboard/IndicatorCrimeCard";
+import { CorrelationBars } from "@/components/charts/CorrelationBars";
 import { CorrelationMatrix } from "@/components/charts/CorrelationMatrix";
-import { CorrelationScatter } from "@/components/charts/CorrelationScatter";
 import { useSocio } from "@/routes/analytics/useAnalyticsData";
+import { defaultCrimeCategory, indicatorsByStrength } from "@/lib/socio";
 
-/* Socio-Economic (doc 01 §4.6 / doc 03 §2.10): correlation-matrix heatmap +
-   scatter (with fitted line) + a plain-language narrative that ALWAYS carries
-   the "correlational, not causal" disclaimer and the k-anonymity suppression
-   count. A policymaker's home turf. */
+/* Socio-Economic (doc 01 §4.6 / doc 03 §2.10).
+
+   One box per indicator, each with its own crime-type selector, so all ten
+   indicators are readable at once instead of nine of them living as bars behind a
+   single scatter. Geography is NOT repeated per box — the workspace already has
+   one district selector in the top bar, and each box rings that district inside
+   its own state-wide cloud. Above them: the plain-language read-out, which always
+   carries the "correlational, not causal" disclaimer and the k-anonymity
+   suppression count. Below: the full matrix, for scanning every pairing at once.
+
+   One request feeds the whole page — /analytics/socioeconomic publishes the
+   district panel and a fit per cell, so every box builds its own series client-
+   side (see lib/socio) rather than re-querying per indicator. */
 export function SocioMode() {
   const askAbout = useUIStore((s) => s.askAbout);
-  const [focus, setFocus] = useState<string>("");
-  const [category, setCategory] = useState<string>("");
 
-  const q = useSocio(focus || undefined);
+  const q = useSocio();
   const data = q.data;
 
-  const effectiveIndicator = focus || data?.focus_indicator || "";
+  /* Page-level crime type sets the DEFAULT for every box; a box that has been
+     changed individually keeps its own choice. Empty = follow the server's
+     narrative category. */
+  const [category, setCategory] = useState<string>("");
+  const [matrixFocus, setMatrixFocus] = useState<string>("");
 
-  // scatter series present for the focus indicator; default to the strongest |r|.
-  const seriesList = data?.scatter ?? [];
-  const strongest = useMemo(
-    () => [...seriesList].sort((a, b) => Math.abs(b.r ?? 0) - Math.abs(a.r ?? 0))[0],
-    [seriesList],
+  const activeCategory = category || (data ? defaultCrimeCategory(data) : "");
+
+  // Strongest signal first, so the grid opens on the indicators that say
+  // something rather than on whatever order the service declared them in.
+  const indicators = useMemo(
+    () => (data && activeCategory ? indicatorsByStrength(data, activeCategory) : []),
+    [data, activeCategory],
   );
-  const selectedSeries =
-    seriesList.find((s) => s.crime_category === category) ?? strongest ?? null;
-
-  const explainSeed =
-    `Explain the socio-economic signal: how does ${effectiveIndicator || "the indicator"} correlate ` +
-    `with ${selectedSeries?.crime_category ?? "crime"} across districts? Make clear this is ` +
-    `correlational, not causal.`;
 
   const explainItem = {
     label: "Explain this in Ask DRISHTI",
     icon: <Sparkles />,
-    onSelect: () => askAbout(explainSeed),
+    onSelect: () =>
+      askAbout(
+        `Explain the socio-economic signal: which indicators correlate with per-capita ` +
+          `${(activeCategory || "crime").toLowerCase()} across Karnataka districts, and how strongly? ` +
+          `Make clear this is correlational, not causal.`,
+      ),
   };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Narrative */}
-        <Widget
-          title="Socio-economic read-out"
-          contextChip="correlational"
-          provenance={data?.result}
-          loading={q.isLoading}
-          error={q.error}
-          onRefresh={() => q.refetch()}
-          menuItems={[explainItem]}
-          info={
-            <p className="text-content-dim">
-              District per-capita crime rates correlated against socio-economic indicators. Small-count
-              cells are suppressed; correlations are never presented as causation.
+      {/* Plain-language read-out + the honesty footer */}
+      <Widget
+        title="Socio-economic read-out"
+        contextChip="correlational"
+        provenance={data?.result}
+        loading={q.isLoading}
+        error={q.error}
+        onRefresh={() => q.refetch()}
+        menuItems={[explainItem]}
+        actions={
+          <NativeSelect
+            value={category}
+            onChange={setCategory}
+            options={(data?.crime_categories ?? []).map((c) => ({ value: c, label: c }))}
+            placeholder={activeCategory ? `Auto · ${activeCategory}` : "Crime type"}
+            aria-label="Default crime type for every indicator box"
+            className="w-56"
+          />
+        }
+        info={
+          <div className="space-y-2">
+            <p>
+              District per-capita crime rates correlated against socio-economic indicators, with r
+              for every indicator ranked beside the narrative — the index for the per-indicator boxes
+              below. Small-count cells are suppressed; correlations are never presented as causation.
             </p>
-          }
-        >
-          {data && <SocioNarrativeCard data={data} />}
-        </Widget>
-
-        {/* Scatter for the focus indicator × crime category */}
-        <Widget
-          className="lg:col-span-2"
-          title="Crime vs. indicator"
-          contextChip={effectiveIndicator || undefined}
-          provenance={data?.result}
-          loading={q.isLoading}
-          error={q.error}
-          empty={!q.isLoading && !q.error && !selectedSeries}
-          emptyLabel="No scatter series for this indicator."
-          onRefresh={() => q.refetch()}
-          menuItems={[explainItem]}
-          actions={
-            <div className="flex items-center gap-2">
-              <NativeSelect
-                value={effectiveIndicator}
-                onChange={setFocus}
-                options={(data?.indicators ?? []).map((i) => ({ value: i, label: i }))}
-                placeholder="Indicator"
-                aria-label="Focus indicator"
-                className="w-40"
-              />
-              {seriesList.length > 1 && (
-                <NativeSelect
-                  value={selectedSeries?.crime_category ?? ""}
-                  onChange={setCategory}
-                  options={seriesList.map((s) => ({ value: s.crime_category, label: s.crime_category }))}
-                  placeholder="Crime category"
-                  aria-label="Crime category"
-                  className="w-40"
-                />
+            <p>
+              The crime type chosen here is the DEFAULT for those boxes; any box you set individually
+              keeps its own selection. Geography comes from the district selector in the top bar,
+              which rings that district inside each box rather than filtering to it.
+            </p>
+          </div>
+        }
+      >
+        {data && (
+          <div className="grid grid-cols-1 gap-x-5 gap-y-3 lg:grid-cols-12">
+            {/* compact: the ranked top-5 list would restate the bars beside it. */}
+            <div className="min-w-0 lg:col-span-4">
+              <SocioNarrativeCard data={data} compact />
+            </div>
+            <div className="min-w-0 lg:col-span-8">
+              {activeCategory && (
+                <CorrelationBars cells={data.correlation_matrix} crimeCategory={activeCategory} />
               )}
             </div>
-          }
-        >
-          {selectedSeries && <CorrelationScatter series={selectedSeries} />}
-        </Widget>
+          </div>
+        )}
+      </Widget>
+
+      {/* One box per indicator — each owns its crime type and geography */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        {indicators.map((indicator) => (
+          <IndicatorCrimeCard
+            key={indicator}
+            data={data}
+            indicator={indicator}
+            defaultCrimeCategory={activeCategory}
+            provenance={data?.result}
+            loading={q.isLoading}
+            error={q.error}
+            onRefresh={() => q.refetch()}
+            chartHeight={220}
+          />
+        ))}
       </div>
 
-      {/* Correlation matrix */}
+      {/* Every pairing at once */}
       <Widget
         title="Correlation matrix"
         contextChip={data ? `${data.crime_categories.length}×${data.indicators.length}` : undefined}
@@ -115,17 +135,17 @@ export function SocioMode() {
         menuItems={[explainItem]}
         info={
           <p className="text-content-dim">
-            Pearson r for every crime category × indicator pair. Click a cell to focus the scatter on
-            that indicator.
+            Pearson r for every crime category × indicator pair. Click a cell to make that crime type
+            the default for the indicator boxes above.
           </p>
         }
       >
         {data && (
           <CorrelationMatrix
             cells={data.correlation_matrix}
-            focusIndicator={effectiveIndicator}
+            focusIndicator={matrixFocus}
             onSelect={(indicator, crimeCategory) => {
-              setFocus(indicator);
+              setMatrixFocus(indicator);
               setCategory(crimeCategory);
             }}
           />

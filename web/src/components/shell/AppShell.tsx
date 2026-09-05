@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { useDataAnchor } from "@/hooks/useDataAnchor";
+import { useSeatScopeAnchor } from "@/hooks/useSeatScopeAnchor";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TopBar } from "@/components/shell/TopBar";
@@ -16,6 +17,10 @@ export function AppShell() {
   // Anchors the global time window to the latest data date. Must live here (not
   // in the scrubber) so it runs on every route.
   useDataAnchor();
+  // Same for the district scope: open on the seat's own region (an SP/SHO on their
+  // district, a state seat on all of them) until the user picks. Must also run on
+  // every route, not inside the top-bar selector.
+  useSeatScopeAnchor();
 
   return (
     <TooltipProvider delayDuration={200} skipDelayDuration={400}>
@@ -25,8 +30,11 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar />
           <Breadcrumbs />
+          {/* No max-width cap: the workspace fills the display. A fixed cap left
+              dead gutters on wide monitors, which is exactly the space an ops
+              room wants spent on data. */}
           <main className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[1600px] p-5">
+            <div className="w-full p-5">
               <Outlet />
             </div>
           </main>

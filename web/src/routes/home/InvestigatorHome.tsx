@@ -41,7 +41,7 @@ export function InvestigatorHome() {
 
   const tiles: DashTile[] = [
     {
-      key: "kpi-firs", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-firs", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 0, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -57,7 +57,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "kpi-myalerts", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-myalerts", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 4, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -72,7 +72,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "kpi-urgent", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-urgent", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 8, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -86,7 +86,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "kpi-hotspots", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-hotspots", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 12, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -100,7 +100,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "caseload", handle: "header", x: 0, y: 2, w: 6, h: 6, minW: 3, minH: 4,
+      key: "caseload", handle: "header", x: 0, y: 2, w: 6, h: 6, minW: 3, minH: 4, xl: { x: 0, y: 2, w: 8, h: 6 },
       el: (
         <Widget
           gridTile
@@ -137,7 +137,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "jurisdiction", handle: "header", x: 6, y: 2, w: 6, h: 6, minW: 3, minH: 4,
+      key: "jurisdiction", handle: "header", x: 6, y: 2, w: 6, h: 6, minW: 3, minH: 4, xl: { x: 8, y: 2, w: 8, h: 6 },
       el: (
         <Widget
           gridTile
@@ -164,7 +164,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "attention", handle: "header", x: 0, y: 8, w: 6, h: 7, minW: 3, minH: 4,
+      key: "attention", handle: "header", x: 0, y: 8, w: 6, h: 7, minW: 3, minH: 4, xl: { x: 0, y: 8, w: 16, h: 7 },
       el: (
         <Widget
           gridTile
@@ -195,7 +195,7 @@ export function InvestigatorHome() {
       ),
     },
     {
-      key: "recent", handle: "header", x: 6, y: 8, w: 6, h: 7, minW: 3, minH: 4,
+      key: "recent", handle: "header", x: 6, y: 8, w: 6, h: 7, minW: 3, minH: 4, xl: { x: 16, y: 0, w: 8, h: 15 },
       el: (
         <Widget gridTile title="Recent activity" flush>
           <div className="px-2 py-1">

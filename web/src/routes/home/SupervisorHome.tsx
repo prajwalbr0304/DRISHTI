@@ -42,7 +42,7 @@ export function SupervisorHome() {
 
   const tiles: DashTile[] = [
     {
-      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-incidents", handle: "self", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 0, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -58,7 +58,7 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "kpi-openalerts", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-openalerts", handle: "self", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 4, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -72,7 +72,7 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "kpi-urgent", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-urgent", handle: "self", x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 8, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -86,7 +86,7 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "kpi-hotspots", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2,
+      key: "kpi-hotspots", handle: "self", x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2, xl: { x: 12, y: 0, w: 4, h: 2 },
       el: (
         <KpiCard
           className="h-full"
@@ -100,7 +100,7 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "load-district", handle: "header", x: 0, y: 2, w: 6, h: 7, minW: 3, minH: 4,
+      key: "load-district", handle: "header", x: 0, y: 2, w: 6, h: 7, minW: 3, minH: 4, xl: { x: 0, y: 2, w: 16, h: 7 },
       el: (
         <Widget
           gridTile
@@ -124,7 +124,7 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "review-queue", handle: "header", x: 6, y: 2, w: 6, h: 7, minW: 3, minH: 4,
+      key: "review-queue", handle: "header", x: 6, y: 2, w: 6, h: 7, minW: 3, minH: 4, xl: { x: 16, y: 0, w: 8, h: 9 },
       el: (
         <Widget
           gridTile
@@ -155,7 +155,7 @@ export function SupervisorHome() {
       ),
     },
     {
-      key: "performance", handle: "header", x: 0, y: 9, w: 12, h: 8, minW: 4, minH: 5,
+      key: "performance", handle: "header", x: 0, y: 9, w: 12, h: 8, minW: 4, minH: 5, xl: { x: 0, y: 9, w: 24, h: 8 },
       el: (
         <Widget
           gridTile

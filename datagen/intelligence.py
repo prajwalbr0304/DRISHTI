@@ -790,6 +790,41 @@ def _chat(cur, cfg, rng: RNG, models, sample) -> Dict[str, int]:
         ) AS v(username, display_name, role_name) ON r."role_name" = v.role_name
         ON CONFLICT ("username") DO NOTHING
     """)
+    # Give the district-and-below seats an actual POSTING (users.unit_id -> Unit
+    # -> District). Without one, org.scope.derive_scope has no trusted district to
+    # assert, so /org/my-scope answers "not geographically pinned" for an SP or an
+    # SHO exactly as it does for the DGP — and any UI that defaults to "my region"
+    # has nothing to default to. Distinct districts per seat so switching seats
+    # visibly changes the region.
+    #
+    # State and range seats (DGP, IGP) and the read-across seats (analyst, cyber,
+    # admin) are deliberately left unpinned: state-wide IS their scope, and a
+    # district on those rows would be a fabricated narrowing.
+    #
+    # The station is the lowest UnitID in the named district, so the choice is
+    # deterministic across rebuilds; the IO shares the SHO's station because an IO
+    # works under one. Idempotent, and skipped for any district a build lacks.
+    cur.execute("""
+        UPDATE "users" u
+        SET "unit_id" = pick."UnitID"
+        FROM (VALUES
+            ('sp.anand',      'Mysuru'),
+            ('dysp.kavya',    'Dakshina Kannada'),
+            ('sho.suresh',    'Belagavi'),
+            ('io.ramesh',     'Belagavi'),
+            ('traffic.latha', 'Bengaluru City')
+        ) AS seat(username, district_name)
+        CROSS JOIN LATERAL (
+            SELECT un."UnitID"
+            FROM "Unit" un
+            JOIN "District" d ON d."DistrictID" = un."DistrictID"
+            WHERE d."DistrictName" = seat.district_name
+            ORDER BY un."UnitID"
+            LIMIT 1
+        ) AS pick
+        WHERE u."username" = seat.username
+          AND u."unit_id" IS DISTINCT FROM pick."UnitID"
+    """)
     demo = fetch_all(cur, """
         SELECT u."user_id", u."display_name", r."role_name"
         FROM "users" u JOIN "roles" r ON r."role_id" = u."role_id"

@@ -7,8 +7,9 @@ import { DIVERGING, sampleRamp } from "@/lib/palette";
    Correlation-matrix heatmap (doc 03 §2.10). Crime categories × indicators,
    each cell shaded by Pearson r on a CVD-safe DIVERGING ramp centred on zero —
    and the r value is printed IN the cell, so meaning never rides on colour
-   alone (§7). Click a cell to drive the scatter's focus indicator. Suppressed /
-   too-small cells (r = null) render as a neutral dash, never a fake zero.
+   alone (§7). Click a cell to select that indicator × crime-category pairing.
+   Suppressed / too-small cells (r = null) render as a neutral dash, never a
+   fake zero.
    ========================================================================== */
 
 function cellColor(r: number | null | undefined): string | undefined {
@@ -147,7 +148,7 @@ function Legend() {
         ))}
       </span>
       <span>+1</span>
-      <span className="ml-1">Pearson r · click a cell to focus the scatter</span>
+      <span className="ml-1">Pearson r · click a cell to select that pairing</span>
     </div>
   );
 }

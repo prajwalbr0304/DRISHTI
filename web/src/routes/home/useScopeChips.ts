@@ -12,7 +12,10 @@ import { useScopeStore } from "@/stores/useScopeStore";
    is the only moment the widgets disagree: most follow the selection, while the
    socio-economic correlation and graph centrality cannot (see districtSupport
    in useScopeStore). Those say "state-wide" so the selector never implies a
-   filter that was not applied.
+   filter that was not applied. The socio-economic boxes sit between the two: they
+   honour the selection as EMPHASIS (the district is ringed inside the state-wide
+   cloud) because a correlation across districts can highlight one but not be
+   filtered to it. Their surrounding read-out is still state-wide and says so.
    ========================================================================== */
 
 export function useScopeChips() {

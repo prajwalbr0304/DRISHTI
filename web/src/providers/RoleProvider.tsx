@@ -1,6 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/api/client";
-import { DEFAULT_ROLE, ROLES, isUserRole, type RoleDef, type UserRole } from "@/config/roles";
+import {
+  DEFAULT_ROLE,
+  ROLES,
+  demoActorFor,
+  isUserRole,
+  type RoleDef,
+  type UserRole,
+} from "@/config/roles";
 import { useAuthOptional } from "@/auth";
 import { deriveDisplayRole } from "@/auth/roleMapping";
 import { useDisasterStore } from "@/stores/useDisasterStore";
@@ -90,8 +97,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     apiClient.setRoleGetter(() => roleRef.current);
     // Actor = authenticated email for the audit trail when available; otherwise
-    // the demo actor. Display/audit only — never authentication.
-    apiClient.setActorGetter(() => userRef.current?.email || `demo.${roleRef.current}`);
+    // the seat's SEEDED demo username, which the server can resolve to that
+    // seat's trusted district/station scope (see demoActorFor). Display/audit
+    // only — never authentication.
+    apiClient.setActorGetter(() => userRef.current?.email || demoActorFor(roleRef.current));
     // Emergency Response: send the seat's assigned district so the server scopes
     // disaster writes. A state-level/admin seat covers all districts server-side.
     apiClient.setDistrictGetter(() => useDisasterStore.getState().assignedDistrict);

@@ -63,7 +63,32 @@ export interface CreateUserBody {
   unit_id?: number;
 }
 
+/** The caller's own scope, DERIVED SERVER-SIDE from the trusted user record.
+ *
+ *  `district_ids`/`unit_ids` of null mean "not geographically pinned" — a state
+ *  or range seat. A district/station seat carries the ids it is assigned to. Use
+ *  it to pick sensible DEFAULTS (a district commander opens on their district, a
+ *  state seat opens state-wide); it is not an authorisation boundary, since the
+ *  server re-derives and enforces scope on every request regardless. */
+export interface MyScopeResponse {
+  role: string;
+  scope_level: string;
+  district_ids: number[] | null;
+  unit_ids: number[] | null;
+  assigned_case_scoped: boolean;
+  user_id?: number | null;
+  username?: string | null;
+  rank?: string | null;
+  /** provenance of the derivation, e.g. "trusted-user-record" / "role-default" */
+  source: string;
+  /** false when the server had to fall back instead of reading an assignment */
+  trusted: boolean;
+  note?: string;
+}
+
 export const orgApi = {
+  /** GET /org/my-scope — the caller's trusted, server-derived scope. Ungated. */
+  myScope: (s?: AbortSignal) => apiClient.get<MyScopeResponse>("/org/my-scope", undefined, s),
   hierarchy: (s?: AbortSignal) => apiClient.get<HierarchyResponse>("/org/hierarchy", undefined, s),
   scopeMatrix: (s?: AbortSignal) => apiClient.get<ScopeMatrix>("/org/scope-matrix", undefined, s),
   roles: (s?: AbortSignal) => apiClient.get<OrgRolesResponse>("/org/roles", undefined, s),

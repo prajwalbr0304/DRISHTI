@@ -1,3 +1,4 @@
+import * as React from "react";
 import type { ForecastMapResponse } from "@/api/types";
 import { formatNumber, formatPercent } from "@/lib/utils";
 import { useDistrictNamer } from "@/hooks/useDistricts";
@@ -16,10 +17,33 @@ interface DistrictAgg {
   cells: number;
 }
 
+/** Height of one district row (bar + label), used to decide how many fit. */
+const ROW_H = 26;
+/** Never show fewer than this, even in a short tile — it would stop being a ranking. */
+const MIN_ROWS = 6;
+
 export function ForecastSummary({ data }: { data: ForecastMapResponse }) {
   // Forecast cells carry only district_id, so names are resolved here rather
   // than printing raw ids.
   const districtName = useDistrictNamer();
+
+  /* How many districts to rank is driven by the space the tile actually has.
+     A fixed six left most of a tall card empty on a wide screen, while the same
+     six overflowed a short one. Measuring means a bigger tile shows more of the
+     ranking rather than more blank space. */
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const [rowCap, setRowCap] = React.useState(MIN_ROWS);
+  React.useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height ?? 0;
+      if (h) setRowCap(Math.max(MIN_ROWS, Math.floor(h / ROW_H)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const byDistrict = new Map<number, DistrictAgg>();
   let total = 0;
   let confWeighted = 0;
@@ -46,11 +70,11 @@ export function ForecastSummary({ data }: { data: ForecastMapResponse }) {
   const districts = [...byDistrict.values()]
     .map((d) => ({ ...d, confidence: d.confidence / Math.max(1, d.cells) }))
     .sort((a, b) => b.predicted - a.predicted)
-    .slice(0, 6);
+    .slice(0, rowCap);
   const peak = Math.max(1, ...districts.map((d) => d.predicted));
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-full flex-col gap-3">
       <div className="flex items-baseline gap-2">
         <span className="tnum text-28 font-semibold leading-none text-content">
           {formatNumber(Math.round(total))}
@@ -62,7 +86,7 @@ export function ForecastSummary({ data }: { data: ForecastMapResponse }) {
       </div>
 
       {districts.length > 0 ? (
-        <div className="space-y-1.5">
+        <div ref={listRef} className="min-h-0 flex-1 space-y-1.5">
           {districts.map((d) => (
             <div key={d.district_id} className="flex items-center gap-3">
               <span

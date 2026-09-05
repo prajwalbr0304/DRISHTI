@@ -282,6 +282,11 @@ export interface CorrelationCell {
   n: number;
   strength?: string | null;
   direction?: string | null;
+  /** Least-squares line through this cell's district points. Carried per CELL,
+   *  so a grid showing one chart per indicator draws every fit from one call.
+   *  Null whenever `r` is null (suppressed / too few districts to fit). */
+  fit_slope?: number | null;
+  fit_intercept?: number | null;
 }
 export interface ScatterPoint {
   district_id: number;
@@ -309,6 +314,23 @@ export interface NarrativeCard {
   threshold_value?: number | null;
   pct_difference?: number | null;
 }
+/** One district's averaged indicators + its per-100k crime rates: the raw panel
+ *  the Pearson matrix is computed from.
+ *
+ *  Aggregate-only — a row is a district, never a person. A cell suppressed for
+ *  k-anonymity is ABSENT from `rates`/`counts`, never reported as a zero, so a
+ *  consumer must treat "missing" as "withheld" rather than "none". */
+export interface DistrictPanelRow {
+  district_id: number;
+  district_name: string;
+  population: number;
+  /** indicator key -> mean over the period */
+  indicators: Record<string, number>;
+  /** crime category -> rate per 100k */
+  rates: Record<string, number>;
+  /** crime category -> raw case count */
+  counts: Record<string, number>;
+}
 export interface SocioEconomicResponse {
   result: AiResult;
   period_start?: string | null;
@@ -320,8 +342,11 @@ export interface SocioEconomicResponse {
   suppressed_cells: number;
   focus_indicator: string;
   correlation_matrix: CorrelationCell[];
+  /** Scatter for the FOCUS indicator only. Views that render several indicators
+   *  at once should build their series from `districts` instead. */
   scatter: ScatterSeries[];
   narrative: NarrativeCard;
+  districts: DistrictPanelRow[];
 }
 
 /** Crime-pattern detections (doc 01 §4.6). pattern_type ∈ pattern_type_enum. */

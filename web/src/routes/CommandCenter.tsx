@@ -7,6 +7,7 @@ import { InvestigatorHome } from "@/routes/home/InvestigatorHome";
 import { AnalystHome } from "@/routes/home/AnalystHome";
 import { SupervisorHome } from "@/routes/home/SupervisorHome";
 import { PolicymakerHome } from "@/routes/home/PolicymakerHome";
+import { StateCommandHome } from "@/routes/home/StateCommandHome";
 
 /* ============================================================================
    Command Center — role-adaptive home (doc 01 §4.1 / §7). It is a genuinely
@@ -60,8 +61,11 @@ function RoleHome({ role }: { role: ReturnType<typeof useRole>["role"] }) {
     case "sho":
     case "dysp_acp":
       return <SupervisorHome />;
-    // Command chain: strategic aggregate briefing.
+    // State chief: the same aggregate briefing, but with the accountability,
+    // model-trust and data-integrity band the state seat is judged on.
     case "dgp_state_command":
+      return <StateCommandHome />;
+    // Range / district command: strategic aggregate briefing.
     case "adgp_igp_range":
     case "sp_district_command":
       return <PolicymakerHome />;

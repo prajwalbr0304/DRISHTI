@@ -20,19 +20,40 @@ import { persist } from "zustand/middleware";
 interface ScopeState {
   /** active district id, or null for "All districts" */
   districtId: number | null;
+  /** true once the USER has picked a district. Guards the seat default below:
+   *  an explicit choice must never be silently overwritten, including an explicit
+   *  choice of "All districts" — which is indistinguishable from the initial
+   *  state by `districtId` alone, hence this flag. */
+  chosen: boolean;
   setDistrictId: (id: number | null) => void;
+  /** Adopt the seat's own district as the starting scope (see useSeatScopeAnchor).
+   *  A no-op once the user has chosen, so it can be called freely on every
+   *  render/route. Re-applies when the seat changes, so switching from an SHO view
+   *  to a DGP view moves the scope back to state-wide on its own. */
+  seedFromSeat: (id: number | null) => void;
 }
 
 export const useScopeStore = create<ScopeState>()(
   persist(
     (set) => ({
       districtId: null,
-      setDistrictId: (districtId) => set({ districtId }),
+      chosen: false,
+      setDistrictId: (districtId) => set({ districtId, chosen: true }),
+      seedFromSeat: (districtId) =>
+        set((s) => (s.chosen || s.districtId === districtId ? s : { districtId })),
     }),
     {
       name: "drishti.scope",
-      version: 1,
-      partialize: (s) => ({ districtId: s.districtId }),
+      version: 2,
+      partialize: (s) => ({ districtId: s.districtId, chosen: s.chosen }),
+      // v1 had no `chosen` flag. Anyone carrying a real district plainly picked
+      // it, so treat that as chosen and leave it alone; anyone sitting on "All
+      // districts" is indistinguishable from a fresh install and gets the seat
+      // default instead.
+      migrate: (persisted) => {
+        const p = (persisted ?? {}) as Partial<ScopeState>;
+        return { ...p, chosen: p.chosen ?? p.districtId != null } as ScopeState;
+      },
     },
   ),
 );
@@ -48,9 +69,13 @@ export function useDistrictParam(): number | undefined {
    Recorded here rather than in prose so widgets can label themselves honestly.
      "server"  — the endpoint takes district_id and the API does the filtering
      "client"  — no district param, but rows carry district_id so we filter them
+     "focus"   — a district cannot be filtered to without destroying the measure,
+                 so the widget keeps the full state-wide set and HIGHLIGHTS the
+                 district instead. Different from "none": the selection is
+                 honoured, just as emphasis rather than as a filter.
      "none"    — cannot be scoped; the widget stays state-wide and says so
    -------------------------------------------------------------------------- */
-export type DistrictSupport = "server" | "client" | "none";
+export type DistrictSupport = "server" | "client" | "focus" | "none";
 
 export const districtSupport = {
   /** GET /geo/trends?district_id= */
@@ -63,11 +88,37 @@ export const districtSupport = {
   alerts: "client",
   /** GET /forecast/map — no district param; MapCell.district_id filtered here */
   forecastMap: "client",
+  /** GET /performance/overview?district_id= — confined server-side to the
+   *  caller's scope, so a state seat may request one district or all of them. */
+  performance: "server",
   /** GET /analytics/socioeconomic — a correlation ACROSS districts. Narrowing to
-   *  one district cannot produce a correlation, so this stays state-wide. */
-  socio: "none",
+   *  one district cannot produce a correlation (one point has none, and there is
+   *  no socio-economic or population data below district grain to correlate
+   *  within a district instead). The per-indicator boxes therefore follow the
+   *  selector as EMPHASIS: they keep the whole district cloud and ring the
+   *  selected district, reporting where it sits against the state median and the
+   *  fit. The narrative and the ranked r values stay state-wide, because that is
+   *  what they measure. */
+  socio: "focus",
   /** GET /graph/centrality — no district in the params or the response. */
   centrality: "none",
+  /** GET /forecast/backtest — model accuracy is reported per season and per head
+   *  with a geographic holdout, not as a per-district filter. */
+  backtest: "none",
+  /** GET /explain/contract — an audit of API routes, not of crime data. */
+  contract: "none",
+  /** GET /intake/quality/issues — staged records, many of which have no district
+   *  yet (that is often the defect being flagged). */
+  dataQuality: "none",
+  /** GET /geo/jurisdiction/freshness — boundary versions across the state. */
+  jurisdictionFreshness: "none",
+  /** GET /analytics/patterns — a pattern may span districts by construction. */
+  patterns: "none",
+  /** GET /graph/communities/list — no district in the params or the response. */
+  communities: "none",
+  /** GET /notifications, /notifications/tasks — queues are scoped by actor and
+   *  status, never by geography. */
+  notifications: "none",
 } as const satisfies Record<string, DistrictSupport>;
 
 /** Label for a widget whose data ignores the district selection. */
