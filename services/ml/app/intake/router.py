@@ -19,24 +19,39 @@ Endpoints (prefix /intake):
   POST   /intake/drafts/{key}/review                    — approve/reject/return (submit-gated)
   POST   /intake/cases/{case_id}/events                  — workflow-gated case event (submit-gated)
 
+Scanned-FIR lane (Catalyst Zia OCR — an alternative way to FILL the same form):
+  GET    /intake/scan/capability                          — truthful OCR capability
+  GET    /intake/scan/template                            — printable form contract
+  GET    /intake/scan/queue                                — scan review queue
+  POST   /intake/scan/ocr                                   — read a scan (creates NO draft)
+  GET    /intake/scan/{scan_key}                             — a scan + its proposal
+  GET    /intake/scan/{scan_key}/provenance                   — proposed vs accepted
+  POST   /intake/scan/{scan_key}/apply                         — reviewed scan -> draft
+  POST   /intake/scan/{scan_key}/discard                        — drop an unapplied scan
+
 Writes are localhost + synthetic-DB guarded; the canonical case-creating
 transitions (submit/review/events) are additionally behind the submit gate until
-Prompt 3 finalises hackathon mode.
+Prompt 3 finalises hackathon mode. The scan endpoints are write-guarded but NOT
+submit-gated, because reading a form only ever produces a draft — a case still
+requires the same human submit + approve transitions as a manually typed FIR.
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-from . import guards, lookups, service
+from . import guards, lookups, scan_service, service
 from .schemas import (ApprovalResult, CaseEventRequest, CaseEventResponse,
                       CasePartyListResponse, CreateDraftRequest, DataQualityListResponse,
                       DraftActivity, DraftListResponse, DraftResponse,
                       DuplicateCheckResponse, IntakeStatusResponse, JurisdictionInfo,
-                      LookupsResponse, PartyInput, ReviewRequest, SubmitRequest,
-                      UpdateDraftRequest, ValidationResponse, WorkflowMetaResponse)
+                      LookupsResponse, PartyInput, ReviewRequest, ScanApplyRequest,
+                      ScanApplyResult, ScanCapabilityResponse, ScanProvenanceResponse,
+                      ScanQueueResponse, ScanResponse, ScanTemplateResponse,
+                      SubmitRequest, UpdateDraftRequest, ValidationResponse,
+                      WorkflowMetaResponse)
 from .service import IntakeConflict, IntakeNotFound, IntakeValidationError
 
 router = APIRouter(prefix="/intake", tags=["intake"])
@@ -200,6 +215,98 @@ def review_draft(draft_key: str, action: str = Query(..., pattern="^(approve|rej
             pass
         return result
     return {"draft": result}
+
+
+# --- scanned-FIR lane (Catalyst Zia OCR -> reviewed prefill) ----------------
+# Reading a scanned form NEVER creates a case. It produces a proposal an officer
+# must accept (POST /intake/scan/{key}/apply -> a draft), and the draft still has
+# to pass the same validate -> submit -> approve gate as a manually typed FIR.
+
+
+@router.get("/scan/capability", response_model=ScanCapabilityResponse)
+def scan_capability(_role: str = Depends(guards.require_intake_read)):
+    """Truthful OCR capability, so the UI can label the feature honestly."""
+    return scan_service.scan_capability()
+
+
+@router.get("/scan/template", response_model=ScanTemplateResponse)
+def scan_template(_role: str = Depends(guards.require_intake_read)):
+    """The printable intake-form contract, generated from the parser's field table."""
+    return scan_service.scan_template()
+
+
+@router.get("/scan/queue", response_model=ScanQueueResponse)
+def scan_queue(status: Optional[str] = Query(None), review_state: Optional[str] = Query(None),
+               page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
+               _role: str = Depends(guards.require_intake_read)):
+    """Scanned-FIR review queue (backs the admin extraction-queue panel)."""
+    return _call(scan_service.list_scan_queue, status, review_state, page, page_size)
+
+
+@router.post("/scan/ocr", response_model=ScanResponse, status_code=201)
+async def scan_ocr(file: UploadFile = File(..., description="Scanned FIR page (image or PDF)"),
+                   languages: Optional[str] = Form(None, description="Comma-separated, e.g. en,kn"),
+                   unit_id: Optional[int] = Form(None),
+                   idempotency_key: Optional[str] = Form(None),
+                   actor: Optional[str] = Form(None),
+                   role: str = Depends(guards.require_intake_write),
+                   _w=Depends(guards.require_write_allowed)):
+    """Read one scanned/written FIR and return a reviewable field proposal.
+
+    Bytes are read into memory (capped by the Zia 20 MB limit), hashed, sent to
+    Zia OCR, parsed and resolved. No draft and no case are created here.
+    """
+    from ..zia_ocr import ZIA_OCR_MAX_BYTES
+
+    # Read at most one byte over the cap so an oversized upload is rejected
+    # without buffering the whole thing.
+    content = await file.read(ZIA_OCR_MAX_BYTES + 1)
+    if len(content) > ZIA_OCR_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(f"Scan exceeds the {ZIA_OCR_MAX_BYTES // (1024 * 1024)} MB Zia OCR "
+                    "limit. Re-scan at a lower resolution or split the pages."))
+
+    langs = [p.strip() for p in (languages or "").split(",") if p.strip()] or None
+    return _call(scan_service.run_scan_ocr, content,
+                 filename=file.filename or "scan",
+                 content_type=file.content_type or "",
+                 actor=actor or role, languages=langs, unit_id=unit_id,
+                 idempotency_key=idempotency_key)
+
+
+@router.get("/scan/{scan_key}", response_model=ScanResponse)
+def get_scan(scan_key: str, _role: str = Depends(guards.require_intake_read)):
+    return _call(scan_service.get_scan, scan_key)
+
+
+@router.get("/scan/{scan_key}/provenance", response_model=ScanProvenanceResponse)
+def scan_provenance(scan_key: str, _role: str = Depends(guards.require_intake_read)):
+    """What OCR proposed vs what the officer accepted, field by field."""
+    return _call(scan_service.scan_provenance, scan_key)
+
+
+@router.post("/scan/{scan_key}/apply", response_model=ScanApplyResult, status_code=201)
+def apply_scan(scan_key: str, body: ScanApplyRequest | None = None,
+               role: str = Depends(guards.require_intake_write),
+               _w=Depends(guards.require_write_allowed)):
+    """Create a draft from a reviewed scan.
+
+    Not submit-gated: this only produces a DRAFT. The case-creating transitions
+    (submit + approve) keep their own gate, exactly as in the manual lane.
+    """
+    req = body or ScanApplyRequest()
+    if req.actor is None:
+        req.actor = role
+    return _call(scan_service.apply_scan_to_draft, scan_key, req)
+
+
+@router.post("/scan/{scan_key}/discard", response_model=ScanResponse)
+def discard_scan(scan_key: str, body: SubmitRequest | None = None,
+                 role: str = Depends(guards.require_intake_write),
+                 _w=Depends(guards.require_write_allowed)):
+    """Discard an unapplied scan (misread page or wrong document)."""
+    return _call(scan_service.discard_scan, scan_key, (body.actor if body else None) or role)
 
 
 @router.get("/cases/{case_id}/parties", response_model=CasePartyListResponse)

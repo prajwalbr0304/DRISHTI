@@ -102,19 +102,44 @@ export class ApiClient {
     return url.toString();
   }
 
-  async request<T>(
-    path: string,
-    opts: {
-      method?: string;
-      params?: QueryParams;
-      body?: unknown;
-      signal?: AbortSignal;
-      /** Optional per-request headers (e.g. X-Idempotency-Key, If-Match). */
-      headers?: Record<string, string>;
-    } = {},
-  ): Promise<T> {
-    const { method = "GET", params, body, signal, headers: extraHeaders } = opts;
+  /** Shared headers for every request. `json` is false for multipart uploads,
+      where the browser must set Content-Type itself so it can add the boundary. */
+  private async buildHeaders(
+    extraHeaders?: Record<string, string>,
+    json = true,
+  ): Promise<Record<string, string>> {
     const token = await this.tokenGetter();
+    return {
+      ...(json ? { "Content-Type": "application/json" } : {}),
+      Accept: "application/json",
+      // Presentation state only (UX simulation) — the server treats these as
+      // display/audit inputs, NOT authentication. The API Gateway strips them
+      // and derives the real role from the Catalyst identity.
+      "X-Role": this.roleGetter(),
+      "X-Demo-Actor": this.actorGetter(),
+      // Correlation id echoed back by the API and recorded in the audit trail.
+      "X-Request-ID": makeRequestId(),
+      // Emergency Response scope (assigned district). Omitted when null.
+      ...(this.districtGetter() != null
+        ? { "X-Disaster-District": String(this.districtGetter()) }
+        : {}),
+      // Catalyst cross-domain token is a RAW Authorization value (no
+      // "Bearer " prefix). Absent in dev/offline (cookie-based session).
+      ...(token ? { Authorization: token } : {}),
+      // Per-request headers (idempotency key / If-Match version) — never
+      // identity/auth headers, which the gateway controls.
+      ...(extraHeaders ?? {}),
+    };
+  }
+
+  private async send<T>(
+    path: string,
+    method: string,
+    params: QueryParams | undefined,
+    signal: AbortSignal | undefined,
+    headers: Record<string, string>,
+    body: BodyInit | undefined,
+  ): Promise<T> {
     let res: Response;
     try {
       res = await fetch(this.buildUrl(path, params), {
@@ -122,28 +147,8 @@ export class ApiClient {
         signal,
         // Cross-origin (Slate → API Gateway): carry the Catalyst session cookie.
         credentials: this.withCredentials ? "include" : "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          // Presentation state only (UX simulation) — the server treats these as
-          // display/audit inputs, NOT authentication. The API Gateway strips them
-          // and derives the real role from the Catalyst identity.
-          "X-Role": this.roleGetter(),
-          "X-Demo-Actor": this.actorGetter(),
-          // Correlation id echoed back by the API and recorded in the audit trail.
-          "X-Request-ID": makeRequestId(),
-          // Emergency Response scope (assigned district). Omitted when null.
-          ...(this.districtGetter() != null
-            ? { "X-Disaster-District": String(this.districtGetter()) }
-            : {}),
-          // Catalyst cross-domain token is a RAW Authorization value (no
-          // "Bearer " prefix). Absent in dev/offline (cookie-based session).
-          ...(token ? { Authorization: token } : {}),
-          // Per-request headers (idempotency key / If-Match version) — never
-          // identity/auth headers, which the gateway controls.
-          ...(extraHeaders ?? {}),
-        },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        headers,
+        body,
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") throw e;
@@ -167,11 +172,55 @@ export class ApiClient {
     return (await res.json()) as T;
   }
 
+  async request<T>(
+    path: string,
+    opts: {
+      method?: string;
+      params?: QueryParams;
+      body?: unknown;
+      signal?: AbortSignal;
+      /** Optional per-request headers (e.g. X-Idempotency-Key, If-Match). */
+      headers?: Record<string, string>;
+    } = {},
+  ): Promise<T> {
+    const { method = "GET", params, body, signal, headers: extraHeaders } = opts;
+    return this.send<T>(
+      path,
+      method,
+      params,
+      signal,
+      await this.buildHeaders(extraHeaders, true),
+      body !== undefined ? JSON.stringify(body) : undefined,
+    );
+  }
+
   get<T>(path: string, params?: QueryParams, signal?: AbortSignal) {
     return this.request<T>(path, { method: "GET", params, signal });
   }
   post<T>(path: string, body?: unknown, params?: QueryParams, signal?: AbortSignal) {
     return this.request<T>(path, { method: "POST", body, params, signal });
+  }
+
+  /** Multipart upload (e.g. a scanned FIR page for OCR).
+   *
+   *  Content-Type is deliberately NOT set: the browser must generate it so the
+   *  multipart boundary matches the body. Setting it by hand produces a body the
+   *  server cannot parse. All identity/correlation headers still apply.
+   */
+  async upload<T>(
+    path: string,
+    form: FormData,
+    opts: { params?: QueryParams; signal?: AbortSignal; method?: string } = {},
+  ): Promise<T> {
+    const { params, signal, method = "POST" } = opts;
+    return this.send<T>(
+      path,
+      method,
+      params,
+      signal,
+      await this.buildHeaders(undefined, false),
+      form,
+    );
   }
 
   health(signal?: AbortSignal): Promise<HealthReport> {

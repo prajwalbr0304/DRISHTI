@@ -25,6 +25,9 @@ import requests
 
 # (connect, read) seconds — bounded so a dependency stall never hangs a worker.
 _TIMEOUT = (10, 30)
+# Zia OCR reads a whole page-set (up to 20 MB) and is materially slower than a
+# metadata call, so it gets its own longer read budget — still bounded.
+_OCR_TIMEOUT = (10, 120)
 
 
 def _accounts_url() -> str:
@@ -90,6 +93,18 @@ class CatalystRestClient:
             "Environment": self._env,
         }
 
+    def _headers_multipart(self) -> dict:
+        """Auth headers WITHOUT Content-Type.
+
+        ``requests`` must set ``multipart/form-data`` itself so it can append the
+        boundary; pre-setting Content-Type here produces a body the server cannot
+        parse (a silent 400 that looks like a bad file).
+        """
+        return {
+            "Authorization": "Zoho-oauthtoken " + self._access_token(),
+            "Environment": self._env,
+        }
+
     def _base(self) -> str:
         return f"{_api_domain()}/baas/v1/project/{self._project_id}"
 
@@ -101,6 +116,21 @@ class CatalystRestClient:
             with self._lock:
                 self._token = None  # force refresh
             return self._req(method, path, json=json, params=params, _retry=False)
+        return r
+
+    def _req_multipart(self, path: str, *, files, data=None, timeout=None,
+                       _retry: bool = True) -> requests.Response:
+        """POST a multipart body (file upload). Same 401-refresh-once contract as
+        ``_req``, but the file payload must be re-openable, so callers pass bytes
+        (never a consumed stream)."""
+        r = self._session.post(self._base() + path, headers=self._headers_multipart(),
+                               files=files, data=data or {},
+                               timeout=timeout or _OCR_TIMEOUT)
+        if r.status_code == 401 and _retry:
+            with self._lock:
+                self._token = None  # force refresh
+            return self._req_multipart(path, files=files, data=data,
+                                       timeout=timeout, _retry=False)
         return r
 
     @staticmethod
@@ -162,6 +192,32 @@ class CatalystRestClient:
         data = self._data(self._req("GET", "/bucket/objects/versions",
                                     params={"bucket_name": bucket_name, "object_key": object_key}))
         return (data or {}).get("version", []) if isinstance(data, dict) else []
+
+    # -- Zia OCR -----------------------------------------------------------
+    def zia_ocr(self, content: bytes, *, filename: str = "scan.jpg",
+                content_type: str = "application/octet-stream",
+                languages: Optional[list[str]] = None,
+                model_type: str = "OCR") -> dict:
+        """Recognise text in one image/PDF via Catalyst Zia OCR.
+
+        ``POST /ml/ocr`` (multipart, scope ``ZohoCatalyst.mlkit.READ``). Returns
+        the raw ``data`` object: ``{"confidence": <0-100>, "text": "..."}``.
+
+        Zia gives ONE document-level confidence and plain text — no per-field
+        values and no bounding boxes — so any field-level confidence has to be
+        derived downstream by the parser, never claimed from this response.
+
+        ``languages`` are Zia language codes (``eng``, ``kan``, ...). Passing them
+        is optional and speeds up recognition; omitting them lets Zia auto-detect.
+        """
+        files = {"image": (filename, content, content_type or "application/octet-stream")}
+        data: dict[str, Any] = {"model_type": model_type or "OCR"}
+        if languages:
+            # Zia accepts repeated language values for a multi-script page
+            # (e.g. a Kannada FIR with English section numbers).
+            data["language"] = [str(v) for v in languages if str(v).strip()]
+        r = self._req_multipart("/ml/ocr", files=files, data=data)
+        return self._data(r) or {}
 
     # -- Cache -------------------------------------------------------------
     def cache_put(self, segment_id: str, key: str, value: str, *, expiry_hours: int = 1) -> None:

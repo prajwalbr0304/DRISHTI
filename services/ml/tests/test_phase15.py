@@ -243,10 +243,12 @@ def test_admin_audit_search_structure():
 
 
 @requires_db
-def test_admin_queues_have_no_extraction_queue():
+def test_admin_queues_report_intake_review_without_evidence_extraction():
     from app.admin import service as adm
     q = adm.queues()
-    assert q["extraction_queue_present"] is False   # NO OCR/transcription/extraction queue
+    assert q["extraction_queue_present"] is True
+    assert q["intake_scan_pending"] >= 0
+    assert q["evidence_extraction_enabled"] is False
     assert {"data_quality_open", "ingestion_partial_failed", "evidence_quarantine"} <= set(q.keys())
 
 

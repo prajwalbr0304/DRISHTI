@@ -325,19 +325,31 @@ export function QueuesPanel() {
   const d = q.data;
   return (
     <SectionCard title="Ingestion / data-quality / evidence queues"
-      description="Import + data-quality review + evidence quarantine/security-scan queues. No OCR/transcription/semantic-extraction queue exists (deferred).">
+      description="Import + data-quality review + evidence quarantine/security-scan queues, plus the intake-form reading queue when scanning is enabled.">
       {q.isLoading ? <p className="text-12 text-content-dim">Loading…</p>
         : q.error ? <ErrLine e={q.error} />
         : d ? (
         <div className="space-y-3 text-12">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <div className="rounded-card border border-hairline p-2"><div className="text-content-dim">Data-quality open</div><div className="tnum text-16 font-semibold">{d.data_quality_open}</div></div>
             <div className="rounded-card border border-hairline p-2"><div className="text-content-dim">Ingestion partial/failed</div><div className="tnum text-16 font-semibold">{d.ingestion_partial_failed}</div></div>
             <div className="rounded-card border border-hairline p-2"><div className="text-content-dim">Evidence quarantine</div><div className="tnum text-16 font-semibold">{d.evidence_quarantine}</div></div>
+            <div className="rounded-card border border-hairline p-2"><div className="text-content-dim">Scans awaiting review</div><div className="tnum text-16 font-semibold">{d.intake_scan_pending ?? 0}</div></div>
           </div>
-          <Badge variant={d.extraction_queue_present ? "high" : "low"}>
-            {d.extraction_queue_present ? "extraction queue present" : "No OCR / extraction queue (deferred)"}
-          </Badge>
+          {/* Two different things both get called "extraction". Keep them apart:
+              reading an intake FORM is in scope; parsing evidence MEDIA is not. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant={d.extraction_queue_present ? "primary" : "neutral"}>
+              {d.extraction_queue_present
+                ? "Intake-form reading queue active"
+                : "No intake-form reading queue (scanning off)"}
+            </Badge>
+            <Badge variant="low">
+              {d.evidence_extraction_enabled
+                ? "Evidence extraction ENABLED"
+                : "Evidence media never parsed"}
+            </Badge>
+          </div>
         </div>
       ) : null}
     </SectionCard>

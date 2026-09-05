@@ -50,20 +50,46 @@ confirm Signals rules are console-only while event functions are the code target
 | Pipelines | `pipelines/catalyst-pipelines.yaml` | — |
 | Billing Budget/Report | `billing/budget.json` | console-only |
 | Zia speech (STT/TTS) + translation — **voice query** (Prompt 19 §E) | **Not exposed in the IN DC** → browser Web Speech fallback (labelled, never called Zia); bilingual EN/KN text always works (`../../services/ml/app/zia_voice.py`) | `DRISHTI_USE_CATALYST_ZIA_VOICE` (off) |
-| Zia OCR / face / object recognition / evidence extraction | **Not used — OUT of hackathon scope** (`EVIDENCE_EXTRACTION_ENABLED=false`) | n/a |
+| Zia **OCR** — scanned-FIR **intake form** reading (`../../services/ml/app/zia_ocr.py` + `app/intake/{extract,resolve,scan_service}.py`) | Reads a written/printed FIR **intake form** and PROPOSES draft fields an officer must confirm. Off by default | `INTAKE_SCAN_OCR_ENABLED` + `DRISHTI_USE_CATALYST_ZIA_OCR` |
+| Zia face / object recognition / **evidence** extraction | **Not used — OUT of hackathon scope** (`EVIDENCE_EXTRACTION_ENABLED=false`) | n/a |
 
 Every component client is a narrow interface with an in-memory fake (default,
 cost-free) and a Catalyst-SDK implementation selected by its enable flag, so
 nothing here spends credits until deploy + explicit enablement.
 
-## Prompt 19 scope correction — voice vs evidence extraction
+## Scope: three independent flags, not one
 
-Voice **dictation of a question** and spoken **read-back of the answer** are IN
-hackathon scope and named by the independent flag `QUERY_VOICE_ENABLED` (true).
-This is strictly separate from `EVIDENCE_EXTRACTION_ENABLED` (false): OCR,
-uploaded-document parsing, automatic FIR field extraction, evidence-media
-transcription and face/object recognition stay OFF. The two flags are distinct so
-enabling voice query can never silently enable evidence extraction.
+Three capabilities are often lumped together as "extraction". They are governed by
+three separate flags precisely so enabling one can never silently enable another.
+
+| Flag | Default | What it governs |
+|---|---|---|
+| `QUERY_VOICE_ENABLED` | true | Dictating a **question** and hearing the answer read back. |
+| `INTAKE_SCAN_OCR_ENABLED` | **false** | Reading a written/printed **FIR intake form** to pre-fill the draft wizard. |
+| `EVIDENCE_EXTRACTION_ENABLED` | **false** | Parsing uploaded **case material** — evidence OCR, media transcription, face/object recognition. |
+
+Why the middle one is acceptable while the third is not:
+
+* An intake scan is a form the complainant/officer has just written, read back to
+  that same officer for confirmation. It is a typing shortcut with a human on
+  every field.
+* Its output lands only in staging (`IntakeScan` + `IntakeDraft.Payload`). A
+  `CaseMaster` row is still created exclusively by the human approve transition in
+  `app/intake/service._approve`, so a bad read produces a corrected draft, never a
+  wrong registered FIR.
+* Per-field provenance is recorded in `IntakeScanField` (proposed value, derived
+  confidence, accepted value, whether it was edited), so machine-derived values
+  stay distinguishable from typed ones for the life of the case.
+* Evidence extraction would mean the system asserting facts about case material
+  with no reviewer in the loop. That remains out of scope. Files uploaded through
+  the `/evidence` custody path are hashed and stored, never interpreted.
+
+Note on the upstream service: Zia OCR returns plain text plus a single
+document-level confidence score — no per-field values and no bounding boxes. All
+field-level confidence in DRISHTI is derived by `app/intake/extract.py` and is
+never presented as if Zia asserted it. Zia recognises handwriting only when it is
+legible and close to a standard character shape, so the manual lane is always
+available and extraction is treated as advisory.
 
 The Catalyst **Zia Services** catalogue in the IN DC (OCR, Face Analytics,
 Identity Scanner, Image Moderation, Object Recognition, Barcode Scanner, AutoML,

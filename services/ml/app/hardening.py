@@ -109,22 +109,50 @@ def verify_hackathon_startup() -> None:
 # Request-body size limit
 # ---------------------------------------------------------------------------
 class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose declared body exceeds ``max_request_bytes`` (413)."""
+    """Reject requests whose declared body exceeds ``max_request_bytes`` (413).
+
+    One narrow, deliberate exception: the scanned-FIR intake endpoint receives a
+    photographed page, which routinely exceeds the small JSON cap that protects
+    every other route. Evidence uploads avoid this entirely by going
+    browser -> object store through a pre-signed URL, but OCR needs the bytes
+    server-side, so they must cross the API body.
+
+    The exception is scoped to that one exact path and bounded by the documented
+    Zia OCR limit rather than being unbounded, and the global cap is left
+    untouched for everything else.
+    """
+
+    # Exact path -> its own cap. Prefix matching is avoided on purpose so a new
+    # sub-route cannot silently inherit a larger body allowance.
+    _PATH_OVERRIDES: dict[str, str] = {"/intake/scan/ocr": "scan_ocr"}
 
     def __init__(self, app, *, max_bytes: int | None = None):
         super().__init__(app)
         self._max_bytes_override = max_bytes
 
+    @staticmethod
+    def _scan_ocr_limit() -> int:
+        from .zia_ocr import ZIA_OCR_MAX_BYTES
+        return ZIA_OCR_MAX_BYTES
+
+    def _limit_for(self, path: str) -> int:
+        if self._max_bytes_override is not None:
+            return self._max_bytes_override
+        if self._PATH_OVERRIDES.get(path.rstrip("/") or "/") == "scan_ocr":
+            return self._scan_ocr_limit()
+        return get_settings().max_request_bytes
+
     async def dispatch(self, request: Request, call_next):
-        max_bytes = (self._max_bytes_override if self._max_bytes_override is not None
-                     else get_settings().max_request_bytes)
+        max_bytes = self._limit_for(request.url.path)
         cl = request.headers.get("content-length")
         if cl is not None:
             try:
                 if int(cl) > max_bytes:
+                    mb = max_bytes // (1024 * 1024)
+                    hint = f" ({mb} MB)" if mb >= 1 else ""
                     return JSONResponse(
                         status_code=413,
-                        content={"detail": f"Request body too large (limit {max_bytes} bytes)."})
+                        content={"detail": f"Request body too large (limit {max_bytes} bytes{hint})."})
             except ValueError:
                 return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length."})
         return await call_next(request)

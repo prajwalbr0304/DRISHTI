@@ -7,9 +7,9 @@
       "visibility": "private",
       "versioning": true,
       "presign_ttl_seconds": 900,
-      "prefixes": ["evidence/quarantine/", "evidence/available/", "evidence/rejected/"],
-      "lifecycle": "quarantine objects auto-expire in 7 days if not promoted; available objects retained; rejected purged in 24h",
-      "notes": "New uploads land in quarantine/ and are promoted to available/ only after size/type/hash + isolated malware scan pass. NO OCR/transcription/extraction (capability-not-used)."
+      "prefixes": ["evidence/quarantine/", "evidence/available/", "evidence/rejected/", "evidence/intake-scan/"],
+      "lifecycle": "quarantine objects auto-expire in 7 days if not promoted; available objects retained; rejected purged in 24h; intake-scan pages retained with their draft for audit",
+      "notes": "New uploads land in quarantine/ and are promoted to available/ only after size/type/hash + isolated malware scan pass. Evidence CASE MATERIAL is never OCR'd, transcribed or analysed (capability-not-used). The separate intake-scan/ prefix holds photographed FIR INTAKE FORMS read by Zia OCR to pre-fill a draft (INTAKE_SCAN_OCR_ENABLED); these are intake paperwork, not case evidence, and every field they propose is confirmed by an officer before the draft can be approved."
     },
     {
       "logical": "import",

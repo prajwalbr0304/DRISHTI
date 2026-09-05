@@ -360,6 +360,202 @@ class IntakeStatusResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Scanned-FIR lane (Catalyst Zia OCR -> reviewed prefill)
+# ---------------------------------------------------------------------------
+class ScanExtractedField(BaseModel):
+    """One field OCR proposed, with everything a reviewer needs to judge it."""
+    field: str
+    value: Any = None
+    raw_text: str = ""
+    # Derived by the parser, NOT Zia's own score (Zia returns one document-level
+    # number only). Surfaced so the UI can rank what needs attention.
+    confidence: float = 0.0
+    label_matched: str = ""
+    requires_review: bool = False
+    auto_filled: bool = False
+    note: Optional[str] = None
+
+
+class ScanUnresolvedLookup(BaseModel):
+    """A reference value read from the page that the server refused to guess."""
+    field: str
+    raw_text: str
+    lookup: str
+    candidates: list[dict[str, Any]] = Field(default_factory=list)
+    reason: str = ""
+
+
+class ScanProposedParty(BaseModel):
+    role_type: str
+    party_nature: str = "person"
+    is_unknown: bool = False
+    display_name: Optional[str] = None
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = 0.0
+
+
+class ScanResponse(BaseModel):
+    """Result of one OCR run. Nothing here is committed to a case."""
+    scan_key: str
+    status: str
+    review_state: str
+    provider: str
+    template_code: Optional[str] = None
+    template_matched: bool = False
+    matched_label_count: int = 0
+    detected_language: Optional[str] = None
+    # Zia's document-level confidence (0-1), reported separately from field
+    # confidence so the two are never conflated.
+    ocr_confidence: Optional[float] = None
+    ocr_low_confidence: bool = False
+    raw_text: str = ""
+    payload: DraftPayload = Field(default_factory=DraftPayload)
+    case_kind: str = "fir_standard"
+    fields: list[ScanExtractedField] = Field(default_factory=list)
+    parties: list[ScanProposedParty] = Field(default_factory=list)
+    unresolved: list[ScanUnresolvedLookup] = Field(default_factory=list)
+    fields_needing_review: int = 0
+    notes: list[str] = Field(default_factory=list)
+    # Present once the scan has been applied to a draft.
+    draft_key: Optional[str] = None
+    file_name: Optional[str] = None
+    size_bytes: Optional[int] = None
+    sha256: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class ScanApplyRequest(BaseModel):
+    """Turn a reviewed scan into a draft.
+
+    ``payload``/``parties``/``case_kind`` are what the officer actually accepted
+    after editing the proposal, so the draft records the corrected values while
+    ``IntakeScanField`` keeps what OCR originally proposed. Omitting them applies
+    the machine proposal unchanged (still subject to the normal review gate).
+    """
+    payload: Optional[DraftPayload] = None
+    parties: Optional[list[PartyInput]] = None
+    case_kind: Optional[str] = None
+    actor: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    # Field paths the officer changed, so provenance can distinguish an accepted
+    # machine value from a corrected one.
+    edited_fields: list[str] = Field(default_factory=list)
+
+
+class ScanApplyResult(BaseModel):
+    scan_key: str
+    draft: DraftResponse
+    fields_from_scan: int = 0
+    fields_edited: int = 0
+    fields_needing_review: int = 0
+
+
+class ScanFieldProvenance(BaseModel):
+    field: str
+    extracted_text: Optional[str] = None
+    proposed_value: Any = None
+    accepted_value: Any = None
+    confidence: Optional[float] = None
+    origin: str = "ocr"
+    was_edited: bool = False
+    requires_review: bool = False
+
+
+class ScanProvenanceResponse(BaseModel):
+    """Per-field provenance for a prefilled draft — what was machine-read,
+    what the officer accepted, and what they corrected."""
+    scan_key: str
+    draft_key: Optional[str] = None
+    template_code: Optional[str] = None
+    detected_language: Optional[str] = None
+    ocr_confidence: Optional[float] = None
+    provider: str = ""
+    file_name: Optional[str] = None
+    sha256: Optional[str] = None
+    evidence_item_id: Optional[int] = None
+    fields: list[ScanFieldProvenance] = Field(default_factory=list)
+
+
+class ScanQueueItem(BaseModel):
+    scan_key: str
+    status: str
+    review_state: str
+    detected_language: Optional[str] = None
+    ocr_confidence: Optional[float] = None
+    template_code: Optional[str] = None
+    template_matched: bool = False
+    file_name: Optional[str] = None
+    size_bytes: Optional[int] = None
+    created_by_actor: Optional[str] = None
+    created_at: Optional[str] = None
+    draft_key: Optional[str] = None
+    draft_status: Optional[str] = None
+    case_kind: Optional[str] = None
+    case_master_id: Optional[int] = None
+    field_count: int = 0
+    fields_needing_review: int = 0
+    fields_edited: int = 0
+    unresolved_count: int = 0
+
+
+class ScanQueueResponse(BaseModel):
+    items: list[ScanQueueItem] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
+    # True once the queue exists at all, which the admin panel reports honestly.
+    extraction_queue_present: bool = True
+
+
+class ScanTemplateLine(BaseModel):
+    index: int
+    field: str
+    kind: str
+    label_en: str
+    label_kn: str = ""
+    aliases_en: list[str] = Field(default_factory=list)
+    multiline: bool = False
+    boxed: bool = False
+    format_hint: str = ""
+    help_en: str = ""
+    party_role: Optional[str] = None
+
+
+class ScanTemplateResponse(BaseModel):
+    """The printable form contract, generated from the parser's own field table."""
+    template_code: str
+    separator: str = ":"
+    languages: list[str] = Field(default_factory=list)
+    lines: list[ScanTemplateLine] = Field(default_factory=list)
+    auto_fill_threshold: float = 0.7
+    guidance_en: list[str] = Field(default_factory=list)
+    guidance_kn: list[str] = Field(default_factory=list)
+    notice_en: str = ""
+
+
+class ScanCapabilityResponse(BaseModel):
+    """Truthful capability so the UI never implies extraction it is not doing."""
+    scan_ocr_enabled: bool
+    feature_enabled: bool
+    provider: str
+    manual_entry_always_available: bool = True
+    languages: list[str] = Field(default_factory=list)
+    supported_languages: list[str] = Field(default_factory=list)
+    max_bytes: int
+    max_mb: int
+    allowed_extensions: list[str] = Field(default_factory=list)
+    low_confidence_threshold: float
+    auto_fill_threshold: float
+    requires_human_review: bool = True
+    creates_case_directly: bool = False
+    evidence_extraction_enabled: bool = False
+    handwriting_supported: bool = True
+    handwriting_caveat: str = ""
+    evidence: Optional[str] = None
+    platform_limitation: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
 # Data-quality review queue (read-only over the staging DataQualityIssue table)
 # ---------------------------------------------------------------------------
 class DataQualityIssueOut(BaseModel):
