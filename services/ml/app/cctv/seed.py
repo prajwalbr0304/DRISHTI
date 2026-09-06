@@ -173,18 +173,56 @@ _RESPONDERS: tuple[tuple[str, str, str, float, float, int, Optional[int], str, l
 )
 
 
-def _stream_fields() -> dict[str, Any]:
-    """Seeded cameras get a real stream only when one is configured.
+# --- real demo footage -------------------------------------------------------
+# Cameras that have an actual clip behind them, mapped camera code -> filename
+# under ``cctv_demo_clip_base_url`` (served from web/public/cctv/).
+#
+# Two things make a clip-backed camera worth setting up carefully:
+#
+#   1. The camera's ``DetectorProfile`` below is NARROWED to the class the
+#      footage actually shows. The synthetic detector picks a class from the
+#      profile, so without this the tile could show a car crash while the alert
+#      card says "abandoned object" — the demo would be visibly incoherent, and
+#      worse, it would misrepresent what a detection means.
+#   2. Both hosts were chosen for a high per-window incident rate (the rate is a
+#      deterministic function of the camera code), so a single "Run analysis
+#      pass" is likely to raise an alert on them rather than needing a dozen
+#      clicks. They also sit ~1.1 km apart in Bengaluru Urban, which puts each
+#      inside the other's 1.5 km corroboration radius.
+CAMERA_DEMO_CLIPS: dict[str, tuple[str, str]] = {
+    # camera code:  (clip filename, detection classes the footage supports)
+    "BLR-MGR-04": ("streetfight.mp4", "fight"),
+    "BLR-TRC-01": ("accident.mp4", "vehicle_accident"),
+}
+
+
+def _clip_url(filename: str) -> str:
+    base = (get_settings().cctv_demo_clip_base_url or "/cctv").rstrip("/")
+    return f"{base}/{filename}"
+
+
+def _stream_kind_for(url: str) -> str:
+    return "hls" if url.lower().endswith(".m3u8") else "mp4_loop"
+
+
+def _stream_fields(code: str) -> dict[str, Any]:
+    """Resolve the stream columns for one seeded camera.
+
+    Precedence: the camera's own demo clip, then the estate-wide
+    ``CCTV_DEMO_STREAM_URL``, then nothing.
 
     A registered camera with no configured stream is an HONEST state
     (``stream_kind='none'``) — the wall renders an explicit "no stream" panel.
     Faking a video tile would misrepresent what the demo can show.
     """
+    clip = CAMERA_DEMO_CLIPS.get(code)
+    if clip is not None:
+        url = _clip_url(clip[0])
+        return {"StreamKind": _stream_kind_for(url), "StreamURL": url}
     url = (get_settings().cctv_demo_stream_url or "").strip()
     if not url:
         return {"StreamKind": "none", "StreamURL": None}
-    kind = "hls" if url.lower().endswith(".m3u8") else "mp4_loop"
-    return {"StreamKind": kind, "StreamURL": url}
+    return {"StreamKind": _stream_kind_for(url), "StreamURL": url}
 
 
 def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
@@ -194,11 +232,17 @@ def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
     Returns per-table counts of rows written.
     """
     repo = repo or cctv_repo()
-    stream = _stream_fields()
     counts = {"Camera": 0, "PatrolUnit": 0}
+    clipped = 0
 
     for (code, name, label, lon, lat, district_id, unit_id, bearing, status,
          profile) in _CAMERAS:
+        clip = CAMERA_DEMO_CLIPS.get(code)
+        if clip is not None:
+            # Constrain the detector to what the footage actually shows, so the
+            # alert on the card always matches the scene in the tile.
+            profile = clip[1]
+            clipped += 1
         fields = {
             "Code": code, "Name": name, "LocationLabel": label,
             "Lon": lon, "Lat": lat, "BearingDegrees": bearing, "FovDegrees": 72.0,
@@ -210,7 +254,7 @@ def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
             "DetectorProfile": profile or None,
             "LastHeartbeatAt": (_now() if status in ("online", "degraded") else None),
             "Notes": None,
-            **stream,
+            **_stream_fields(code),
         }
         existing = repo.find_one("Camera", {"Code": code})
         if existing:
@@ -238,5 +282,8 @@ def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
     repo.append_activity("camera", 0, actor=actor, action="estate.seeded",
                          diff={"cameras": counts["Camera"],
                                "responders": counts["PatrolUnit"],
-                               "stream_configured": stream["StreamKind"] != "none"})
+                               "cameras_with_footage": clipped,
+                               "estate_stream_configured":
+                                   bool((get_settings().cctv_demo_stream_url or "").strip())})
+    counts["CamerasWithFootage"] = clipped
     return counts

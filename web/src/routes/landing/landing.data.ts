@@ -1,31 +1,87 @@
 /** DRISHTI public landing page — content model.
  *
- * The page is a product narrative, not a product inventory. Copy stays concise,
- * evidence-led, and explicit about the prototype's synthetic dataset. Nothing in
- * this file should imply autonomous enforcement or production deployment.
+ * Structure follows the public-safety category convention: a cinematic
+ * positioning hero, then one full-bleed statement panel per capability, then
+ * real product screens as proof, then governance.
+ *
+ * Two rules constrain every string in this file. Nothing may imply autonomous
+ * enforcement — DRISHTI is decision support and a named officer always acts.
+ * And nothing may imply production deployment: the dataset behind this
+ * demonstration is entirely synthetic, and the page says so in three places.
  */
 
 /* --------------------------------------------------------------------------
-   Media
+   Films
+   --------------------------------------------------------------------------
+   Background footage. `still` is the second to freeze on when motion is
+   suppressed, chosen to match each film's poster frame so the swap from poster
+   to paused video is invisible.
+
+   Films under /landing/films/ are built by scripts/build-landing-films.ps1
+   from the archived frame sequences in web/media/landing-sequences/.
    ----------------------------------------------------------------------- */
 
-export const MEDIA = {
-  heroVideo: "/landing/drishti-hero.mp4",
-  heroPoster: "/landing/drishti-hero-poster.webp",
-  intelligenceVideo: "/landing/drishti-capability-02.mp4",
-  intelligencePoster: "/landing/drishti-capability-02-poster.webp",
-  missionVideo: "/landing/drishti-closing-film.mp4",
-  missionPoster: "/landing/drishti-closing-poster.webp",
-} as const;
+export interface FilmSource {
+  src: string;
+  poster: string;
+  still: number;
+  /** Announced by the pause/play control and the reduced-motion caption. */
+  label: string;
+}
 
-export const STILL_FRAMES = {
-  hero: 9,
-  intelligence: 9.2,
-  mission: 5,
-} as const;
+export const FILMS = {
+  vision: {
+    src: "/landing/films/vision.mp4",
+    poster: "/landing/films/vision-poster.webp",
+    still: 2.5,
+    label: "opening film",
+  },
+  command: {
+    src: "/landing/films/command.mp4",
+    poster: "/landing/films/command-poster.webp",
+    still: 3.3,
+    label: "command centre film",
+  },
+  statewide: {
+    src: "/landing/films/statewide.mp4",
+    poster: "/landing/films/statewide-poster.webp",
+    still: 3.3,
+    label: "statewide geography film",
+  },
+  reasoning: {
+    src: "/landing/films/reasoning.mp4",
+    poster: "/landing/films/reasoning-poster.webp",
+    still: 3.3,
+    label: "reasoning film",
+  },
+  hotspots: {
+    src: "/landing/films/hotspots.mp4",
+    poster: "/landing/films/hotspots-poster.webp",
+    still: 3.3,
+    label: "forecasting film",
+  },
+  response: {
+    src: "/landing/films/response.mp4",
+    poster: "/landing/films/response-poster.webp",
+    still: 3.3,
+    label: "emergency response film",
+  },
+  ksp: {
+    src: "/landing/films/ksp.mp4",
+    poster: "/landing/films/ksp-poster.webp",
+    still: 3.3,
+    label: "closing film",
+  },
+  casework: {
+    src: "/landing/drishti-capability-02.mp4",
+    poster: "/landing/drishti-capability-02-poster.webp",
+    still: 9.2,
+    label: "case intelligence film",
+  },
+} as const satisfies Record<string, FilmSource>;
 
 /* --------------------------------------------------------------------------
-   Navigation
+   Chrome
    ----------------------------------------------------------------------- */
 
 export interface NavLink {
@@ -36,39 +92,35 @@ export interface NavLink {
 export const NAV_LINKS: readonly NavLink[] = [
   { label: "Platform", href: "#platform" },
   { label: "Capabilities", href: "#capabilities" },
-  { label: "Intelligence", href: "#intelligence" },
+  { label: "Product", href: "#product" },
+  { label: "Who it serves", href: "#audience" },
   { label: "Governance", href: "#governance" },
-  { label: "Mission", href: "#mission" },
 ] as const;
+
+export const UTILITY_STRIP = {
+  left: "Prototype experience · Synthetic demonstration data",
+  right: "Karnataka State Police · Karnataka, India",
+} as const;
+
+export const BRAND = {
+  name: "DRISHTI",
+  tagline: "Decision intelligence",
+  owner: "Karnataka State Police",
+} as const;
 
 /* --------------------------------------------------------------------------
    Hero
    ----------------------------------------------------------------------- */
 
 export const HERO = {
-  eyebrow: "Decision intelligence for public safety",
-  headline: ["See the whole picture.", "Decide what", "happens next."],
-  standfirst:
-    "DRISHTI connects cases, evidence, geography and live incidents into one governed operating picture — so every decision starts with context and ends with accountability.",
+  headline: "See the whole picture",
+  standfirst: "The decision intelligence platform for Karnataka State Police",
   primaryCta: "Enter DRISHTI",
-  secondaryCta: "Explore the platform",
+  secondaryCta: "See the platform",
   secondaryHref: "#platform",
-  scrollCue: "Discover the platform",
-  loader: "Connecting the operational picture",
-  statusLabel: "Operating principle",
-  statusTitle: "One picture. Human judgement.",
+  scrollCue: "Scroll to explore",
+  loader: "Connecting the operating picture",
 } as const;
-
-export interface HeroFact {
-  label: string;
-  value: string;
-}
-
-export const HERO_FACTS: readonly HeroFact[] = [
-  { label: "Operating scope", value: "Karnataka, India" },
-  { label: "Data foundation", value: "Governed & traceable" },
-  { label: "Decision authority", value: "Human in control" },
-] as const;
 
 /* --------------------------------------------------------------------------
    Capability spine
@@ -84,12 +136,12 @@ export const PILLARS: readonly Pillar[] = [
   {
     index: "01",
     name: "Observe",
-    copy: "See statewide posture, live incidents and jurisdiction context together.",
+    copy: "Statewide posture, live incidents and jurisdiction context in one view.",
   },
   {
     index: "02",
     name: "Understand",
-    copy: "Resolve people, relationships, evidence and geography into one picture.",
+    copy: "People, relationships, evidence and geography resolved together.",
   },
   {
     index: "03",
@@ -104,7 +156,7 @@ export const PILLARS: readonly Pillar[] = [
   {
     index: "05",
     name: "Audit",
-    copy: "Keep every query, model run and decision accountable after the fact.",
+    copy: "Every query, model run and decision stays accountable afterwards.",
   },
 ] as const;
 
@@ -116,8 +168,8 @@ export const PLATFORM = {
   eyebrow: "One operating picture",
   headline: "Fragmented signals become coordinated understanding.",
   body: [
-    "Public-safety information arrives in pieces — records, evidence stores, jurisdictions, maps and spreadsheets. The difficult part is not collecting more data. It is understanding what matters together.",
-    "DRISHTI connects those pieces without handing judgement to a machine. Sources stay visible, uncertainty stays explicit, and a named person remains responsible for what happens next.",
+    "Public-safety information arrives in pieces — station records, evidence stores, jurisdiction boundaries, maps and spreadsheets. The hard part was never collecting more data. It is understanding what matters together, fast enough to act on.",
+    "DRISHTI connects those pieces without handing judgement to a machine. Sources stay visible, uncertainty stays stated, and a named officer remains responsible for what happens next.",
   ],
   callout: {
     label: "Built for Karnataka's operational context",
@@ -126,143 +178,222 @@ export const PLATFORM = {
 } as const;
 
 /* --------------------------------------------------------------------------
-   Product showcase
+   Capability showcase — full-bleed statement panels
    ----------------------------------------------------------------------- */
 
-export interface Spotlight {
+export interface Showcase {
   id: string;
-  eyebrow: string;
+  kicker: string;
+  headline: string;
+  copy: string;
+  cta: string;
+  film: FilmSource;
+  align: "start" | "end";
+  /** Small provenance line pinned opposite the copy column. */
+  note: string;
+}
+
+export const SHOWCASE_SECTION = {
+  eyebrow: "Capabilities",
+  headline: "One platform, from first signal to final review.",
+  standfirst:
+    "Crime intelligence and emergency response share the same governed foundation, so context follows the work instead of disappearing between tools.",
+} as const;
+
+export const SHOWCASES: readonly Showcase[] = [
+  {
+    id: "command",
+    kicker: "Command Center",
+    headline: "Command the whole state",
+    copy: "Live incident posture, district workload and emerging pressure in one governed view — so the next order is given with the full picture rather than a fragment of it.",
+    cta: "Explore Command Center",
+    film: FILMS.command,
+    align: "start",
+    note: "Statewide posture · 32 districts",
+  },
+  {
+    id: "geospatial",
+    kicker: "Map & Hotspots",
+    headline: "Put every signal on the ground",
+    copy: "Read patterns across districts and taluks on real Karnataka boundaries, then trace any hotspot straight back to the records that produced it.",
+    cta: "Explore the map",
+    film: FILMS.statewide,
+    align: "end",
+    note: "PostGIS boundaries · Traceable to source",
+  },
+  {
+    id: "casework",
+    kicker: "Case Intelligence",
+    headline: "One case, every thread intact",
+    copy: "Timelines, people, property, digital evidence and financial activity assemble into a single reviewable record, with provenance carried on every link.",
+    cta: "Explore case intelligence",
+    film: FILMS.casework,
+    align: "start",
+    note: "Evidence chain preserved end to end",
+  },
+  {
+    id: "ask",
+    kicker: "Ask DRISHTI",
+    headline: "Ask plainly. Inspect the answer",
+    copy: "Plain-language questions become scoped, deterministic queries that answer with citations back to governed records — never an uncited conclusion.",
+    cta: "Explore Ask DRISHTI",
+    film: FILMS.reasoning,
+    align: "end",
+    note: "Cited answers · Deterministic retrieval",
+  },
+  {
+    id: "forecasting",
+    kicker: "Analytics & Forecasting",
+    headline: "See where pressure is building",
+    copy: "Forecasts arrive with confidence bounds, model version and stated limits attached. Planning support for command — never an automatic verdict on a person or a place.",
+    cta: "Explore forecasting",
+    film: FILMS.hotspots,
+    align: "start",
+    note: "Labelled predictions · Stated limits",
+  },
+  {
+    id: "response",
+    kicker: "Emergency Response",
+    headline: "Coordinate the first sixty minutes",
+    copy: "Live incidents, hazard forecasts, available resources and response plans in one workspace built for the hours when coordination decides the outcome.",
+    cta: "Explore emergency response",
+    film: FILMS.response,
+    align: "end",
+    note: "Multi-hazard · Multi-agency context",
+  },
+] as const;
+
+/* --------------------------------------------------------------------------
+   Product proof — real screens
+   ----------------------------------------------------------------------- */
+
+export interface ProductShot {
+  id: string;
   title: string;
   copy: string;
   image: string;
   alt: string;
-  span: 5 | 7 | 12;
-  wide?: boolean;
+  /** Feature the first shot at double width. */
+  feature?: boolean;
 }
 
-export const SPOTLIGHTS: readonly Spotlight[] = [
+export const PRODUCT_SECTION = {
+  eyebrow: "Inside the platform",
+  headline: "Nine workspaces. One governed foundation.",
+  standfirst:
+    "Screens from the running DRISHTI prototype. Every record shown is synthetic demonstration data.",
+  cta: "Enter the platform",
+} as const;
+
+export const PRODUCT_SHOTS: readonly ProductShot[] = [
   {
-    id: "command",
-    eyebrow: "Command Center",
-    title: "The state, understood at a glance.",
-    copy: "Live posture, workload, emerging pressure and jurisdiction context in one calm, governed view.",
+    id: "command-center",
+    title: "Command Center",
+    copy: "Statewide posture, workload and pressure signals for command review.",
     image: "/product/03-command-center.png",
     alt: "DRISHTI Command Center showing operational posture and a Karnataka jurisdiction map",
-    span: 12,
+    feature: true,
+  },
+  {
+    id: "case-explorer",
+    title: "Case Explorer",
+    copy: "Search, filter and triage the case population across jurisdictions.",
+    image: "/product/04-case-explorer.png",
+    alt: "DRISHTI Case Explorer listing cases with filters and status columns",
   },
   {
     id: "map",
-    eyebrow: "Map & Hotspots",
-    title: "Put every signal on the ground.",
-    copy: "Explore district and taluk patterns, then trace every hotspot back to the records behind it.",
+    title: "Map & Hotspots",
+    copy: "District and taluk patterns on real boundaries, traceable to records.",
     image: "/product/05-map-hotspots.png",
-    alt: "DRISHTI hotspot map with district boundaries and source confidence",
-    span: 5,
+    alt: "DRISHTI hotspot map with Karnataka district boundaries and confidence indicators",
+  },
+  {
+    id: "case-file",
+    title: "Case File",
+    copy: "Timeline, linked people, property and evidence provenance in one record.",
+    image: "/product/06-case-file.png",
+    alt: "DRISHTI case file with timeline, linked people and evidence provenance",
+  },
+  {
+    id: "board",
+    title: "Investigation Board",
+    copy: "Working space for hypotheses, leads and the evidence behind each one.",
+    image: "/product/07-investigation-board.png",
+    alt: "DRISHTI investigation board arranging leads, entities and evidence",
   },
   {
     id: "network",
-    eyebrow: "Network Analysis",
-    title: "Find the connection that changes the case.",
-    copy: "Move from an entity to communities, hidden associations, money trails and evidence-backed paths.",
+    title: "Network Analysis",
+    copy: "Communities, hidden associations and evidence-backed paths between entities.",
     image: "/product/08-network-analysis.png",
-    alt: "DRISHTI network analysis workspace for exploring entity relationships",
-    span: 7,
+    alt: "DRISHTI network analysis workspace exploring entity relationships",
   },
   {
-    id: "case",
-    eyebrow: "Case Intelligence",
-    title: "One case. Every thread intact.",
-    copy: "Bring timelines, people, property, digital evidence and financial activity into one reviewable record.",
-    image: "/product/06-case-file.png",
-    alt: "DRISHTI case file with timeline, linked people and evidence provenance",
-    span: 7,
-  },
-  {
-    id: "emergency",
-    eyebrow: "Emergency Response",
-    title: "Coordinate before pressure becomes crisis.",
-    copy: "Unify live incidents, forecast risk, resources and response plans in a dedicated emergency workspace.",
-    image: "/product/11-emergency-response.png",
-    alt: "DRISHTI emergency response workspace showing a multi-hazard situation overview",
-    span: 5,
+    id: "analytics",
+    title: "Analytics & Forecasting",
+    copy: "Labelled forecasts with confidence bounds and model provenance.",
+    image: "/product/09-analytics-forecasting.png",
+    alt: "DRISHTI analytics workspace with forecast charts and confidence bands",
   },
   {
     id: "ask",
-    eyebrow: "Ask DRISHTI",
-    title: "Ask plainly. Get an answer you can inspect.",
-    copy: "Natural-language questions become scoped, deterministic queries with citations back to governed records — not uncited conclusions.",
+    title: "Ask DRISHTI",
+    copy: "Natural-language questions answered with citations to governed records.",
     image: "/product/10-ask-drishti.png",
     alt: "Ask DRISHTI interface showing a natural-language question with cited answers",
-    span: 12,
-    wide: true,
+  },
+  {
+    id: "emergency",
+    title: "Emergency Response",
+    copy: "Live incidents, resources and response plans for multi-hazard events.",
+    image: "/product/11-emergency-response.png",
+    alt: "DRISHTI emergency response workspace showing a multi-hazard situation overview",
   },
 ] as const;
 
-export const SPOTLIGHT_SECTION = {
-  eyebrow: "The operating system",
-  headline: "One platform from first signal to final review.",
-  standfirst:
-    "Crime intelligence and emergency response share the same governed foundation, so context follows the work instead of disappearing between tools.",
-  supportingModules: [
-    "Case Explorer",
-    "Investigation Board",
-    "Analytics & Forecasting",
-    "Evidence provenance",
-  ],
-} as const;
-
 /* --------------------------------------------------------------------------
-   Connected intelligence
+   Audience
    ----------------------------------------------------------------------- */
 
-export const INTELLIGENCE = {
-  eyebrow: "Connected intelligence",
-  headline: "Move from incident to informed action — without losing the evidence chain.",
-  body: "DRISHTI assembles the relevant location, people, cases, evidence and model signals into a single explanation before an authorised officer reviews the next move.",
-  loader: "Resolving the incident picture",
-  caption: "Every connection remains inspectable.",
-  panelLabel: "Operational sequence",
-  panelTitle: "Karnataka incident intelligence",
-  word: "CONNECTED",
-} as const;
-
-export interface SequenceStep {
-  index: string;
-  title: string;
+export interface Audience {
+  tier: string;
+  roles: string;
   copy: string;
 }
 
-export const SEQUENCE: readonly SequenceStep[] = [
-  {
-    index: "01",
-    title: "Detect the signal",
-    copy: "A location-aware incident enters the common operating picture.",
-  },
-  {
-    index: "02",
-    title: "Connect the context",
-    copy: "Related people, cases, evidence and geography resolve together.",
-  },
-  {
-    index: "03",
-    title: "Explain the pattern",
-    copy: "Analysis surfaces with provenance, confidence and stated limits.",
-  },
-  {
-    index: "04",
-    title: "Review the action",
-    copy: "An authorised officer decides what happens next.",
-  },
-] as const;
+export const AUDIENCE_SECTION = {
+  eyebrow: "Who it serves",
+  headline: "The right picture for every level of command.",
+  standfirst:
+    "One shared foundation, shaped to the decisions each authorised role is responsible for making.",
+} as const;
 
-export const SEQUENCE_META: readonly HeroFact[] = [
-  { label: "Source", value: "Governed records" },
-  { label: "Output", value: "Cited analysis" },
-  { label: "Control", value: "Human review" },
+export const AUDIENCES: readonly Audience[] = [
+  {
+    tier: "State & range command",
+    roles: "DGP · ADGP / IGP",
+    copy: "Statewide posture, cross-range comparison and strategic pressure signals.",
+  },
+  {
+    tier: "District & station command",
+    roles: "SP · DySP / ACP · SHO",
+    copy: "Local workload, jurisdiction integrity and day-to-day coordination.",
+  },
+  {
+    tier: "Investigation & analysis",
+    roles: "Investigating Officer · Crime Analyst",
+    copy: "Case assembly, entity resolution, networks and evidence trails.",
+  },
+  {
+    tier: "Specialist & governance",
+    roles: "Cyber Cell · Traffic Command · System Admin",
+    copy: "Specialist intelligence, emergency coordination, model and data governance.",
+  },
 ] as const;
 
 /* --------------------------------------------------------------------------
-   Prototype proof
+   Prototype scale
    ----------------------------------------------------------------------- */
 
 export interface Stat {
@@ -279,8 +410,8 @@ export const STATS: readonly Stat[] = [
 
 export const STATS_SECTION = {
   eyebrow: "Prototype scale",
-  headline: "Enough context to see the system, not just the screen.",
-  note: "Prototype inventory from the DRISHTI dataset. These counts demonstrate system scale; every record in this experience is synthetic.",
+  headline: "Enough context to judge the system, not just the screen.",
+  note: "Inventory from the DRISHTI demonstration dataset. These counts show system scale; every record in this experience is synthetic.",
 } as const;
 
 /* --------------------------------------------------------------------------
@@ -290,7 +421,7 @@ export const STATS_SECTION = {
 export const GOVERNANCE = {
   eyebrow: "Governed by design",
   headline: "Powerful intelligence. Clear boundaries.",
-  body: "Predictions are labelled. Uncertainty remains visible. Sensitive records stay inside role and jurisdiction boundaries. DRISHTI strengthens professional judgement — and makes every step inspectable afterwards.",
+  body: "Predictions are labelled. Uncertainty stays visible. Sensitive records stay inside role and jurisdiction boundaries. DRISHTI strengthens professional judgement, and makes every step inspectable afterwards.",
   sealTitle: "Human authority is never optional",
   sealCopy: "No analytical output creates an operational consequence on its own.",
 } as const;
@@ -325,65 +456,27 @@ export const PRINCIPLES: readonly Principle[] = [
 ] as const;
 
 /* --------------------------------------------------------------------------
-   Mission
+   Mission close
    ----------------------------------------------------------------------- */
 
 export const MISSION = {
   eyebrow: "The mission",
-  kicker: "Purpose-built for Karnataka",
-  bigMark: "Zero",
-  bigMarkSuffix: "black boxes",
   headline: "Intelligence in service of safer communities.",
-  body: "A secure operating picture that helps public-safety teams understand events, coordinate across jurisdictions and act with evidence, accountability and human judgement intact.",
+  body: "A secure operating picture that helps Karnataka's public-safety teams understand events, coordinate across jurisdictions and act with evidence, accountability and human judgement intact.",
   loader: "Establishing the statewide picture",
   strip: "Observe · Understand · Investigate · Decide · Audit",
 } as const;
 
-export const MISSION_META: readonly HeroFact[] = [
+export interface MetaFact {
+  label: string;
+  value: string;
+}
+
+export const MISSION_META: readonly MetaFact[] = [
   { label: "Scope", value: "Statewide context" },
   { label: "Foundation", value: "Governed ontology" },
   { label: "Authority", value: "Human in control" },
 ] as const;
-
-/* --------------------------------------------------------------------------
-   Audience
-   ----------------------------------------------------------------------- */
-
-export interface Audience {
-  tier: string;
-  roles: string;
-  copy: string;
-}
-
-export const AUDIENCES: readonly Audience[] = [
-  {
-    tier: "State & range command",
-    roles: "DGP · ADGP / IGP",
-    copy: "Statewide posture, cross-range comparison and strategic pressure signals.",
-  },
-  {
-    tier: "District & station command",
-    roles: "SP · DySP / ACP · SHO",
-    copy: "Local workload, jurisdiction integrity and day-to-day coordination.",
-  },
-  {
-    tier: "Investigation & analysis",
-    roles: "Investigating Officer · Crime Analyst",
-    copy: "Case assembly, entity resolution, networks and evidence trails.",
-  },
-  {
-    tier: "Specialist & governance",
-    roles: "Cyber Cell · Traffic Command · System Admin",
-    copy: "Specialist intelligence, emergency coordination, model and data governance.",
-  },
-] as const;
-
-export const AUDIENCE_SECTION = {
-  eyebrow: "Built around the mission",
-  headline: "The right picture for every level of command.",
-  standfirst:
-    "One shared foundation, shaped to the decisions each authorised role is responsible for making.",
-} as const;
 
 /* --------------------------------------------------------------------------
    Final CTA and footer
@@ -407,7 +500,7 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     links: [
       { label: "Overview", href: "#platform" },
       { label: "Capabilities", href: "#capabilities" },
-      { label: "Connected intelligence", href: "#intelligence" },
+      { label: "Inside the product", href: "#product" },
       { label: "Prototype scale", href: "#scale" },
     ],
   },
@@ -416,8 +509,8 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     links: [
       { label: "Governance", href: "#governance" },
       { label: "Human in control", href: "#governance" },
+      { label: "Who it serves", href: "#audience" },
       { label: "Mission", href: "#mission" },
-      { label: "Audience", href: "#audience" },
     ],
   },
   {
@@ -434,9 +527,4 @@ export const DISCLOSURE = {
   notProduction:
     "This system is not a production criminal-information system and must not be interpreted as one.",
   stack: "React · TypeScript · FastAPI · PostGIS · Zoho Catalyst",
-} as const;
-
-export const UTILITY_STRIP = {
-  left: "Prototype experience · Synthetic demonstration data",
-  right: "Karnataka, India",
 } as const;

@@ -279,11 +279,18 @@ class Settings(BaseSettings):
     cctv_dispatch_avg_speed_kmh: float = 28.0
     # Max normalised bounding boxes stored per detection (size guard).
     cctv_max_boxes: int = 24
-    # Optional single stream URL applied to every seeded demo camera (a looping
-    # mp4 or HLS manifest you host). Blank leaves seeded cameras registered with
-    # stream_kind='none', and the wall then renders an explicit "no stream
-    # configured" panel instead of a placeholder that looks like live video.
+    # Optional single stream URL applied to every seeded demo camera that has no
+    # clip of its own (a looping mp4 or HLS manifest you host). Blank leaves such
+    # cameras registered with stream_kind='none', and the wall then renders an
+    # explicit "no stream configured" panel instead of a placeholder that looks
+    # like live video.
     cctv_demo_stream_url: str = ""
+    # Base URL the per-camera demo clips are served from. These are static files
+    # served by the WEB app (web/public/cctv/*), not by this service, so the
+    # default is a root-relative path: it resolves against the browser's origin,
+    # which keeps the clips working in dev and deployed with no CORS setup.
+    # See app/cctv/seed.py CAMERA_DEMO_CLIPS for the camera -> file mapping.
+    cctv_demo_clip_base_url: str = "/cctv"
 
     model_config = SettingsConfigDict(
         env_file=(str(_REPO_ROOT / ".env"), ".env"),
