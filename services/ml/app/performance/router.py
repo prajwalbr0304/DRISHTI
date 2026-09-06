@@ -16,9 +16,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from ..config import get_settings
 from ..org import scope as scope_mod
 from ..org import service as org_service
+from ..org.deps import GeoScope, geo_scope
 from ..roles import ALL_ROLES, DEFAULT_ROLE
 from . import service
-from .schemas import PerformanceResponse
+from .schemas import DistrictPerformanceResponse, PerformanceResponse
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
@@ -67,3 +68,23 @@ def overview(unit_id: Optional[int] = Query(None, ge=1),
         raise HTTPException(status_code=403, detail=str(exc))
     return service.station_officer_performance(
         unit_id=eff_unit, district_id=eff_district, window_days=window_days)
+
+
+@router.get("/districts", response_model=DistrictPerformanceResponse)
+def districts(window_days: int = Query(90, ge=1, le=365),
+              geo: GeoScope = Depends(geo_scope)):
+    """Districts in the caller's scope, side by side.
+
+    Backs the range and wing league tables, which previously approximated the
+    comparison client-side by summing HOTSPOT case counts per district. That is a
+    different question: a hotspot is a modelled concentration, not a workload, so a
+    district with dispersed crime read as idle.
+
+    Uses ``geo_scope`` rather than this module's older ``_resolve_scope`` helper
+    because a range seat spans several districts, and ``enforce_geo_request``
+    collapses to a single ``district_id``. ``effective_district_ids()`` keeps the
+    set — and keeps the EMPTY set, so an unposted seat gets no rows rather than
+    every district.
+    """
+    return service.district_performance(
+        district_ids=geo.effective_district_ids(), window_days=window_days)

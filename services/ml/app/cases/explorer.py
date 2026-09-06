@@ -91,6 +91,18 @@ def _build_filters(f: dict, *, analytics_only: bool = False) -> tuple[str, list]
     params: list[Any] = []
     if f.get("district_id"):
         clauses.append('d."DistrictID" = %s'); params.append(f["district_id"])
+    # A RANGE seat spans several districts, so a single district_id cannot express
+    # its scope. Without this branch the confinement would either be dropped
+    # (leaking the whole state) or collapsed to one district of the range
+    # (silently hiding the other four) — both wrong for a DIG.
+    district_ids = f.get("district_ids")
+    if district_ids:
+        clauses.append('d."DistrictID" = ANY(%s)')
+        params.append([int(d) for d in district_ids])
+    # An EMPTY set is meaningful and must not be ignored: it is an unposted or
+    # empty-range seat, which is confined to nothing.
+    elif district_ids is not None and not f.get("district_id"):
+        clauses.append("FALSE")
     if f.get("station_id"):
         # A deterministic fixture proxy is not an operational station
         # assignment and must never satisfy station-level filtering.

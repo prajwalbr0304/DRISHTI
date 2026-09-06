@@ -35,18 +35,32 @@ def scope_covers(holder_level: str, target_level: str) -> bool:
 
 @dataclass(frozen=True)
 class RankMapping:
-    """One row of the synthetic rank -> role/scope catalogue."""
+    """One row of the rank -> role/scope catalogue.
+
+    ``scope_level`` is the ordered GEOGRAPHIC ladder that :func:`scope_covers`
+    reasons over. ``scope_type`` is what the seat actually carries and is not a
+    rung on that ladder: `wing` is state-wide geography narrowed by crime head,
+    and `commissionerate` is a peer of `district` rather than a level of its own.
+    Keeping both means containment logic stays ordered while the seat model stays
+    honest about ADGP-vs-DIG and SP-vs-CP.
+    """
     key: str                 # normalized lookup key
     rank: str                # human label (establishment rank / assignment)
     abbr: str                # common abbreviation
     functional_role: str     # one of FUNCTIONAL_ROLES
-    scope_level: str         # one of SCOPE_LEVELS
+    scope_level: str         # one of SCOPE_LEVELS (geographic ladder)
     note: str = ""
+    scope_type: str = ""     # seat scope type; defaults to scope_level
+
+    def __post_init__(self):
+        if not self.scope_type:
+            object.__setattr__(self, "scope_type", self.scope_level)
 
     def as_dict(self) -> dict:
         return {"rank": self.rank, "abbr": self.abbr,
                 "functional_role": self.functional_role,
-                "scope_level": self.scope_level, "note": self.note}
+                "scope_level": self.scope_level,
+                "scope_type": self.scope_type, "note": self.note}
 
 
 def _norm(text: Optional[str]) -> str:
@@ -70,27 +84,45 @@ def _norm(text: Optional[str]) -> str:
 _CATALOG: list[RankMapping] = [
     RankMapping("dgp", "Director General of Police", "DGP", "dgp_state_command", "state",
                 "State police head: state-wide operational oversight and approvals."),
-    RankMapping("adgp", "Additional Director General of Police", "ADGP", "adgp_igp_range", "state",
-                "State-wide oversight for a functional wing (e.g. Crime, L&O)."),
-    RankMapping("igp", "Inspector General of Police", "IGP", "adgp_igp_range", "range",
-                "Zonal/range command across several districts."),
-    RankMapping("dig", "Deputy Inspector General of Police", "DIG", "adgp_igp_range", "range",
-                "Range command; oversight of the districts in the range."),
-    RankMapping("sp", "Superintendent of Police", "SP", "sp_district_command", "district",
-                "District police chief: workload, approvals and oversight for one district."),
-    RankMapping("dcp", "Deputy Commissioner of Police", "DCP", "sp_district_command", "district",
-                "City-police district equivalent of the SP."),
+    # ADGP heads a FUNCTIONAL wing; IGP/DIG command a GEOGRAPHIC range. Same
+    # application role, different scope type — the distinction the previous single
+    # `adgp_igp_range` role could not express.
+    RankMapping("adgp", "Additional Director General of Police", "ADGP",
+                "senior_command", "state",
+                "State-wide oversight for a functional wing (e.g. Crime, L&O).",
+                scope_type="wing"),
+    RankMapping("igp", "Inspector General of Police", "IGP", "senior_command", "range",
+                "Zonal/range command across several districts.", scope_type="range"),
+    RankMapping("dig", "Deputy Inspector General of Police", "DIG",
+                "senior_command", "range",
+                "Range command; oversight of the districts in the range.",
+                scope_type="range"),
+    RankMapping("sp", "Superintendent of Police", "SP", "district_command", "district",
+                "District police chief: workload, approvals and oversight for one district.",
+                scope_type="district"),
+    RankMapping("cp", "Commissioner of Police", "CP", "district_command", "district",
+                "City Commissionerate chief; reports outside the range hierarchy.",
+                scope_type="commissionerate"),
+    RankMapping("dcp", "Deputy Commissioner of Police", "DCP", "district_command", "district",
+                "City-police district equivalent of the SP.", scope_type="district"),
     RankMapping("addl sp", "Additional Superintendent of Police", "Addl. SP",
-                "sp_district_command", "district",
-                "Assists the SP across the district."),
-    RankMapping("dy sp", "Deputy Superintendent of Police", "Dy.SP", "dysp_acp", "subdivision",
-                "Sub-divisional police officer (SDPO): oversight of a sub-division."),
-    RankMapping("asp", "Assistant Superintendent of Police", "ASP", "dysp_acp", "subdivision",
-                "IPS probationary sub-divisional officer."),
-    RankMapping("acp", "Assistant Commissioner of Police", "ACP", "dysp_acp", "subdivision",
-                "City-police sub-divisional officer."),
-    RankMapping("ci", "Circle Inspector", "CI", "dysp_acp", "subdivision",
-                "Circle inspector overseeing several stations in a circle."),
+                "district_command", "district",
+                "Assists the SP across the district.", scope_type="district"),
+    # The sub-division tier has no Unit rows behind it (UnitType 2/3 are
+    # uninstantiated), so these seats resolve to district command until it exists.
+    RankMapping("dy sp", "Deputy Superintendent of Police", "Dy.SP",
+                "district_command", "subdivision",
+                "Sub-divisional police officer (SDPO). Sub-division is not yet modelled, "
+                "so the seat is issued at district scope.", scope_type="district"),
+    RankMapping("asp", "Assistant Superintendent of Police", "ASP",
+                "district_command", "subdivision",
+                "IPS probationary sub-divisional officer.", scope_type="district"),
+    RankMapping("acp", "Assistant Commissioner of Police", "ACP",
+                "district_command", "subdivision",
+                "City-police sub-divisional officer.", scope_type="district"),
+    RankMapping("ci", "Circle Inspector", "CI", "district_command", "subdivision",
+                "Circle inspector overseeing several stations in a circle.",
+                scope_type="district"),
     RankMapping("sho", "Station House Officer", "SHO", "sho", "station",
                 "Station chief: owns their police station's workload and review queue."),
     RankMapping("pi", "Police Inspector", "PI", "sho", "station",
@@ -105,22 +137,33 @@ _CATALOG: list[RankMapping] = [
                 "Assists investigation of assigned cases."),
     RankMapping("police constable", "Police Constable", "PC", "investigating_officer",
                 "assigned_case", "Assists investigation of assigned cases."),
-    # Non-rank functional assignments (staff cells / specialised commands).
-    RankMapping("crime analyst", "Crime Analyst (District Crime Records)", "Analyst",
-                "crime_analyst", "district",
-                "District crime-records / analytics cell: aggregate + pattern analysis."),
+    # Staff cells are now ADGP FUNCTIONAL WINGS rather than roles of their own, so
+    # they map to senior_command at wing scope: state-wide reach, narrowed to the
+    # wing's crime heads.
+    RankMapping("crime analyst", "Crime Analyst (State Crime Records Bureau)", "Analyst",
+                "senior_command", "state",
+                "Crime & Technical Services wing: aggregate and pattern analysis.",
+                scope_type="wing"),
     RankMapping("scrb", "State Crime Records Bureau", "SCRB",
-                "crime_analyst", "state",
-                "State records/analytics bureau: strategic trends and forecasting."),
+                "senior_command", "state",
+                "Crime & Technical Services wing: strategic trends and forecasting.",
+                scope_type="wing"),
     RankMapping("cyber cell", "Cyber Crime Police Station / CEN Cell", "CEN",
-                "cyber_cell", "state",
-                "Cyber + financial crime cell: money trail, devices and accounts."),
+                "senior_command", "state",
+                "Internal Security & Cyber wing: money trail, devices and accounts.",
+                scope_type="wing"),
     RankMapping("traffic", "Traffic Police Command", "Traffic",
-                "traffic_command", "district",
-                "Road-safety hotspots, accident patterns and enforcement load."),
+                "senior_command", "state",
+                "Traffic & Road Safety wing: road-safety hotspots and enforcement load.",
+                scope_type="wing"),
+    RankMapping("intelligence", "State Intelligence Wing", "INT",
+                "senior_command", "state",
+                "Intelligence wing: actionable intelligence across the state.",
+                scope_type="wing"),
     RankMapping("system administrator", "System Administrator", "Admin",
                 "system_admin", "state",
-                "Platform administration: user provisioning, role assignment, governance."),
+                "Platform administration: seats, roles, UI visibility and governance.",
+                scope_type="platform"),
 ]
 
 # key -> mapping, plus normalized full-rank-name and abbreviation aliases.

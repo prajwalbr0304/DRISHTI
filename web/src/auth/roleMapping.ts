@@ -1,4 +1,4 @@
-import { DEFAULT_ROLE, type UserRole } from "@/config/roles";
+import { DEFAULT_ROLE, normalizeRole, type ScopeType, type UserRole } from "@/config/roles";
 import type { AuthUser } from "@/auth/types";
 
 /* ============================================================================
@@ -8,25 +8,70 @@ import type { AuthUser } from "@/auth/types";
    and the client role header is stripped at the gateway. Never trust this on the
    server; never send it as a trusted role.
 
-   The catalyst-role branch mirrors the server's rank map (gateway_api RANK_MAP /
-   services/ml/app/org/hierarchy.py) so the UI shows the seat the server will
-   enforce: DGP/ADGP/IGP/SP/DySP-ACP/SHO/IO plus the staff cells (crime analyst,
-   cyber, traffic) and the platform admin.
+   Rank now maps to TWO things, because the role alone no longer says how much a
+   seat sees: the application role (which surface) and the scope type (how much
+   data). An ADGP and a DIG are both `senior_command` and differ only in scope, so
+   collapsing them to a role would lose the distinction the board depends on.
    ========================================================================== */
 
-export function deriveDisplayRole(user: AuthUser | null): UserRole {
-  if (!user) return DEFAULT_ROLE;
-  if (user.source === "offline" && user.demoRole) return user.demoRole;
+export interface DerivedSeat {
+  role: UserRole;
+  /** Best-effort scope type from the rank label. The server's /org/my-scope is
+   *  authoritative and overrides this as soon as it resolves. */
+  scopeType: ScopeType;
+}
+
+export function deriveDisplaySeat(user: AuthUser | null): DerivedSeat {
+  if (!user) return { role: DEFAULT_ROLE, scopeType: "unresolved" };
+  if (user.source === "offline" && user.demoRole) {
+    const role = normalizeRole(user.demoRole);
+    return { role, scopeType: defaultScopeFor(role) };
+  }
 
   const r = (user.catalystRole ?? "").toLowerCase();
-  if (/admin|super|sysadmin/.test(r)) return "system_admin";
-  if (/dgp|director general|commissioner of police/.test(r)) return "dgp_state_command";
-  if (/adgp|\bigp\b|\bdig\b|range|zone/.test(r)) return "adgp_igp_range";
-  if (/\bsp\b|superintendent|\bdcp\b|district/.test(r)) return "sp_district_command";
-  if (/dysp|dy\.?\s?sp|\bacp\b|\basp\b|sub-?division|circle/.test(r)) return "dysp_acp";
-  if (/cyber|\bcen\b|financial/.test(r)) return "cyber_cell";
-  if (/traffic/.test(r)) return "traffic_command";
-  if (/analyst|scrb|records|policy/.test(r)) return "crime_analyst";
-  if (/sho|station|inspector/.test(r)) return "sho";
-  return DEFAULT_ROLE;
+
+  if (/admin|super|sysadmin/.test(r)) {
+    return { role: "system_admin", scopeType: "platform" };
+  }
+  if (/dgp|director general/.test(r)) {
+    return { role: "dgp_state_command", scopeType: "state" };
+  }
+  // ADGP heads a functional wing; IGP/DIG command a geographic range. Same role,
+  // different scope — which is exactly why the two are tested separately.
+  if (/adgp|additional director/.test(r)) {
+    return { role: "senior_command", scopeType: "wing" };
+  }
+  if (/\bigp\b|\bdig\b|inspector general|range|zone/.test(r)) {
+    return { role: "senior_command", scopeType: "range" };
+  }
+  // Staff cells now sit under an ADGP wing rather than being roles of their own.
+  if (/cyber|\bcen\b|financial|analyst|scrb|records|policy|traffic/.test(r)) {
+    return { role: "senior_command", scopeType: "wing" };
+  }
+  if (/commissioner of police|\bcp\b/.test(r)) {
+    return { role: "district_command", scopeType: "commissionerate" };
+  }
+  if (/\bsp\b|superintendent|\bdcp\b|district|dysp|dy\.?\s?sp|\bacp\b|\basp\b/.test(r)) {
+    return { role: "district_command", scopeType: "district" };
+  }
+  if (/sho|station|inspector/.test(r)) {
+    return { role: "sho", scopeType: "station" };
+  }
+  return { role: DEFAULT_ROLE, scopeType: defaultScopeFor(DEFAULT_ROLE) };
+}
+
+/** The scope a role opens at before /org/my-scope answers. */
+export function defaultScopeFor(role: UserRole): ScopeType {
+  switch (role) {
+    case "dgp_state_command": return "state";
+    case "system_admin": return "platform";
+    // Posted seats have no safe default: guessing a district would put a
+    // jurisdiction in the top bar that the officer was never posted to.
+    default: return "unresolved";
+  }
+}
+
+/** Back-compat: the role alone, for call sites that do not yet handle scope. */
+export function deriveDisplayRole(user: AuthUser | null): UserRole {
+  return deriveDisplaySeat(user).role;
 }

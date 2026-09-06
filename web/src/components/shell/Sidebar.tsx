@@ -9,6 +9,8 @@ import {
   groupDestinations,
   visibleDestinations,
 } from "@/config/destinations";
+import { useUiVisibility } from "@/hooks/useUiVisibility";
+import { useMyScope } from "@/hooks/useMyScope";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { WorkspaceSwitcher } from "@/components/shell/WorkspaceSwitcher";
@@ -37,7 +39,18 @@ export function Sidebar() {
   const { t } = useLanguage();
   const { pathname } = useLocation();
   const context = contextForPath(pathname);
-  const groups = groupDestinations(visibleDestinations(role, isAdmin, context));
+  /* Admin overrides, keyed by path. Two independent filters, and both must apply:
+     `visibleDestinations` enforces the code-level allow-list (workspace context,
+     admin-only routes), while this removes what an administrator switched off for
+     the role. Presentation only — the route still resolves if typed. */
+  const ui = useUiVisibility();
+  /* Aggregate-only seats (state, wing) drop the case-level destinations, matching
+     the server's require_case_level guard. */
+  const seat = useMyScope();
+  const groups = groupDestinations(
+    visibleDestinations(role, isAdmin, context, { aggregateOnly: seat.aggregateOnly })
+      .filter((d) => !ui.hidden.destination.has(d.path)),
+  );
   const activeDestinationId = destinationByPath(pathname)?.id;
   const emergency = context === "emergency";
 

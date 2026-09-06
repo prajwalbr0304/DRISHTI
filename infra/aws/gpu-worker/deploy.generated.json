@@ -1,55 +1,81 @@
 {
   "_comment": "DRISHTI Prompt 24 - resolved environment-specific deploy config (placeholders from gpu-worker-infra.json filled at deploy time). No secrets/credentials. Account id appears in ARNs (standard, not a credential).",
-  "generated_at": "2026-07-23T20:35:00+05:30",
-  "account_id": "860510875713",
+  "generated_at": "2026-09-06T00:00:00+05:30",
+  "account_id": "022499043641",
   "region": "ap-south-1",
   "mechanism": "sagemaker_async",
-  "instance_type": "ml.g4dn.2xlarge",
-  "instance_gpu": "1x NVIDIA T4 (Turing sm_75), 16 GB VRAM, 8 vCPU, 32 GB RAM",
-  "instance_type_rationale": "Descriptor default ml.g5.xlarge has endpoint quota=0 in this account; ml.g4dn.2xlarge for endpoint usage quota=1.0 is available now (no quota increase). T4 runs the real TabFM + TimesFM 2.5-200m within 16 GB.",
+  "instance_type": "ml.g4dn.xlarge",
+  "instance_gpu": "1x NVIDIA T4 (Turing sm_75), 16 GB VRAM, 4 vCPU, 16 GB RAM",
+  "instance_type_rationale": "T4 runs the real TabFM + TimesFM 2.5-200m within 16 GB, and g4dn.xlarge is the cheapest GPU endpoint instance, which matters while every GPU quota in this account is 0 and has to be raised by request. Descriptor default ml.g5.xlarge (A10G) is preferred once quota allows.",
+
+  "_BLOCKED": {
+    "status": "GPU QUOTA IS ZERO ACCOUNT-WIDE - the endpoint in step 5 CANNOT be created yet",
+    "checked_on": "2026-09-06",
+    "sagemaker_endpoint_quota": "ml.g4dn.xlarge / ml.g4dn.2xlarge / ml.g5.xlarge 'for endpoint usage' = 0.0 in ap-south-1, us-east-1, us-west-2 and ap-southeast-1",
+    "ec2_gpu_quota": "'Running On-Demand G and VT instances' = 0.0 vCPU in ap-south-1 and us-east-1, so the raw-EC2 fallback is equally blocked",
+    "ec2_cpu_quota_for_contrast": "'Running On-Demand Standard' = 5 vCPU (ap-south-1) / 32 vCPU (us-east-1) - CPU capacity exists, GPU does not",
+    "requests_filed": [
+      { "service": "sagemaker", "quota_code": "L-B67CFA0C", "quota": "ml.g4dn.xlarge for endpoint usage", "region": "ap-south-1", "desired": 1, "case_id": "e1f101d572784bec821f1b84523280c2OCri0tPg", "status": "PENDING" },
+      { "service": "ec2", "quota_code": "L-DB2E81BA", "quota": "Running On-Demand G and VT instances", "region": "ap-south-1", "desired": 4, "case_id": "8be8a50266484126a336645e445a5be8K5FdZgXr", "status": "PENDING" },
+      { "service": "ec2", "quota_code": "L-DB2E81BA", "quota": "Running On-Demand G and VT instances", "region": "us-east-1", "desired": 4, "case_id": "e2ece2972eb242e39b72df8a83480885h1DiCMse", "status": "PENDING" }
+    ],
+    "check_status": "aws service-quotas list-requested-service-quota-change-history --service-code sagemaker --profile prajwal-sso --region ap-south-1",
+    "note": "Steps 1-4 (ECR repo, S3 model plane, KMS CMK, IAM role, CodeBuild image, staged artifacts) are NOT GPU-gated and can be completed while these are pending. Only create-endpoint needs the quota.",
+    "not_a_credits_problem": "Credits do not lift a service quota; this is an AWS Support approval on a new account and GPU requests are sometimes declined outright."
+  },
+
   "ecr": {
     "repository": "drishti-gpu-worker",
-    "repository_uri": "860510875713.dkr.ecr.ap-south-1.amazonaws.com/drishti-gpu-worker",
+    "repository_uri": "022499043641.dkr.ecr.ap-south-1.amazonaws.com/drishti-gpu-worker",
     "image_tag_mutability": "IMMUTABLE",
     "scan_on_push": true,
     "encryption": "AES256",
     "encryption_note": "ECR AES256 (AWS-managed) at rest; the KMS CMK is used for the S3 model/async-IO artifacts where the descriptor emphasises KMS.",
     "local_tag": "drishti-gpu-worker:0.2.3",
-    "image_digest": "sha256:a2944b7902030bc7d7f4fd1ba327922ce709af6b3efee97ecddcaac5981b7de7",
-    "image_ref": "860510875713.dkr.ecr.ap-south-1.amazonaws.com/drishti-gpu-worker@sha256:a2944b7902030bc7d7f4fd1ba327922ce709af6b3efee97ecddcaac5981b7de7",
-    "image_note": "0.2.3 fixes the TabFM licence marker (weights are TabFM Non-Commercial License v1.0, not Apache-2.0). 0.2.2 fixed serve quoting; 0.2.1 added serve; 0.2.0 lacked serve. Built by AWS CodeBuild in-cloud.",
-    "prior_digests": {"0.2.0": "sha256:f01b4e7586ec37fdf6fe7b70c4c1bbea8379ab1cd4703be824dfdd24e4e96d06", "0.2.1": "sha256:63413fb1ac219e115364517bd3d26f60407be98461c46622e78fcc5cbbcac7e6", "0.2.2": "sha256:66728f3b1ab5ee0f3b633b0d4a1c059b0276e85b1fa264cb75bd417843d13db5"}
+    "image_digest": null,
+    "image_ref": null,
+    "image_note": "NOT YET BUILT IN THIS ACCOUNT. Build with: $env:AWS_PROFILE='prajwal-sso'; python infra/aws/gpu-worker/codebuild_image.py deploy. Tag 0.2.3 is the last known-good source revision (0.2.3 fixed the TabFM licence marker; 0.2.2 fixed serve quoting; 0.2.1 added serve; 0.2.0 lacked serve). The digest below must be captured from THIS account's ECR - an image digest from the old account 860510875713 is not resolvable here.",
+    "prior_account_digests_do_not_reuse": {
+      "_note": "Recorded for provenance only. These live in account 860510875713 and cannot be pulled by this account's SageMaker execution role.",
+      "0.2.3": "sha256:a2944b7902030bc7d7f4fd1ba327922ce709af6b3efee97ecddcaac5981b7de7"
+    }
   },
+
   "kms": {
     "alias": "alias/drishti-model-plane",
-    "key_id": "6f81cab9-c76d-4347-b8c5-e25632191a6f",
-    "key_arn": "arn:aws:kms:ap-south-1:860510875713:key/6f81cab9-c76d-4347-b8c5-e25632191a6f"
+    "key_id": null,
+    "key_arn": null,
+    "_note": "Create in step 2; sagemaker_ops.py reads key_arn for the async output KMS config."
   },
+
   "s3": {
-    "bucket": "drishti-model-plane-860510875713-ap-south-1",
+    "bucket": "drishti-model-plane-022499043641-ap-south-1",
     "block_public_access": true,
     "versioning": true,
     "default_encryption": "aws:kms (BucketKeyEnabled)",
     "lifecycle": "async-io/ objects expire after 7 days; noncurrent after 3; abort incomplete MPU after 2",
-    "async_input_prefix": "s3://drishti-model-plane-860510875713-ap-south-1/async-io/in/",
-    "async_output_prefix": "s3://drishti-model-plane-860510875713-ap-south-1/async-io/output/",
-    "async_failure_prefix": "s3://drishti-model-plane-860510875713-ap-south-1/async-io/failure/"
+    "async_input_prefix": "s3://drishti-model-plane-022499043641-ap-south-1/async-io/in/",
+    "async_output_prefix": "s3://drishti-model-plane-022499043641-ap-south-1/async-io/output/",
+    "async_failure_prefix": "s3://drishti-model-plane-022499043641-ap-south-1/async-io/failure/"
   },
+
   "iam": {
-    "sagemaker_execution_role": "arn:aws:iam::860510875713:role/drishti-sagemaker-exec",
+    "sagemaker_execution_role": "arn:aws:iam::022499043641:role/drishti-sagemaker-exec",
     "trust": "sagemaker.amazonaws.com",
     "scope": "ECR pull (worker repo only), S3 get/put/list (model-plane bucket only), KMS decrypt/generateDataKey (CMK only), SageMaker CloudWatch logs, PutMetricData"
   },
+
   "sagemaker": {
-    "model_name": "drishti-gpu-worker2",
-    "endpoint_config_name": "drishti-gpu-async2-cfg",
-    "endpoint_name": "drishti-gpu-async2",
-    "_endpoint_rename_note": "0.2.0/0.2.1 attempts left a stuck-Creating endpoint 'drishti-gpu-async' (image bugs); to avoid a long wait for it to fail+delete, 0.2.2 deploys under 'drishti-gpu-async2'. The old one is deleted once terminal.",
+    "model_name": "drishti-gpu-worker",
+    "endpoint_config_name": "drishti-gpu-async-cfg",
+    "endpoint_name": "drishti-gpu-async",
+    "_naming_note": "Fresh account, so the plain names are free. The old account had to use the '2' suffix because failed 0.2.0/0.2.1 images left a stuck-Creating endpoint. If a create-endpoint here ever hangs in Creating, do NOT retry the same name - it blocks until terminal.",
     "async_max_concurrent_invocations_per_instance": 2,
     "autoscaling": { "min_capacity": 0, "max_capacity": 1, "scale_to_zero": true }
   },
+
   "models": {
-    "tabfm": { "package": "tabfm==1.0.0", "repo": "google/tabfm-1.0.0-pytorch", "license": "Apache-2.0", "task": "station_workload_band" },
+    "tabfm": { "package": "tabfm==1.0.0", "repo": "google/tabfm-1.0.0-pytorch", "license": "TabFM Non-Commercial License v1.0", "task": "station_workload_band", "_license_note": "NOT Apache-2.0. Non-commercial only - fine for this evaluation, but it is a real restriction for a police deployment and must be cleared before production use." },
     "timesfm": { "package": "timesfm==2.0.2", "repo": "google/timesfm-2.5-200m-pytorch", "license": "Apache-2.0", "task": "timesfm_count_forecast" }
   }
 }

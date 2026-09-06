@@ -70,10 +70,26 @@ function b64url(buf) {
  * AppSail re-validates the role against the same set (defence in depth), so the
  * two cannot drift silently. */
 const FUNCTIONAL_ROLES = new Set([
-  'dgp_state_command', 'adgp_igp_range', 'sp_district_command', 'dysp_acp',
-  'sho', 'investigating_officer', 'crime_analyst', 'cyber_cell',
-  'traffic_command', 'system_admin',
+  'dgp_state_command', 'senior_command', 'district_command',
+  'sho', 'investigating_officer', 'system_admin',
 ]);
+
+/* Superseded role names -> current role. A directory attribute or Catalyst role
+ * may still carry an old value; translating it is safer than rejecting the seat
+ * or silently defaulting it. Mirrors LEGACY_ROLE_ALIASES in app/roles.py. */
+const LEGACY_ROLE_ALIASES = {
+  adgp_igp_range: 'senior_command',
+  sp_district_command: 'district_command',
+  dysp_acp: 'district_command',
+  crime_analyst: 'senior_command',
+  cyber_cell: 'senior_command',
+  traffic_command: 'senior_command',
+  investigator: 'investigating_officer',
+  supervisor: 'sho',
+  analyst: 'senior_command',
+  policymaker: 'senior_command',
+  super_admin: 'system_admin',
+};
 
 /* Least-privilege default seat when no DRISHTI role is asserted. */
 const DEFAULT_ROLE = 'investigating_officer';
@@ -81,40 +97,73 @@ const DEFAULT_ROLE = 'investigating_officer';
 /* Rank / assignment label -> [functional_role, scope_level]. Mirrors the
  * synthetic establishment catalogue in org/hierarchy.py (_CATALOG). Keys are
  * normalized (lowercase, single-spaced). */
+/* Rank/assignment label -> [functional_role, scope_type].
+ *
+ * The second element is now a SCOPE TYPE, not a geographic level: an ADGP heads a
+ * functional wing (state-wide, crime-head narrowed) while an IGP/DIG commands a
+ * range of districts. Both are `senior_command`; only the scope differs, which is
+ * the distinction the previous single 'adgp_igp_range' role could not express. */
 const RANK_MAP = {
   'dgp': ['dgp_state_command', 'state'],
   'director general of police': ['dgp_state_command', 'state'],
-  'adgp': ['adgp_igp_range', 'state'], 'igp': ['adgp_igp_range', 'range'],
-  'dig': ['adgp_igp_range', 'range'], 'sp': ['sp_district_command', 'district'],
-  'superintendent of police': ['sp_district_command', 'district'],
-  'dcp': ['sp_district_command', 'district'],
-  'addl sp': ['sp_district_command', 'district'],
-  'dy sp': ['dysp_acp', 'subdivision'], 'asp': ['dysp_acp', 'subdivision'],
-  'acp': ['dysp_acp', 'subdivision'], 'ci': ['dysp_acp', 'subdivision'],
-  'circle inspector': ['dysp_acp', 'subdivision'],
+  'dg igp': ['dgp_state_command', 'state'],
+  // ADGP -> functional wing. IGP/DIG -> geographic range.
+  'adgp': ['senior_command', 'wing'],
+  'additional director general': ['senior_command', 'wing'],
+  'igp': ['senior_command', 'range'],
+  'inspector general': ['senior_command', 'range'],
+  'dig': ['senior_command', 'range'],
+  'deputy inspector general': ['senior_command', 'range'],
+  // Staff cells are wings under an ADGP, not roles of their own.
+  'crime analyst': ['senior_command', 'wing'], 'analyst': ['senior_command', 'wing'],
+  'scrb': ['senior_command', 'wing'], 'policy': ['senior_command', 'wing'],
+  'cyber cell': ['senior_command', 'wing'], 'cen': ['senior_command', 'wing'],
+  'cyber crime': ['senior_command', 'wing'],
+  'traffic': ['senior_command', 'wing'], 'traffic police': ['senior_command', 'wing'],
+  'intelligence': ['senior_command', 'wing'], 'cid': ['senior_command', 'wing'],
+  // District level: SP for a district, CP for a city Commissionerate.
+  'sp': ['district_command', 'district'],
+  'superintendent of police': ['district_command', 'district'],
+  'addl sp': ['district_command', 'district'],
+  'additional superintendent of police': ['district_command', 'district'],
+  'cp': ['district_command', 'commissionerate'],
+  'commissioner of police': ['district_command', 'commissionerate'],
+  'dcp': ['district_command', 'district'],
+  'deputy commissioner of police': ['district_command', 'district'],
+  // Sub-division has no data model yet, so these resolve to district command.
+  'dy sp': ['district_command', 'district'], 'asp': ['district_command', 'district'],
+  'acp': ['district_command', 'district'], 'ci': ['district_command', 'district'],
+  'circle inspector': ['district_command', 'district'],
+  // Station.
   'sho': ['sho', 'station'], 'station house officer': ['sho', 'station'],
   'station chief': ['sho', 'station'], 'pi': ['sho', 'station'],
   'police inspector': ['sho', 'station'], 'inspector': ['sho', 'station'],
+  // Field officers.
   'io': ['investigating_officer', 'assigned_case'],
   'investigating officer': ['investigating_officer', 'assigned_case'],
   'psi': ['investigating_officer', 'assigned_case'],
+  'police sub inspector': ['investigating_officer', 'assigned_case'],
   'asi': ['investigating_officer', 'assigned_case'],
+  'assistant sub inspector': ['investigating_officer', 'assigned_case'],
   'head constable': ['investigating_officer', 'assigned_case'],
   'police constable': ['investigating_officer', 'assigned_case'],
-  'crime analyst': ['crime_analyst', 'district'], 'analyst': ['crime_analyst', 'district'],
-  'scrb': ['crime_analyst', 'state'], 'policy': ['crime_analyst', 'state'],
-  'cyber cell': ['cyber_cell', 'state'], 'cen': ['cyber_cell', 'state'],
-  'cyber crime': ['cyber_cell', 'state'],
-  'traffic': ['traffic_command', 'district'],
-  'traffic police': ['traffic_command', 'district'],
-  'system administrator': ['system_admin', 'state'], 'admin': ['system_admin', 'state'],
+  'system administrator': ['system_admin', 'platform'],
+  'admin': ['system_admin', 'platform'],
 };
 
+/* Default scope_type when a rank gives no refinement.
+ *
+ * Only the two inherently unpinned seats get a real default. Every other role
+ * resolves to 'unresolved', which the server treats as "no posting on record" and
+ * therefore NO data — never state-wide. Defaulting a station seat to anything
+ * wider would hand it the whole force. */
 const ROLE_DEFAULT_SCOPE = {
-  dgp_state_command: 'state', adgp_igp_range: 'range',
-  sp_district_command: 'district', dysp_acp: 'subdivision', sho: 'station',
-  investigating_officer: 'assigned_case', crime_analyst: 'state',
-  cyber_cell: 'state', traffic_command: 'district', system_admin: 'state',
+  dgp_state_command: 'state',
+  system_admin: 'platform',
+  senior_command: 'unresolved',
+  district_command: 'unresolved',
+  sho: 'unresolved',
+  investigating_officer: 'unresolved',
 };
 
 function normLabel(s) {
@@ -152,6 +201,7 @@ function resolveIdentity(user) {
   if (explicit) {
     const compact = explicit.replace(/ /g, '_');
     if (FUNCTIONAL_ROLES.has(compact)) role = compact;
+    else if (LEGACY_ROLE_ALIASES[compact]) role = LEGACY_ROLE_ALIASES[compact];
     else if (RANK_MAP[explicit]) [role, scopeLevel] = RANK_MAP[explicit];
     else return { rejected: 'unknown_or_ambiguous_role' };  // asserted but invalid
   }
@@ -159,6 +209,7 @@ function resolveIdentity(user) {
     const rn = normLabel(roleDetails.role_name);
     const rnCompact = rn.replace(/ /g, '_');
     if (rn && FUNCTIONAL_ROLES.has(rnCompact)) role = rnCompact;
+    else if (rn && LEGACY_ROLE_ALIASES[rnCompact]) role = LEGACY_ROLE_ALIASES[rnCompact];
     else if (rn && RANK_MAP[rn]) [role, scopeLevel] = RANK_MAP[rn];
     // an unrecognized built-in role_name is NOT a DRISHTI assertion -> default below
   }

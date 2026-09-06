@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth";
 import { useRole } from "@/providers/RoleProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
+import { useSeatStore } from "@/stores/useSeatStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,8 +37,12 @@ export function ProfileMenu() {
   const { def } = useRole();
   const { user, signOut } = useAuth();
   const { t } = useLanguage();
+  const seat = useSeatStore((s) => s.seat);
 
-  const displayName = user?.fullName ?? def.demoName;
+  /* The SEAT wins over the role's generic demo name when one is chosen. With
+     ~11,825 seats, "SP Anand Kumar" is not enough to know which district is on
+     screen — the posting is the part that tells you. */
+  const displayName = seat?.displayName ?? user?.fullName ?? def.demoName;
 
   return (
     <DropdownMenu>
@@ -56,8 +61,15 @@ export function ProfileMenu() {
           <div className="truncate text-body-m font-bold text-content">{displayName}</div>
           {user?.email && <div className="truncate text-body-s text-content-dim">{user.email}</div>}
           <div className="mt-1 truncate text-body-s text-content-dim">
-            {t(def.label)} · {t(def.scope)}
+            {seat ? seat.scopeLabel : `${t(def.label)} · ${t(def.scope)}`}
           </div>
+          {seat?.postingLabel && (
+            /* The posting, not just the tier: which district or station this board
+               is reporting on. */
+            <div className="truncate text-body-s text-content-dim" title={seat.postingLabel}>
+              {seat.postingLabel}
+            </div>
+          )}
         </div>
 
         <DropdownMenuSeparator />

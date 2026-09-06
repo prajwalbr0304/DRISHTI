@@ -244,3 +244,169 @@ def _balance(row, *, stations_total: int) -> dict:
                  "stations in scope). Higher ratio = more uneven load, not a "
                  "performance judgement."),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Per-district league table                                                   #
+# --------------------------------------------------------------------------- #
+_DISTRICT_CAP = 60   # 38 district-level units today; headroom without a runaway
+
+
+def _district_scope_where(district_ids: Optional[list]) -> tuple[str, list]:
+    """Confine to a SET of districts, which is what a range seat needs.
+
+    ``station_officer_performance`` takes a single ``district_id`` because it
+    answers "one command's stations". A league table is the opposite question —
+    several districts side by side — and a range seat covers four to seven of them,
+    so a single id cannot express its scope.
+
+    An EMPTY list means "entitled to nothing" and must produce no rows. Treating it
+    as "no filter" is the bug that leaked every district to an unposted seat, so it
+    is written as an impossible predicate rather than skipped.
+    """
+    from ..cases import casedata
+
+    clauses = [casedata.analytics_eligible_sql("cm")]
+    params: list = []
+    if district_ids is not None:
+        if not district_ids:
+            return " AND FALSE", []
+        clauses.append('u."DistrictID" = ANY(%s)')
+        params.append([int(d) for d in district_ids])
+    where = (" AND " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
+def district_performance(*, district_ids: Optional[list] = None,
+                         window_days: int = 90) -> dict:
+    """Districts in scope, side by side, for the range and wing league tables.
+
+    Replaces a client-side approximation that summed HOTSPOT case counts per
+    district. That proxy answered a different question — hotspots are a modelled
+    concentration, not a workload — so a district with dispersed crime looked idle.
+    These are case counts.
+
+    Deliberately NOT a ranking. Districts differ in population, urbanisation and
+    reporting rate, so the rows carry the denominators and the caller decides what
+    the comparison is worth. Ordered by open cases purely so the table has a stable
+    order.
+    """
+    open_list = ",".join(["%s"] * len(OPEN_STATUSES))
+    limitations = [
+        "Synthetic hackathon data; not an operational appraisal.",
+        "Windows are relative to the dataset as-of date, not today.",
+        "Districts differ in population and reporting rate, so counts are not "
+        "directly comparable as performance.",
+        "Chargesheet rate is filings over new cases in the same window, so a "
+        "district clearing a backlog can exceed 100%.",
+    ]
+
+    with db.ro_conn() as conn, conn.cursor() as cur:
+        where, sp = _district_scope_where(district_ids)
+        as_of = _as_of(cur, where, sp)
+        if as_of is None:
+            return {
+                "scope": {"district_ids": district_ids},
+                "as_of": None, "data_age_days": None, "stale": False,
+                "empty": True, "window_days": window_days,
+                "districts": [], "totals": {},
+                "limitations": limitations + ["No cases in the requested scope."],
+                "dataset": "synthetic",
+            }
+
+        win_start = as_of - dt.timedelta(days=window_days)
+        overdue_cut = as_of - dt.timedelta(days=OVERDUE_DAYS)
+
+        # One pass for the case-derived columns. Chargesheets are counted in a
+        # second query rather than joined here: ChargesheetDetails is one-to-many
+        # per case, so joining it would multiply the case rows and inflate every
+        # count in this SELECT.
+        cur.execute(
+            'SELECT u."DistrictID", d."DistrictName", '
+            '  count(*) AS total, '
+            f' count(*) FILTER (WHERE st."CaseStatusName" IN ({open_list})) AS open_cases, '
+            '  count(*) FILTER (WHERE cm."CrimeRegisteredDate" > %s) AS new_cases, '
+            f' count(*) FILTER (WHERE st."CaseStatusName" IN ({open_list}) '
+            '    AND cm."CrimeRegisteredDate" <= %s) AS overdue, '
+            '  count(DISTINCT cm."PoliceStationID") AS stations, '
+            '  count(DISTINCT cm."PolicePersonID") AS officers '
+            'FROM "CaseMaster" cm '
+            'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
+            'LEFT JOIN "District" d ON d."DistrictID"=u."DistrictID" '
+            'JOIN "CaseStatusMaster" st ON st."CaseStatusID"=cm."CaseStatusID" '
+            'WHERE u."DistrictID" IS NOT NULL' + where + ' '
+            'GROUP BY u."DistrictID", d."DistrictName" '
+            'ORDER BY open_cases DESC LIMIT %s',
+            list(OPEN_STATUSES) + [win_start] + list(OPEN_STATUSES)
+            + [overdue_cut] + sp + [_DISTRICT_CAP])
+        rows = cur.fetchall()
+
+        cur.execute(
+            'SELECT u."DistrictID", count(*) AS filed '
+            'FROM "ChargesheetDetails" cs '
+            'JOIN "CaseMaster" cm ON cm."CaseMasterID"=cs."CaseMasterID" '
+            'JOIN "Unit" u ON u."UnitID"=cm."PoliceStationID" '
+            'WHERE cs."csdate" > %s' + where + ' '
+            'GROUP BY u."DistrictID"',
+            [win_start] + sp)
+        filed_by_district = {int(r[0]): int(r[1]) for r in cur.fetchall()
+                             if r[0] is not None}
+
+    districts = []
+    for r in rows:
+        did = int(r[0])
+        new_cases = int(r[4] or 0)
+        filed = filed_by_district.get(did, 0)
+        open_cases = int(r[3] or 0)
+        stations = int(r[6] or 0)
+        districts.append({
+            "district_id": did,
+            "district_name": r[1],
+            "total_cases": int(r[2] or 0),
+            "open_cases": open_cases,
+            "new_cases": new_cases,
+            "overdue": int(r[5] or 0),
+            "stations": stations,
+            "officers": int(r[7] or 0),
+            "chargesheets_filed": filed,
+            # None, not 0, when the window held no new cases: a district with
+            # nothing registered has no rate, and 0% would read as a failure.
+            "chargesheet_rate": round(filed / new_cases, 3) if new_cases else None,
+            "open_per_station": round(open_cases / stations, 1) if stations else None,
+        })
+
+    today = dt.date.today()
+    data_age = (today - as_of).days
+    total_open = sum(d["open_cases"] for d in districts)
+    return {
+        "scope": {"district_ids": district_ids},
+        "as_of": as_of.isoformat(),
+        "data_age_days": data_age,
+        "stale": data_age > 45,
+        "empty": not districts,
+        "window_days": window_days,
+        "districts": districts,
+        "totals": {
+            "districts_compared": len(districts),
+            "total_cases": sum(d["total_cases"] for d in districts),
+            "open_cases": total_open,
+            "new_cases": sum(d["new_cases"] for d in districts),
+            "overdue": sum(d["overdue"] for d in districts),
+            "median_open_per_district": _median(
+                [d["open_cases"] for d in districts]),
+        },
+        "limitations": limitations,
+        "dataset": "synthetic",
+    }
+
+
+def _median(values: list) -> Optional[int]:
+    """Median of a small list, or None when empty. Used for the "is my district
+    unusual" reference line rather than a max, which one outlier dominates."""
+    if not values:
+        return None
+    s = sorted(values)
+    mid = len(s) // 2
+    if len(s) % 2:
+        return int(s[mid])
+    return int((s[mid - 1] + s[mid]) / 2)

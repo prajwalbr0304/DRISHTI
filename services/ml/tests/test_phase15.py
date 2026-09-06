@@ -157,7 +157,7 @@ def test_report_authorization_matrix():
     # INTERIM: any canonical command role may generate any active template, even
     # one whose per-template allow-list predates the command roles.
     rep._authorize(tpl, "dgp_state_command", "case", "1")
-    rep._authorize(tpl, "crime_analyst", "case", "1")
+    rep._authorize(tpl, "senior_command", "case", "1")
     # A role outside the canonical set still needs the template's allow-list.
     with pytest.raises(rep.ReportAuthError):
         rep._authorize(tpl, "wizard", "case", "1")
@@ -166,7 +166,7 @@ def test_report_authorization_matrix():
     with pytest.raises(rep.ScopeError):
         rep._authorize(tpl, "investigating_officer", "case", None)    # missing scope ref
     rep._authorize(tpl, "investigating_officer", "case", "1")         # ok
-    rep._authorize(tpl, "system_admin", "case", "1")          # super_admin always ok
+    rep._authorize(tpl, "system_admin", "case", "1")          # system_admin always ok
 
 
 def test_report_render_has_watermark_and_hash_reproducible():

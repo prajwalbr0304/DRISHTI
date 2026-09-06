@@ -381,3 +381,35 @@ class TimelineResponse(BaseModel):
     count: int
     event_backed: bool = False
     entries: list[TimelineEntry] = Field(default_factory=list)
+
+
+class NextHearingRow(BaseModel):
+    """One upcoming hearing. `days_away` is counted from the corpus as-of date, not
+    from today, because the synthetic dataset ends before the current date."""
+    court_event_id: int
+    case_id: int
+    case_number: Optional[str] = None
+    scheduled_on: Optional[str] = None
+    days_away: Optional[int] = None
+    unit_id: Optional[int] = None
+    unit_name: Optional[str] = None
+    district_name: Optional[str] = None
+    court_name: Optional[str] = None
+
+
+class NextHearingsResponse(BaseModel):
+    scope: dict[str, Any] = Field(default_factory=dict)
+    #: The corpus reference point — the last court event that actually happened.
+    #: Reported so "in 14 days" is anchored to something the caller can see.
+    as_of: Optional[str] = None
+    data_age_days: Optional[int] = None
+    #: None, never 0, when nothing is scheduled: "no hearing listed" and "a hearing
+    #: today" are different statements and must not render identically.
+    days_to_next_hearing: Optional[int] = None
+    next_hearing_on: Optional[str] = None
+    pending_hearings: int = 0
+    cases_awaiting_hearing: int = 0
+    hearings: list[NextHearingRow] = Field(default_factory=list)
+    empty: bool = True
+    limitations: list[str] = Field(default_factory=list)
+    dataset: str = "synthetic"

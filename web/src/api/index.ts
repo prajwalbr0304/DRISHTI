@@ -1,5 +1,6 @@
 import { apiClient } from "@/api/client";
 import { adminApi } from "@/api/endpoints/admin";
+import { adminConsoleApi } from "@/api/endpoints/adminConsole";
 import { analyticsApi } from "@/api/endpoints/analytics";
 import { boardApi } from "@/api/endpoints/board";
 import { casesApi } from "@/api/endpoints/cases";
@@ -22,7 +23,8 @@ import { livefeedApi } from "@/api/endpoints/livefeed";
 import { moneyApi } from "@/api/endpoints/money";
 import { notificationsApi } from "@/api/endpoints/notifications";
 import { orgApi } from "@/api/endpoints/org";
-import { performanceApi } from "@/api/endpoints/performance";
+import { outcomesApi } from "@/api/endpoints/outcomes";
+import { dashboardApi, performanceApi } from "@/api/endpoints/performance";
 import { ragApi } from "@/api/endpoints/rag";
 import { reportsApi } from "@/api/endpoints/reports";
 import { riskApi } from "@/api/endpoints/risk";
@@ -55,8 +57,16 @@ export const api = {
   governance: governanceApi,
   workload: workloadApi,
   admin: adminApi,
+  /** Organisation administration: UI visibility, custom roles, seat profiles.
+   *  Separate from `admin` (platform operations) because it is a different job. */
+  adminConsole: adminConsoleApi,
   org: orgApi,
+  outcomes: outcomesApi,
   performance: performanceApi,
+  /** Rollup-backed count KPIs. Same numbers as `performance`, one cheap query —
+   *  but it can decline (503) when the rollup's policy attestation is stale, so
+   *  callers keep the live path as a fallback rather than treating it as gone. */
+  dashboard: dashboardApi,
   notifications: notificationsApi,
   reports: reportsApi,
   rag: ragApi,

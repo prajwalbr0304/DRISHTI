@@ -20,6 +20,7 @@ Safety:
 """
 from __future__ import annotations
 
+import ipaddress
 import sys
 from typing import Any, Optional
 
@@ -111,6 +112,32 @@ def _resolve_user_id(conn, actor: Optional[str]) -> Optional[int]:
         return None
 
 
+def _safe_ip(value: Optional[str]) -> Optional[str]:
+    """An address PostgreSQL's `inet` will accept, or None.
+
+    audit_logs.ip_address is `inet`, and this row is written in the SAME
+    transaction as the operation it records so the two are atomic. That makes an
+    unparseable address destructive out of proportion to its worth: the operation
+    is rolled back because its audit note had a bad IP. Anything that is not an
+    address is therefore dropped to NULL and the caller is still recorded in the
+    detail payload.
+
+    Not hypothetical — a proxy or test harness can supply a hostname rather than
+    an address (Starlette's TestClient sends the literal "testclient"), which
+    failed every audited write behind it.
+    """
+    if not value:
+        return None
+    host = str(value).strip()
+    # X-Forwarded-For style lists: the first hop is the client.
+    if "," in host:
+        host = host.split(",", 1)[0].strip()
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return None
+
+
 def _write(conn, action: str, resource: Optional[str], resource_id: Optional[str],
            actor: Optional[str], detail: dict) -> Optional[int]:
     ctx = current_context()
@@ -123,7 +150,12 @@ def _write(conn, action: str, resource: Optional[str], resource_id: Optional[str
             safe.setdefault("demo_role", ctx.role)
     if eff_actor:
         safe.setdefault("demo_actor", eff_actor)
-    ip = ctx.client_ip if ctx else None
+    raw_ip = ctx.client_ip if ctx else None
+    ip = _safe_ip(raw_ip)
+    # Keep what was actually seen when it could not be stored as an address, so
+    # the trail does not silently lose the origin.
+    if raw_ip and ip is None:
+        safe.setdefault("client_host", _sanitize_value(raw_ip))
     user_id = _resolve_user_id(conn, eff_actor)
     with conn.cursor() as cur:
         cur.execute(

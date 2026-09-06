@@ -5,11 +5,13 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 
 from .. import db
 from ..config import get_settings
 from ..intake import guards
+from ..org.deps import GeoScope, geo_scope, resolve_seat_scope
+from ..org.scope import ScopeContext
 from ..roles import DEFAULT_ROLE
 from . import boundaries as boundaries_mod
 from . import jurisdiction
@@ -25,13 +27,16 @@ BOUNDARY_LEVELS = ("state", "districts", "taluks")
 DB_BOUNDARY_LEVELS = ("state", "district", "taluk", "unit", "sho")
 
 # Roles capped to district aggregates (no point-level incidents/pins/case links).
-# INTERIM ("all roles have access to everything"): none. Add a role id here to
-# re-impose the privacy cap; the check itself stays in one place.
+# Superseded by the SCOPE-based cap below: whether a caller may see point-level
+# incidents depends on the seat's scope_type, not on its role — an SP and an SHO
+# share no role yet both work at point level, while a DGP and an ADGP hold the two
+# most senior roles and neither has a point-level remit.
 POINT_LEVEL_DENY: frozenset[str] = frozenset()
 
 
 def _require_point_level(x_role: Optional[str], what: str) -> str:
-    """Enforce the point-level privacy cap for the resolved caller role."""
+    """Legacy role-based cap. Retained for the endpoints not yet migrated to the
+    scope-based guard; new call sites should depend on `require_point_level`."""
     role = (x_role or get_settings().default_role or DEFAULT_ROLE).strip()
     if role in POINT_LEVEL_DENY:
         raise HTTPException(
@@ -39,6 +44,39 @@ def _require_point_level(x_role: Optional[str], what: str) -> str:
             detail=f"{what} is not available to the '{role}' role "
                    "(district-aggregate views only).")
     return role
+
+
+def _district_scope(geo: GeoScope) -> Optional[list]:
+    """Delegates to GeoScope.effective_district_ids.
+
+    Kept as a local alias so the call sites below read the same as before, but the
+    precedence logic lives in ONE place — an earlier duplicate of it here dropped
+    the explicitly-requested district and silently returned a range seat's whole
+    range when it had asked for a single district.
+    """
+    return geo.effective_district_ids()
+
+
+def require_point_level(request: Request) -> ScopeContext:
+    """Guard for endpoints returning INDIVIDUAL incident locations.
+
+    A precise incident coordinate is close to identifying: it is the scene of one
+    reported crime, at one address, on one date. State and wing seats are
+    accountable for aggregates and have no remit to plot individual incidents, and
+    an unposted seat has no jurisdiction in which to plot them.
+    """
+    scope = resolve_seat_scope(request)
+    if scope.aggregate_only:
+        raise HTTPException(
+            status_code=403,
+            detail=("Point-level incident data is not available to an aggregate-only "
+                    "seat. Hotspots and district trends are."))
+    if not scope.resolved:
+        raise HTTPException(
+            status_code=403,
+            detail=("This seat has no posting on record, so no incident locations "
+                    "are in scope."))
+    return scope
 
 
 def _parse_bbox(bbox: Optional[str]):
@@ -60,18 +98,24 @@ def hotspots(
     end: Optional[dt.date] = None,
     crime_head_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(500, ge=1, le=2000),
+    geo: GeoScope = Depends(geo_scope),
 ):
+    """Hotspots, CONFINED to the caller's jurisdiction and crime heads.
+
+    An aggregate: a hotspot describes a place, never a person, so it is available
+    to every seat including the aggregate-only ones."""
     from ..cases import analytics_policy
 
     try:
-        return service.hotspots(_parse_bbox(bbox), start, end, crime_head_id, limit)
+        return service.hotspots(_parse_bbox(bbox), start, end, crime_head_id, limit,
+                                district_ids=_district_scope(geo),
+                                crime_head_ids=geo.crime_head_ids)
     except analytics_policy.DerivedArtifactUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/trends", response_model=TrendResponse)
 def trends(
-    district_id: Optional[int] = Query(None, ge=1),
     crime_head_id: Optional[int] = Query(None, ge=1),
     sub_head_id: Optional[int] = Query(None, ge=1),
     start: Optional[dt.date] = None,
@@ -79,9 +123,21 @@ def trends(
     window: int = Query(6, ge=2, le=24),
     k: float = Query(2.0, ge=0.5, le=5.0),
     decompose: bool = Query(True),
+    geo: GeoScope = Depends(geo_scope),
 ):
-    return service.trends_series(district_id, crime_head_id, sub_head_id, start, end,
-                                 window, k, decompose)
+    """Monthly trend series, CONFINED to the caller's jurisdiction.
+
+    A wing seat's crime-head confinement takes precedence over an explicitly
+    requested head that lies outside its remit — asking for a head the wing is not
+    accountable for narrows to nothing rather than reaching outside the wing.
+    """
+    head = crime_head_id
+    if geo.crime_head_ids:
+        head = head if head in geo.crime_head_ids else None
+    return service.trends_series(geo.district_id, head, sub_head_id, start, end,
+                                 window, k, decompose,
+                                 district_ids=_district_scope(geo),
+                                 crime_head_ids=geo.crime_head_ids)
 
 
 @router.get("/points", response_model=PointsResponse)
@@ -92,10 +148,19 @@ def points(
     crime_head_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(5000, ge=1, le=20000),
     x_role: Optional[str] = Header(default=None),
+    _seat: ScopeContext = Depends(require_point_level),
+    geo: GeoScope = Depends(geo_scope),
 ):
-    """Point-level incidents for the Live Map (privacy cap; see _require_point_level)."""
+    """Point-level incidents for the Live Map.
+
+    The most privacy-sensitive read in this router: each row is one reported crime
+    at one location on one date. Guarded twice — `require_point_level` refuses
+    aggregate-only and unposted seats outright, and `geo_scope` confines the rows
+    that remain to the seat's own jurisdiction.
+    """
     _require_point_level(x_role, "Point-level incident data")
-    return service.points(_parse_bbox(bbox), start, end, crime_head_id, limit)
+    return service.points(_parse_bbox(bbox), start, end, crime_head_id, limit,
+                          district_ids=_district_scope(geo), unit_id=geo.unit_id)
 
 
 @router.get("/stations", response_model=StationsResponse)

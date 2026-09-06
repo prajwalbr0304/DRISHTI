@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import type { MyScopeResponse } from "@/api/endpoints/org";
 import { useRole } from "@/providers/RoleProvider";
-import type { UserRole } from "@/config/roles";
+import type { ScopeType, UserRole } from "@/config/roles";
 
 /* ============================================================================
    The seat's own region — the district the workspace should open on before the
@@ -41,18 +41,34 @@ export interface SeatRegion {
   /** How `districtId` was arrived at. */
   source: SeatRegionSource;
   loading: boolean;
+  /** The seat's scope type — what actually determines which board renders and
+   *  how much data is in scope. Authoritative from the server. */
+  scopeType: ScopeType;
+  /** Districts a range seat covers. null when not range-scoped. */
+  districtIds: number[] | null;
+  /** Wing / range the seat is anchored to, when applicable. */
+  wingId: number | null;
+  rangeId: number | null;
+  /** Crime heads a wing seat is limited to. null = every head. */
+  crimeHeadIds: number[] | null;
+  /** True when the seat must never read individual case rows (state / wing). */
+  aggregateOnly: boolean;
+  /** True when this seat may be recorded as the IO of a case. */
+  isLeadInvestigator: boolean;
 }
 
 /** Scope levels that command more than one district — no single-district default. */
 const BROAD_LEVELS = new Set(["state", "range"]);
 
-/** Fallback breadth by presentation role, for when /org/my-scope is unreachable.
- *  Mirrors the seats whose `scope` in config/roles.ts spans the state. */
+/** Scope types that are not pinned to one district. `wing` belongs here because a
+ *  wing is state-wide geographically and narrowed by crime head instead. */
+const BROAD_SCOPE_TYPES = new Set<ScopeType>(["state", "wing", "platform"]);
+
+/** Fallback breadth by role, for when /org/my-scope is unreachable. Only the two
+ *  roles that are inherently unpinned; every other role must resolve a posting
+ *  before it sees anything, so guessing breadth for them would be wrong. */
 const BROAD_ROLES = new Set<UserRole>([
   "dgp_state_command",
-  "adgp_igp_range",
-  "crime_analyst",
-  "cyber_cell",
   "system_admin",
 ]);
 
@@ -77,25 +93,68 @@ export function resolveSeatRegion(
   { role, loading }: { role: UserRole; loading: boolean },
 ): SeatRegion {
   const level = scope?.scope_level ?? "";
+  const pinned = scope?.district_ids ?? null;
+
+  const seat = {
+    scopeType: (scope?.scope_type as ScopeType | undefined) ?? "unresolved",
+    districtIds: pinned,
+    wingId: scope?.wing_id ?? null,
+    rangeId: scope?.range_id ?? null,
+    crimeHeadIds: scope?.crime_head_ids ?? null,
+    aggregateOnly: scope?.aggregate_only ?? false,
+    isLeadInvestigator: scope?.is_lead_investigator ?? false,
+    loading,
+  };
 
   // A trusted assignment wins whenever the server pinned exactly one district.
-  // More than one (a range with explicit districts) is not a single default, so
-  // it falls through rather than arbitrarily picking the first.
-  const pinned = scope?.district_ids ?? null;
+  // More than one (a range) is not a single default, so it falls through rather
+  // than arbitrarily picking the first of five.
   if (pinned?.length === 1) {
     return {
+      ...seat,
       districtId: pinned[0],
       scopeLevel: level || "district",
       source: "trusted-assignment",
-      loading,
     };
   }
 
-  // State/range seat: unpinned is the correct answer, not a missing one.
-  if (level ? BROAD_LEVELS.has(level) : BROAD_ROLES.has(role)) {
-    return { districtId: null, scopeLevel: level || "state", source: "role-default", loading };
+  // Not district-pinned by remit: unpinned is the correct answer here, not a
+  // missing one. `wing` counts because a wing is state-wide geographically.
+  if (scope?.scope_type
+      ? BROAD_SCOPE_TYPES.has(scope.scope_type as ScopeType)
+      : (level ? BROAD_LEVELS.has(level) : BROAD_ROLES.has(role))) {
+    return {
+      ...seat,
+      districtId: null,
+      scopeLevel: level || "state",
+      source: "role-default",
+    };
   }
 
-  // District/station seat with nothing on record — state-wide, and say so.
-  return { districtId: null, scopeLevel: level || "district", source: "unresolved", loading };
+  // A range seat with several districts is genuinely resolved; it just has no
+  // single default district for the top-bar selector.
+  if (pinned && pinned.length > 1) {
+    return {
+      ...seat,
+      districtId: null,
+      scopeLevel: level || "range",
+      source: "trusted-assignment",
+    };
+  }
+
+  // Posted seat with nothing on record. Deliberately resolves to null rather than
+  // inventing a district: inventing one would put a jurisdiction in the selector
+  // the officer was never posted to, and every widget would silently report on
+  // somewhere else.
+  return {
+    ...seat,
+    districtId: null,
+    scopeLevel: level || "district",
+    source: "unresolved",
+  };
+}
+
+/** The seat's scope type on its own — what board selection keys off. */
+export function useSeatScopeType(): ScopeType {
+  return useMyScope().scopeType;
 }

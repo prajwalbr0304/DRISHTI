@@ -258,7 +258,14 @@ def district_forecast(district_id: int, head_id: Optional[int] = None,
 
 
 def forecast_map(layer: str = "fused", head_id: Optional[int] = None,
-                 bbox: Optional[tuple] = None) -> ForecastMapResponse:
+                 bbox: Optional[tuple] = None,
+                 district_ids: Optional[list] = None) -> ForecastMapResponse:
+    """Forecast cells for the map, optionally confined to a seat's districts.
+
+    ``district_ids`` is the SEAT's confinement. An EMPTY list means a seat entitled
+    to nothing and yields no cells, rather than being ignored and returning the
+    whole state.
+    """
     from ..cases import analytics_policy
 
     q = ('SELECT cp."PredictionID", cp."DistrictID", ST_Y(cp."geom"), ST_X(cp."geom"), '
@@ -270,6 +277,12 @@ def forecast_map(layer: str = "fused", head_id: Optional[int] = None,
          'WHERE cp."Features"->>\'layer\'=%s AND cp."CrimeHeadID" IS NOT DISTINCT FROM %s '
          'AND cp."geom" IS NOT NULL')
     args = [layer, head_id]
+    if district_ids is not None:
+        if not district_ids:
+            q += ' AND FALSE'
+        else:
+            q += ' AND cp."DistrictID" = ANY(%s)'
+            args.append([int(d) for d in district_ids])
     if bbox:
         q += ' AND cp."geom" && ST_MakeEnvelope(%s,%s,%s,%s,4326)'
         args += list(bbox)

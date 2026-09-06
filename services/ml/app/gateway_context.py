@@ -48,9 +48,8 @@ _VALID_SCOPES = ("gateway", "service")
 # depth): a signed context carrying any other non-empty role is rejected as
 # forged/misconfigured. (test_gateway_authz asserts this stays in sync.)
 FUNCTIONAL_ROLES = frozenset({
-    "dgp_state_command", "adgp_igp_range", "sp_district_command", "dysp_acp",
-    "sho", "investigating_officer", "crime_analyst", "cyber_cell",
-    "traffic_command", "system_admin",
+    "dgp_state_command", "senior_command", "district_command",
+    "sho", "investigating_officer", "system_admin",
 })
 # A service-scope context (event/cron/job) is not a user seat; it carries the
 # default role only and is authorised by its service scope, not a functional role.

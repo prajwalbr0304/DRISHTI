@@ -117,7 +117,7 @@ def test_restricted_statement_visible_to_command_seats(rw_rollback):
         statement_text="Sensitive witness account naming a suspect."), "investigating_officer")
     # INTERIM ("all roles have access to everything"): every command seat may
     # read restricted statement text.
-    as_analyst = cw._serialize_statement(conn, sid, "crime_analyst")
+    as_analyst = cw._serialize_statement(conn, sid, "senior_command")
     assert as_analyst.is_restricted and not as_analyst.access_limited
     assert "Sensitive witness" in as_analyst.current_text
     # A role outside the canonical set is still served the redaction.
@@ -204,7 +204,7 @@ def test_lab_result_create_update_and_restricted_redaction(rw_rollback):
         "investigating_officer")
     # INTERIM: a command seat sees the restricted summary; a non-canonical role
     # still gets the redaction.
-    labs_analyst = cw._list_labs(conn, cid, "crime_analyst")
+    labs_analyst = cw._list_labs(conn, cid, "senior_command")
     lab = next(x for x in labs_analyst.items if x.lab_result_id == lid)
     assert not lab.access_limited and "Match" in lab.result_summary
     labs_other = cw._list_labs(conn, cid, "wizard")

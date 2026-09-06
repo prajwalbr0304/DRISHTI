@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..intake import guards
+from ..org.deps import GeoScope, geo_scope
 from . import schemas as S, service
 from .service import CaseworkConflict, CaseworkNotFound, CaseworkValidationError
 
@@ -159,3 +160,26 @@ def add_lifecycle_event(cid: int, body: S.LifecycleEventInput,
                         _w=Depends(guards.require_write_allowed),
                         _g=Depends(guards.require_submit_enabled)):
     return _call(service.add_lifecycle_event, cid, body, role)
+
+
+@router.get("/hearings/next", response_model=S.NextHearingsResponse)
+def next_hearings(limit: int = Query(25, ge=1, le=100),
+                  geo: GeoScope = Depends(geo_scope)):
+    """Soonest scheduled hearings in the caller's scope.
+
+    Unblocks the "Next court date" KPI, which shipped `pending` because nothing in
+    the corpus was scheduled-but-not-yet-heard. Migration 036 and datagen now write
+    the adjourned-to date for cases awaiting trial.
+
+    Scoped through ``geo_scope`` rather than this module's per-case guards: those
+    answer "may this caller open case 4712", and this is an aggregate over whichever
+    cases the seat commands. ``effective_district_ids()`` keeps a range seat's whole
+    district set and keeps the EMPTY set, so an unposted seat sees no hearings rather
+    than the state's.
+
+    Available to aggregate-only seats: counts and court dates, no party names. The
+    listed rows carry a case NUMBER for navigation, which is the same identifier the
+    caseload endpoints already expose to these seats.
+    """
+    return service.next_hearings(
+        district_ids=geo.effective_district_ids(), unit_id=geo.unit_id, limit=limit)

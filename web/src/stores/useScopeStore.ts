@@ -20,12 +20,26 @@ import { persist } from "zustand/middleware";
 interface ScopeState {
   /** active district id, or null for "All districts" */
   districtId: number | null;
+  /** Active station (Unit) id, or null. One level BELOW district: drilling into a
+   *  station always implies its district, so the two are set together and clearing
+   *  the district clears this too. Kept separate from `districtId` rather than
+   *  overloading it, because "district 4, all stations" and "district 4, station
+   *  112" are different views and a single field cannot hold both. */
+  unitId: number | null;
+  /** Display label for the drilled-into station, so the trail can name it without
+   *  a second lookup. Presentation only. */
+  unitLabel: string | null;
   /** true once the USER has picked a district. Guards the seat default below:
    *  an explicit choice must never be silently overwritten, including an explicit
    *  choice of "All districts" — which is indistinguishable from the initial
    *  state by `districtId` alone, hence this flag. */
   chosen: boolean;
   setDistrictId: (id: number | null) => void;
+  /** Drill into a station. Sets the district too, so the trail is never a station
+   *  with no district above it. */
+  drillToUnit: (unitId: number, districtId: number, label?: string) => void;
+  /** Step back up to district grain, keeping the district. */
+  clearUnit: () => void;
   /** Adopt the seat's own district as the starting scope (see useSeatScopeAnchor).
    *  A no-op once the user has chosen, so it can be called freely on every
    *  render/route. Re-applies when the seat changes, so switching from an SHO view
@@ -37,22 +51,41 @@ export const useScopeStore = create<ScopeState>()(
   persist(
     (set) => ({
       districtId: null,
+      unitId: null,
+      unitLabel: null,
       chosen: false,
-      setDistrictId: (districtId) => set({ districtId, chosen: true }),
+      // Changing district drops any station: station 112 is not in district 9, so
+      // carrying it across would produce a filter that matches nothing.
+      setDistrictId: (districtId) =>
+        set({ districtId, unitId: null, unitLabel: null, chosen: true }),
+      drillToUnit: (unitId, districtId, label) =>
+        set({ unitId, districtId, unitLabel: label ?? null, chosen: true }),
+      clearUnit: () => set({ unitId: null, unitLabel: null }),
       seedFromSeat: (districtId) =>
         set((s) => (s.chosen || s.districtId === districtId ? s : { districtId })),
     }),
     {
       name: "drishti.scope",
-      version: 2,
-      partialize: (s) => ({ districtId: s.districtId, chosen: s.chosen }),
+      version: 3,
+      partialize: (s) => ({
+        districtId: s.districtId, unitId: s.unitId, unitLabel: s.unitLabel,
+        chosen: s.chosen,
+      }),
       // v1 had no `chosen` flag. Anyone carrying a real district plainly picked
       // it, so treat that as chosen and leave it alone; anyone sitting on "All
       // districts" is indistinguishable from a fresh install and gets the seat
       // default instead.
+      // v1 had no `chosen`; v2 had no station level. A persisted v2 state carries
+      // no unitId, and `undefined` there would read as "not yet loaded" rather
+      // than "no station", so it is normalised to null.
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<ScopeState>;
-        return { ...p, chosen: p.chosen ?? p.districtId != null } as ScopeState;
+        return {
+          ...p,
+          chosen: p.chosen ?? p.districtId != null,
+          unitId: p.unitId ?? null,
+          unitLabel: p.unitLabel ?? null,
+        } as ScopeState;
       },
     },
   ),

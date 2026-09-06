@@ -148,7 +148,7 @@ def test_scope_aggregate_only_role_allows_aggregate(aggregate_only_role):
 
 
 def test_scope_blocks_governance_tables_for_all_roles():
-    for role in ("investigating_officer", "crime_analyst", "sho", "dgp_state_command", "system_admin"):
+    for role in ("investigating_officer", "senior_command", "sho", "dgp_state_command", "system_admin"):
         for sql in ('SELECT * FROM users', 'SELECT * FROM audit_logs',
                     'SELECT * FROM "ChatMessage"'):
             with pytest.raises(scope.ScopeError):
@@ -179,12 +179,12 @@ def test_referenced_tables():
 # blocks fire pre-database (defense-in-depth over the read-only role).
 def test_executor_rejects_dml_before_db():
     with pytest.raises(guard.GuardError):
-        executor.execute_select('DELETE FROM "State"', "crime_analyst")
+        executor.execute_select('DELETE FROM "State"', "senior_command")
 
 
 def test_executor_rejects_injection_before_db():
     with pytest.raises(guard.GuardError):
-        executor.execute_select('SELECT 1; DROP TABLE "State"', "crime_analyst")
+        executor.execute_select('SELECT 1; DROP TABLE "State"', "senior_command")
 
 
 def test_executor_escalation_aggregate_only_pii_fails(aggregate_only_role):
@@ -218,7 +218,7 @@ def test_raw_model_case_aggregate_still_fails_closed():
     # unchanged guarantee: the model's own string cannot cross the boundary
     assert executor.needs_case_aggregate_seal(_MODEL_AGG) is True
     with pytest.raises(scope.ScopeError):
-        executor.execute_select(_MODEL_AGG, "crime_analyst")
+        executor.execute_select(_MODEL_AGG, "senior_command")
 
 
 def test_model_case_aggregate_is_authorized_by_composing_policy():
@@ -235,7 +235,7 @@ def test_model_case_aggregate_is_authorized_by_composing_policy():
     assert scope.is_aggregate(text)
     # the composed string satisfies the executor's exact-object seal
     assert executor.needs_case_aggregate_seal(sealed) is False
-    scope.enforce_scope(guard.validate_select(sealed), "crime_analyst")
+    scope.enforce_scope(guard.validate_select(sealed), "senior_command")
 
 
 def test_composed_model_aggregate_passes_aggregate_only_scope(aggregate_only_role):
@@ -245,7 +245,7 @@ def test_composed_model_aggregate_passes_aggregate_only_scope(aggregate_only_rol
 
 
 def test_deterministic_plan_is_not_rewrapped():
-    plan = FallbackPlanner().plan("top 5 districts by theft", "crime_analyst", "en", [])
+    plan = FallbackPlanner().plan("top 5 districts by theft", "senior_command", "en", [])
     assert executor.needs_case_aggregate_seal(plan.sql) is False
 
 
@@ -282,13 +282,13 @@ def test_non_case_aggregate_needs_no_seal():
     ("show recent murder cases in Mysuru", "list_cases"),
 ])
 def test_fallback_planner_intents(question, intent):
-    plan = FallbackPlanner().plan(question, "crime_analyst", "en", [])
+    plan = FallbackPlanner().plan(question, "senior_command", "en", [])
     assert plan.intent == intent
     assert plan.sql and guard.validate_select(plan.sql)   # every emitted SQL is guard-valid
 
 
 def test_fallback_planner_clarifies_unmatched():
-    plan = FallbackPlanner().plan("hello there friend", "crime_analyst", "en", [])
+    plan = FallbackPlanner().plan("hello there friend", "senior_command", "en", [])
     assert plan.needs_clarification and not plan.sql
 
 
@@ -303,7 +303,7 @@ def test_fallback_planner_clarifies_unmatched():
     ("how many theft cases were registered at each police station", "count"),
 ])
 def test_fallback_reference_entity_counts_do_not_capture_case_counts(question, intent):
-    plan = FallbackPlanner().plan(question, "crime_analyst", "en", [])
+    plan = FallbackPlanner().plan(question, "senior_command", "en", [])
     assert plan.intent == intent
     assert plan.sql and guard.validate_select(plan.sql)
 
@@ -421,7 +421,7 @@ def test_engine_preserves_multi_district_breakdown():
 def test_fallback_multiturn_pronoun_resolution():
     history = [Turn("user", "cyber crime in Bengaluru City"),
                Turn("assistant", "…")]
-    plan = FallbackPlanner().plan("how many there?", "crime_analyst", "en", history)
+    plan = FallbackPlanner().plan("how many there?", "senior_command", "en", history)
     assert plan.sql and "Bengaluru" in plan.sql and "cyber" in plan.sql.lower()
 
 
@@ -470,7 +470,7 @@ def test_arbitrary_openai_compatible_planner_fails_closed():
         nlsql_max_history_turns = 6
 
     with pytest.raises(RuntimeError, match="disabled"):
-        LLMPlanner(_S()).plan("count cases", "crime_analyst", "en", [])
+        LLMPlanner(_S()).plan("count cases", "senior_command", "en", [])
 
 
 # ============================ integration (DB) =============================
@@ -478,7 +478,7 @@ def test_arbitrary_openai_compatible_planner_fails_closed():
 def test_executor_runs_valid_select_read_only():
     sealed = executor.authorize_model_case_aggregate(VALID)
     assert sealed is not None
-    sql, columns, rows = executor.execute_select(sealed, "crime_analyst")
+    sql, columns, rows = executor.execute_select(sealed, "senior_command")
     assert "drishti_case_master_policy" in sql
     assert "DistrictName" in columns and "case_count" in columns
     assert isinstance(rows, list)
@@ -488,14 +488,14 @@ def test_executor_runs_valid_select_read_only():
 def test_executor_enforces_row_cap():
     from app.config import get_settings
     cap = get_settings().nlsql_row_cap
-    _, _, rows = executor.execute_select('SELECT cm."CaseMasterID" FROM "CaseMaster" cm', "crime_analyst")
+    _, _, rows = executor.execute_select('SELECT cm."CaseMasterID" FROM "CaseMaster" cm', "senior_command")
     assert len(rows) <= cap
 
 
 @requires_db
 def test_engine_answer_is_grounded_cited_and_persisted():
     from app import db
-    o = engine.ask("crime_analyst", "top 5 districts by theft")
+    o = engine.ask("senior_command", "top 5 districts by theft")
     assert not o.blocked and not o.needs_clarification
     assert o.sql and "select" in o.sql.lower()
     assert 0.0 <= o.confidence <= 1.0
@@ -527,15 +527,15 @@ def test_engine_command_role_answer_is_not_forced_to_aggregate():
 
 @requires_db
 def test_engine_multiturn_memory_resolves_reference():
-    t1 = engine.ask("crime_analyst", "cyber crime in Bengaluru City")
-    t2 = engine.ask("crime_analyst", "how many there?", session_id=t1.session_id)
+    t1 = engine.ask("senior_command", "cyber crime in Bengaluru City")
+    t2 = engine.ask("senior_command", "how many there?", session_id=t1.session_id)
     assert t1.session_id == t2.session_id
     assert "Bengaluru" in (t2.sql or "") and "cyber" in (t2.sql or "").lower()
 
 
 @requires_db
 def test_engine_clarifies_ambiguous_without_sql():
-    o = engine.ask("crime_analyst", "hello")
+    o = engine.ask("senior_command", "hello")
     assert o.needs_clarification and not o.sql
 
 
@@ -562,20 +562,20 @@ def test_glossary_has_core_police_terms():
     ("ಮೈಸೂರಿನಲ್ಲಿ ಸೈಬರ್ ಪ್ರಕರಣಗಳನ್ನು ತೋರಿಸಿ", "list_cases"),  # show cyber cases in Mysuru
 ])
 def test_fallback_kannada_intents(question, intent):
-    plan = FallbackPlanner().plan(question, "crime_analyst", "kn", [])
+    plan = FallbackPlanner().plan(question, "senior_command", "kn", [])
     assert plan.intent == intent
     assert plan.sql and guard.validate_select(plan.sql)   # KN questions still yield guard-valid SQL
     assert plan.language == "kn"
 
 
 def test_fallback_kannada_resolves_district_and_crime():
-    plan = FallbackPlanner().plan("ಬೆಂಗಳೂರಿನಲ್ಲಿ ಎಷ್ಟು ಸೈಬರ್ ಅಪರಾಧ", "crime_analyst", "kn", [])
+    plan = FallbackPlanner().plan("ಬೆಂಗಳೂರಿನಲ್ಲಿ ಎಷ್ಟು ಸೈಬರ್ ಅಪರಾಧ", "senior_command", "kn", [])
     assert "Bengaluru" in plan.sql and "cyber" in plan.sql.lower()
 
 
 def test_fallback_kannada_multiturn_pronoun():
     history = [Turn("user", "ಬೆಂಗಳೂರಿನಲ್ಲಿ ಸೈಬರ್ ಅಪರಾಧ"), Turn("assistant", "…")]
-    plan = FallbackPlanner().plan("ಅಲ್ಲಿ ಎಷ್ಟು?", "crime_analyst", "kn", history)   # "how many there?"
+    plan = FallbackPlanner().plan("ಅಲ್ಲಿ ಎಷ್ಟು?", "senior_command", "kn", history)   # "how many there?"
     assert plan.sql and "Bengaluru" in plan.sql and "cyber" in plan.sql.lower()
 
 
@@ -589,7 +589,7 @@ def test_kannada_scope_still_enforced_for_an_aggregate_only_role(aggregate_only_
 
 @requires_db
 def test_engine_answers_in_kannada():
-    o = engine.ask("crime_analyst", "ಕಳ್ಳತನದಲ್ಲಿ ಟಾಪ್ 5 ಜಿಲ್ಲೆಗಳು")
+    o = engine.ask("senior_command", "ಕಳ್ಳತನದಲ್ಲಿ ಟಾಪ್ 5 ಜಿಲ್ಲೆಗಳು")
     assert o.language == "kn"
     assert not o.blocked
     assert _has_kannada(o.reply)      # the reply is in the asked language
@@ -609,7 +609,7 @@ def test_translate_graceful_without_llm(monkeypatch):
 @requires_db
 def test_engine_persists_low_confidence_voice_transcript():
     from app import db
-    o = engine.ask("crime_analyst", "top 5 districts by theft",
+    o = engine.ask("senior_command", "top 5 districts by theft",
                    voice={"confidence": 0.4, "language": "en"})
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
@@ -627,7 +627,7 @@ def test_engine_persists_low_confidence_voice_transcript():
 @requires_db
 def test_engine_high_confidence_voice_not_flagged():
     from app import db
-    o = engine.ask("crime_analyst", "how many cyber cases in Mysuru",
+    o = engine.ask("senior_command", "how many cyber cases in Mysuru",
                    voice={"confidence": 0.95, "language": "en"})
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
@@ -642,7 +642,7 @@ def test_engine_high_confidence_voice_not_flagged():
 @requires_db
 def test_engine_no_voice_no_transcript():
     from app import db
-    o = engine.ask("crime_analyst", "top 3 districts by robbery")   # typed, not spoken
+    o = engine.ask("senior_command", "top 3 districts by robbery")   # typed, not spoken
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(

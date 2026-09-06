@@ -27,10 +27,21 @@ export type WorkspaceContext = "crime" | "emergency";
 /* ============================================================================
    The sidebar destinations (doc 01 §3). Each maps to a Wave-B capability.
 
-   INTERIM ACCESS MODEL: every command role reaches every destination, so no
-   destination carries a `roles` allow-list today (and `adminOnly` passes for all
-   roles because each RoleDef has `admin: true`). Re-add allow-lists here — with
-   ids from config/roles.ts — when per-role narrowing returns.
+   ACCESS MODEL. Two filters, and they answer different questions.
+
+   `roles` is a static allow-list and is still unused: every command role reaches
+   every destination, and `adminOnly` passes for all roles because each RoleDef has
+   `admin: true`. Re-add allow-lists here — with ids from config/roles.ts — when
+   per-role narrowing returns.
+
+   `requiresCaseLevel` is the filter that IS live, and it keys off the seat's SCOPE
+   rather than its role, because a role cannot express it: an ADGP and a DIG share
+   `senior_command`, and only the ADGP is aggregate-only. It mirrors the server's
+   `require_case_level` guard, so the sidebar stops offering pages that would answer
+   403.
+
+   Neither is an authorization boundary. Both decide what is RENDERED; the server
+   re-derives what may be read on every request.
    ========================================================================== */
 
 export interface Destination {
@@ -49,6 +60,17 @@ export interface Destination {
   adminOnly?: boolean;
   /** optional explicit role allow-list (future scoping) */
   roles?: UserRole[];
+  /** Needs access to INDIVIDUAL records — a case file, a person, a face, a board.
+   *
+   *  Hidden from aggregate-only seats (state and wing scope), which the server
+   *  refuses at `require_case_level`: a DGP is accountable for the whole force and
+   *  has no case-level remit, so leaving these in the sidebar only offers a page
+   *  that answers 403.
+   *
+   *  Deliberately NOT expressed through `roles`. A role cannot decide this: an
+   *  ADGP and a DIG are both `senior_command`, and the ADGP is aggregate-only
+   *  while the DIG commands real districts and reads cases. Scope decides. */
+  requiresCaseLevel?: boolean;
   /** ⌘K keywords */
   keywords?: string[];
   /** which workspace this destination belongs to (default "crime") */
@@ -75,6 +97,8 @@ export const DESTINATIONS: Destination[] = [
     icon: FolderKanban,
     description: "Case decision-support: summaries, similar cases, leads.",
     keywords: ["fir", "investigation", "summary", "leads", "similar"],
+    // Individual case files. /cases enforces require_case_level server-side.
+    requiresCaseLevel: true,
   },
   {
     id: "intake",
@@ -85,6 +109,8 @@ export const DESTINATIONS: Destination[] = [
     icon: FilePlus2,
     description: "Register FIRs/cases: guided intake, bulk import and supervisory review.",
     keywords: ["fir", "intake", "new case", "register", "draft", "import", "review", "inbox"],
+    // Registering an FIR is station work. A state or wing seat has no station.
+    requiresCaseLevel: true,
   },
   {
     id: "people",
@@ -95,6 +121,8 @@ export const DESTINATIONS: Destination[] = [
     icon: Users,
     description: "Persons, gangs, vehicles, phones and accounts — with risk.",
     keywords: ["person", "entity", "offender", "gang", "vehicle", "phone", "risk"],
+    // Names individuals and carries PII, which is the aggregate-only boundary.
+    requiresCaseLevel: true,
   },
   {
     id: "face-search",
@@ -106,6 +134,9 @@ export const DESTINATIONS: Destination[] = [
     description: "Photograph or upload a face and check it against person records.",
     keywords: ["face", "facial", "recognition", "photo", "identify", "biometric",
       "mugshot", "camera", "scan", "suspect", "match"],
+    // Biometric identification of a named individual � the most case-level surface
+    // in the product.
+    requiresCaseLevel: true,
   },
   {
     id: "network",
@@ -116,6 +147,9 @@ export const DESTINATIONS: Destination[] = [
     icon: Share2,
     description: "Link analysis: communities, hidden associations, money trail, paths.",
     keywords: ["graph", "network", "association", "community", "money", "path", "link"],
+    // Link analysis resolves to named people; the aggregate boards deliberately
+    // omit the equivalent KPI card for the same reason.
+    requiresCaseLevel: true,
   },
   {
     id: "board",
@@ -126,6 +160,8 @@ export const DESTINATIONS: Destination[] = [
     icon: Workflow,
     description: "Assemble live objects on a shared canvas; separate evidence from hypotheses.",
     keywords: ["board", "canvas", "link", "hypothesis", "evidence", "palantir", "corkboard", "investigation"],
+    // A board is assembled from individual records.
+    requiresCaseLevel: true,
   },
   {
     id: "map",
@@ -267,11 +303,18 @@ export function visibleDestinations(
   role: UserRole,
   isAdmin: boolean,
   context: WorkspaceContext = "crime",
+  /** Seat-derived facts. Optional so existing callers keep working; omitting
+   *  `aggregateOnly` shows everything, which is the pre-existing behaviour. */
+  seat: { aggregateOnly?: boolean } = {},
 ): Destination[] {
   return DESTINATIONS.filter((d) => {
     if ((d.context ?? "crime") !== context) return false;
     if (d.adminOnly && !isAdmin) return false;
     if (d.roles && !d.roles.includes(role)) return false;
+    // Mirrors the server's require_case_level guard. Without this a DGP's sidebar
+    // offers Cases, Intake, People and Face Recognition, all of which answer 403 —
+    // which reads as a broken product rather than as a scope boundary.
+    if (d.requiresCaseLevel && seat.aggregateOnly) return false;
     return true;
   });
 }

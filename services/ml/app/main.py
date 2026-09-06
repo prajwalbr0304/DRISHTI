@@ -41,9 +41,12 @@ from .internal.router import router as internal_router
 from .stream.router import router as stream_router
 from .predict.router import router as predict_router
 from .admin.router import router as admin_router
+from .admin_console.router import router as admin_console_router
+from .dashboard.router import router as dashboard_router
 from .org.router import router as org_router
 from .scenarios.router import router as scenarios_router
 from .performance.router import router as performance_router
+from .outcomes.router import router as outcomes_router
 from .investigate.router import router as investigate_router
 from .livefeed.router import router as livefeed_router
 from .notifications.router import router as notifications_router
@@ -145,6 +148,13 @@ app.include_router(stream_router)
 app.include_router(predict_router)
 # Phase 15 — admin/governance console, notifications/work, reports, optional RAG.
 app.include_router(admin_router)
+# Organisation administration: UI visibility switches, admin-created roles, role
+# settings and per-seat profile edits. Same /admin prefix, different job from the
+# platform-operations router above.
+app.include_router(admin_console_router)
+# Rollup-backed count KPIs. Separate from /performance because it reads a
+# materialized view and declines to serve one built under a superseded policy.
+app.include_router(dashboard_router)
 # Prompt 20 Part B — organizational hierarchy (rank->role/scope) + SUPERADMIN
 # credential/role provisioning. Scope is always derived server-side.
 app.include_router(org_router)
@@ -154,6 +164,10 @@ app.include_router(scenarios_router)
 # Prompt 20 Part C — supervisor station/officer operational performance metrics
 # (scoped server-side; distinct from the ML workload-band prediction).
 app.include_router(performance_router)
+# Aggregate court outcomes (conviction rate + disposal mix). Counts only, so the
+# aggregate-only command seats can be shown the metric they are judged on without
+# reading case rows.
+app.include_router(outcomes_router)
 # Prompt 20 Part D — case-scoped investigation assistant (thin orchestration over
 # existing case summary/similar/identity/leads/timeline; sends cited objects to Board).
 app.include_router(investigate_router)

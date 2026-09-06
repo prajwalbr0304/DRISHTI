@@ -216,6 +216,14 @@ export function responderMarkers(
   });
 }
 
+/** One responder -> incident arc.
+ *
+ *  Built imperatively below rather than with `.map().filter(predicate)`. That
+ *  matters: a predicate written as `x is { ...; status: string }` is not assignable
+ *  to the mapped element type, because `CctvDispatch["status"]` is a narrower
+ *  literal union — so the filter silently fails to narrow and every `l` in the
+ *  updateTriggers reads as possibly-null. The loop has no predicate, so the
+ *  question never arises. */
 interface DispatchLink {
   from: [number, number];
   to: [number, number];

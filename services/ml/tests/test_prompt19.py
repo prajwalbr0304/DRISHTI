@@ -87,7 +87,7 @@ def test_bedrock_planner_does_not_set_app_token_cap(monkeypatch):
                                 bedrock_direct_sdk_enabled=True))
     monkeypatch.setattr(p, "_client", lambda: _Client())
 
-    plan = p.plan("how many cases", "crime_analyst", "en", [])
+    plan = p.plan("how many cases", "senior_command", "en", [])
 
     assert plan.sql == 'SELECT COUNT(*) FROM "CaseMaster"'
     assert captured["inferenceConfig"] == {"temperature": 0}
@@ -122,7 +122,7 @@ def test_bedrock_planner_uses_direct_sdk_when_adapter_fails_and_opted_in(monkeyp
                                 bedrock_direct_sdk_enabled=True))
     monkeypatch.setattr(p, "_client", lambda: _Client())
 
-    plan = p.plan("how many cases", "crime_analyst", "en", [])
+    plan = p.plan("how many cases", "senior_command", "en", [])
 
     assert plan.sql == 'SELECT COUNT(*) FROM "CaseMaster"'
     assert captured["modelId"] == "zai.glm-4.7-flash"
@@ -146,7 +146,7 @@ def test_bedrock_planner_does_not_bypass_adapter_without_opt_in(monkeypatch):
                                 bedrock_direct_sdk_enabled=False))
 
     with pytest.raises(BedrockAdapterError, match="old adapter unavailable"):
-        p.plan("how many cases", "crime_analyst", "en", [])
+        p.plan("how many cases", "senior_command", "en", [])
 
 
 def test_bedrock_direct_mode_accepts_dedicated_iam_credentials(monkeypatch):
@@ -172,7 +172,7 @@ def test_get_planner_returns_an_object_with_a_name():
 # ==================== F: typed visualization selector =======================
 def _viz(cols, rows, intent, language="en"):
     return viz.build_visualization(cols, rows, intent=intent, language=language,
-                                   citations=[], confidence=0.7, role="crime_analyst",
+                                   citations=[], confidence=0.7, role="senior_command",
                                    row_total=len(rows))
 
 

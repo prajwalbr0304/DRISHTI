@@ -42,11 +42,40 @@ def test_out_of_scope_request_denied():
         scope_mod.enforce_geo_request(sc, unit_id=None, district_id=9)
 
 
-def test_unrestricted_seat_passes_any_filter():
-    sc = scope_mod.derive_scope("system_admin")
-    assert scope_mod.enforce_geo_request(sc, unit_id=5, district_id=2) == (5, 2)
-    sc2 = scope_mod.derive_scope("sho")  # role-default, unrestricted
-    assert scope_mod.enforce_geo_request(sc2, district_id=7) == (None, 7)
+def test_unpinned_seat_passes_any_filter():
+    """Only seats that are unpinned BY REMIT may request any filter."""
+    for role in ("system_admin", "dgp_state_command"):
+        sc = scope_mod.derive_scope(role)
+        assert scope_mod.enforce_geo_request(sc, unit_id=5, district_id=2) == (5, 2), role
+
+
+def test_unposted_seat_is_denied_every_filter():
+    """This assertion is inverted from what it used to be, deliberately.
+
+    It previously read `test_unrestricted_seat_passes_any_filter` and asserted
+    that a role-default SHO could request district 7 — because derive_scope fell
+    through to "no restriction" when a posted seat had no assignment. That made an
+    unposted station chief indistinguishable from the DGP. An unposted seat is now
+    confined to nothing, so any filter it asks for is refused.
+    """
+    sc = scope_mod.derive_scope("sho")
+    assert sc.scope_type == "unresolved"
+    with pytest.raises(scope_mod.ScopeDenied):
+        scope_mod.enforce_geo_request(sc, district_id=7)
+    with pytest.raises(scope_mod.ScopeDenied):
+        scope_mod.enforce_geo_request(sc, unit_id=90)
+
+
+def test_posted_station_seat_is_confined_to_its_own_station():
+    sc = scope_mod.derive_scope("sho", unit_id=90, district_id=3, scope_type="station")
+    # An unfiltered request is narrowed to the seat's own station rather than being
+    # widened to the whole district. The district comes back None because the unit
+    # already implies it — adding it would be a redundant predicate, not a wider one.
+    assert scope_mod.enforce_geo_request(sc) == (90, None)
+    # Asking for its own district alongside its own station is still accepted.
+    assert scope_mod.enforce_geo_request(sc, unit_id=90, district_id=3) == (90, 3)
+    with pytest.raises(scope_mod.ScopeDenied):
+        scope_mod.enforce_geo_request(sc, unit_id=91)
 
 
 # ============================ API role gate ================================
@@ -59,8 +88,12 @@ def test_performance_role_gate_refuses_a_non_canonical_role():
 # ============================ real metrics (DB) ============================
 @requires_db
 def test_performance_overview_shape_and_denominators():
+    # A state seat, because only an unpinned seat may request an arbitrary
+    # district. An `sho` header resolves to an unposted seat, which is now
+    # confined to nothing and correctly refused (see
+    # test_unposted_seat_is_denied_every_filter).
     r = client.get("/performance/overview", params={"district_id": 1, "window_days": 90},
-                   headers=_hdr("sho"))
+                   headers=_hdr("dgp_state_command"))
     assert r.status_code == 200
     body = r.json()
     assert body["empty"] is False

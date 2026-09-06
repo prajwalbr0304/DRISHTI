@@ -321,7 +321,7 @@ def test_download_url_is_short_lived(rw_rollback):
     gw = FakeS3Gateway()
     item_id = _create(conn, case_id=_case_id(conn))
     _upload(conn, item_id, gw, b"downloadable synthetic bytes")
-    resp = svc._download_url(conn, item_id, None, "demo.crime_analyst", gw)
+    resp = svc._download_url(conn, item_id, None, "demo.senior_command", gw)
     expiry = get_settings().s3_presign_expiry_s
     assert resp.expires_in == expiry
     assert expiry <= 3600                              # short-lived

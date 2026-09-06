@@ -79,16 +79,104 @@ export interface MyScopeResponse {
   user_id?: number | null;
   username?: string | null;
   rank?: string | null;
-  /** provenance of the derivation, e.g. "trusted-user-record" / "role-default" */
+  /** provenance of the derivation, e.g. "trusted-seat-record" / "role-default" */
   source: string;
   /** false when the server had to fall back instead of reading an assignment */
   trusted: boolean;
   note?: string;
+  /* --- seat model (migrations 026/027) --------------------------------- */
+  /** state | wing | range | district | commissionerate | station |
+   *  assigned_case | platform | unresolved. Authoritative; drives board choice. */
+  scope_type?: string;
+  wing_id?: number | null;
+  range_id?: number | null;
+  /** Crime heads a wing seat is limited to. null = every head. */
+  crime_head_ids?: number[] | null;
+  /** True when the seat must never read individual case rows (state / wing). */
+  aggregate_only?: boolean;
+  /** True when the seat may be recorded as the IO of a case. */
+  is_lead_investigator?: boolean;
+}
+
+/* --- organizational reference + seat directory ------------------------- */
+export interface WingOut {
+  wing_id: number;
+  wing_code: string;
+  wing_name: string;
+  description?: string | null;
+  crime_head_ids: number[];
+  crime_head_names: string[];
+  /** True when the wing has no head filter (it covers the whole taxonomy). */
+  covers_all_heads: boolean;
+  seat_count: number;
+}
+
+export interface RangeDistrict {
+  district_id: number;
+  district_name: string;
+}
+
+export interface RangeOut {
+  range_id: number;
+  range_code: string;
+  range_name: string;
+  hq_district_id?: number | null;
+  districts: RangeDistrict[];
+  district_count: number;
+  station_count: number;
+  seat_count: number;
+}
+
+export interface SeatOut {
+  user_id: number;
+  username: string;
+  display_name?: string | null;
+  role: string;
+  scope_type: string;
+  /** Rank-facing label, e.g. "DIG / Range Command". Derived from scope_type. */
+  scope_label: string;
+  posting_label?: string | null;
+  rank_label?: string | null;
+  designation_label?: string | null;
+  is_lead_investigator: boolean;
+  is_active: boolean;
+  wing_id?: number | null;
+  range_id?: number | null;
+  district_id?: number | null;
+  unit_id?: number | null;
+}
+
+export interface SeatsResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: SeatOut[];
+  scope_type_counts: Record<string, number>;
+  note?: string;
+}
+
+export interface SeatQuery {
+  q?: string;
+  role?: string;
+  scope_type?: string;
+  active_only?: boolean;
+  page?: number;
+  page_size?: number;
 }
 
 export const orgApi = {
   /** GET /org/my-scope — the caller's trusted, server-derived scope. Ungated. */
   myScope: (s?: AbortSignal) => apiClient.get<MyScopeResponse>("/org/my-scope", undefined, s),
+  wings: (s?: AbortSignal) =>
+    apiClient.get<{ total: number; items: WingOut[]; note?: string }>(
+      "/org/wings", undefined, s),
+  ranges: (s?: AbortSignal) =>
+    apiClient.get<{
+      total: number; items: RangeOut[]; commissionerates: RangeDistrict[]; note?: string;
+    }>("/org/ranges", undefined, s),
+  /** Searchable seat directory (~11,800 seats), for the login seat picker. */
+  seats: (params: SeatQuery = {}, s?: AbortSignal) =>
+    apiClient.get<SeatsResponse>("/org/seats", { ...params }, s),
   hierarchy: (s?: AbortSignal) => apiClient.get<HierarchyResponse>("/org/hierarchy", undefined, s),
   scopeMatrix: (s?: AbortSignal) => apiClient.get<ScopeMatrix>("/org/scope-matrix", undefined, s),
   roles: (s?: AbortSignal) => apiClient.get<OrgRolesResponse>("/org/roles", undefined, s),

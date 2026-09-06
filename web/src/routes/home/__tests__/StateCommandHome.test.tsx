@@ -27,6 +27,7 @@ const overview = vi.fn();
 const communitiesList = vi.fn();
 const notificationsList = vi.fn();
 const tasks = vi.fn();
+const outcomesOverview = vi.fn();
 
 vi.mock("@/api", () => ({
   api: {
@@ -48,6 +49,7 @@ vi.mock("@/api", () => ({
     explain: { contract: (...a: unknown[]) => contract(...a) },
     intake: { qualityIssues: (...a: unknown[]) => qualityIssues(...a) },
     performance: { overview: (...a: unknown[]) => overview(...a) },
+    outcomes: { overview: (...a: unknown[]) => outcomesOverview(...a) },
     graph: { communitiesList: (...a: unknown[]) => communitiesList(...a) },
     notifications: {
       list: (...a: unknown[]) => notificationsList(...a),
@@ -233,6 +235,21 @@ function seedHappyPath() {
   });
   notificationsList.mockResolvedValue({ total: 60, unread: 7, items: [] });
   tasks.mockResolvedValue({ total: 19, items: [] });
+  /* Court outcomes. The two rates are deliberately different denominators, which
+     is the whole point of the endpoint: conviction is over VERDICTS
+     (1,340 / 2,482 = 53.99%), prosecution is over ALL FINAL DISPOSALS
+     (2,482 / 8,901 = 27.9%). Folding B-reports and C-reports into the conviction
+     denominator would report 15.1% and confuse "never prosecuted" with "lost". */
+  outcomesOverview.mockResolvedValue({
+    result: RESULT,
+    scope: {},
+    total_disposed: 8901,
+    verdicts: 2482,
+    convicted: 1340,
+    acquitted: 1142,
+    conviction_rate: 0.5399,
+    prosecution_rate: 0.2789,
+  });
 }
 
 function wrap(node: ReactNode) {
@@ -520,17 +537,37 @@ describe("StateCommandHome — band G: conviction rate", () => {
     seedHappyPath();
   });
 
-  it("marks conviction rate as awaiting an API instead of fabricating one", async () => {
+  /* This card used to be a `pending` placeholder reading "awaiting API", because
+     no endpoint reported court outcomes. /outcomes/overview now does, so the card
+     carries a real rate and this assertion moved with it.
+
+     What matters is the DENOMINATOR: convictions over cases that reached a
+     VERDICT — convictions plus acquittals — not over all disposals. A B-report
+     (undetected) or C-report (false complaint) is a decision not to prosecute, so
+     folding those in conflates "never went to court" with "lost in court". On the
+     seeded data that is 53.97% versus 16.13%, so it is not a rounding matter. */
+  it("reports conviction rate against verdicts, not all disposals", async () => {
     wrap(<StateCommandHome />);
     await screen.findByText("Conviction rate");
 
     const card = kpi("Conviction rate");
-    expect(card.textContent).toContain("awaiting API");
-    // pending needs no request, so the em-dash is there on first paint
-    expect(kpiValue("Conviction rate")).toBe("—");
-    // pending suppresses the delta and the sparkline, so nothing on this card
-    // can read as a measurement
-    expect(card.textContent).not.toContain("vs. prior");
-    expect(card.textContent).not.toContain("%");
+    expect(card.textContent).not.toContain("awaiting API");
+
+    // A measured rate, not the placeholder em-dash. The denominator itself is
+    // asserted server-side in services/ml/tests/test_outcomes.py, which is where
+    // the convicted/(convicted+acquitted) arithmetic lives; the card only has to
+    // stop claiming the metric is unavailable.
+    // 1,340 of 2,482 verdicts. The service reports a 0..1 fraction and the card
+    // renders a percentage, so a card reading 0.5 would mean the scale was
+    // dropped somewhere.
+    await expectKpi("Conviction rate", "54%");
+  });
+
+  it("reports prosecution rate beside it, on the wider denominator", async () => {
+    wrap(<StateCommandHome />);
+    // 2,482 verdicts of 8,901 final disposals. Shown next to the conviction rate
+    // because neither is readable alone: a high conviction rate on very few
+    // prosecutions is a different picture from the same rate on many.
+    await expectKpi("Prosecution rate", "27.9%");
   });
 });

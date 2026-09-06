@@ -4,8 +4,9 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from ..org.deps import GeoScope, geo_scope
 from . import service
 from .schemas import CrimePatternsResponse, SocioEconomicResponse
 
@@ -31,6 +32,19 @@ def patterns(
     pattern_type: Optional[str] = Query(None, pattern=f"^({_PATTERN_TYPES})$"),
     crime_head_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(60, ge=1, le=200),
+    geo: GeoScope = Depends(geo_scope),
 ):
-    """Detected crime patterns (serial/MO/temporal/spatial/network/…) + linked cases."""
-    return service.crime_patterns_report(pattern_type, crime_head_id, limit)
+    """Detected crime patterns (serial/MO/temporal/spatial/network/…) + linked cases.
+
+    A wing seat's crime-head confinement is applied. GEOGRAPHIC confinement is
+    deliberately NOT applied: a pattern is a link between cases that may span
+    districts by construction — a serial offender crossing a district boundary is
+    precisely what the detection exists to surface, and filtering by the viewer's
+    district would hide the cross-boundary patterns that matter most. The linked
+    cases a viewer may then OPEN are confined by /cases.
+    """
+    head = crime_head_id
+    if geo.crime_head_ids:
+        head = head if head in geo.crime_head_ids else None
+    return service.crime_patterns_report(pattern_type, head, limit,
+                                         crime_head_ids=geo.crime_head_ids)

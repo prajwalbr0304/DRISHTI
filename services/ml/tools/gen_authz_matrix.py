@@ -45,56 +45,66 @@ from app.org import hierarchy, scope as scope_mod  # noqa: E402
 # another district) plus roles outside the canonical set.
 _CASES = [
     # role, assign_district, resource, action, target_district, expected
-    ("investigating_officer", None, "case", "read", None, "ALLOW"),
-    ("crime_analyst", None, "case", "read", None, "ALLOW"),
-    ("sho", None, "case", "read", None, "ALLOW"),
+    #
+    # SIX application roles. The matrix is evaluated at the seat's DERIVED scope,
+    # so an UNPOSTED seat (assign_district=None for a role that must be posted)
+    # is denied every geographic action. That is the fail-closed change: these
+    # rows previously all read ALLOW, because derive_scope fell through to "no
+    # restriction" and made an unposted SHO indistinguishable from the DGP.
+    #
+    # --- case read, unposted: only the two seats unpinned BY REMIT ------------
     ("dgp_state_command", None, "case", "read", None, "ALLOW"),
-    ("adgp_igp_range", None, "case", "read", None, "ALLOW"),
-    ("sp_district_command", None, "case", "read", None, "ALLOW"),
-    ("dysp_acp", None, "case", "read", None, "ALLOW"),
-    ("cyber_cell", None, "case", "read", None, "ALLOW"),
-    ("traffic_command", None, "case", "read", None, "ALLOW"),
     ("system_admin", None, "case", "read", None, "ALLOW"),
-    # cross-scope negatives (geo) — still enforced for an assigned seat
+    ("senior_command", None, "case", "read", None, "DENY"),
+    ("district_command", None, "case", "read", None, "DENY"),
+    ("sho", None, "case", "read", None, "DENY"),
+    ("investigating_officer", None, "case", "read", None, "DENY"),
+    # --- case read, posted: allowed inside its own district, denied outside ---
     ("investigating_officer", 1, "case", "read", 1, "ALLOW"),
-    ("investigating_officer", 1, "case", "read", 2, "DENY"),            # other district
-    ("sho", 3, "case", "read", 9, "DENY"),                              # other district
-    ("sp_district_command", 4, "case", "read", 4, "ALLOW"),
-    ("sp_district_command", 4, "case", "read", 7, "DENY"),              # other district
-    # aggregate dashboard: every command role for its own scope
-    ("investigating_officer", None, "aggregate", "read", None, "ALLOW"),
+    ("investigating_officer", 1, "case", "read", 2, "DENY"),
+    ("sho", 3, "case", "read", 3, "ALLOW"),
+    ("sho", 3, "case", "read", 9, "DENY"),
+    ("district_command", 4, "case", "read", 4, "ALLOW"),
+    ("district_command", 4, "case", "read", 7, "DENY"),
+    ("senior_command", 6, "case", "read", 6, "ALLOW"),
+    ("senior_command", 6, "case", "read", 8, "DENY"),
+    # --- aggregate dashboard: a capability, not a geography -------------------
     ("dgp_state_command", None, "aggregate", "read", None, "ALLOW"),
-    ("dysp_acp", None, "aggregate", "read", None, "ALLOW"),
-    ("traffic_command", None, "aggregate", "read", None, "ALLOW"),
-    # exports (case-level extracts remain audited, not denied)
-    ("investigating_officer", None, "case", "export", None, "ALLOW"),
-    ("crime_analyst", None, "case", "export", None, "ALLOW"),
+    ("senior_command", None, "aggregate", "read", None, "ALLOW"),
+    ("district_command", None, "aggregate", "read", None, "ALLOW"),
+    ("sho", None, "aggregate", "read", None, "ALLOW"),
+    ("investigating_officer", None, "aggregate", "read", None, "ALLOW"),
+    # --- exports (case-level extracts remain audited, not denied) -------------
     ("dgp_state_command", None, "case", "export", None, "ALLOW"),
-    ("dysp_acp", None, "case", "export", None, "ALLOW"),
-    ("dgp_state_command", None, "aggregate", "export", None, "ALLOW"),
-    ("dysp_acp", None, "aggregate", "export", None, "ALLOW"),
+    ("district_command", None, "case", "export", None, "ALLOW"),
+    ("investigating_officer", None, "case", "export", None, "ALLOW"),
     ("system_admin", None, "case", "export", None, "ALLOW"),
-    # Investigation Board (Prompt 16) — open to every command role
-    ("investigating_officer", None, "board", "use", None, "ALLOW"),
-    ("crime_analyst", None, "board", "use", None, "ALLOW"),
-    ("sho", None, "board", "use", None, "ALLOW"),
+    ("dgp_state_command", None, "aggregate", "export", None, "ALLOW"),
+    ("sho", None, "aggregate", "export", None, "ALLOW"),
+    # --- Investigation Board — open to every command role --------------------
     ("dgp_state_command", None, "board", "use", None, "ALLOW"),
-    ("dysp_acp", None, "board", "use", None, "ALLOW"),
-    ("cyber_cell", None, "board", "use", None, "ALLOW"),
+    ("senior_command", None, "board", "use", None, "ALLOW"),
+    ("district_command", None, "board", "use", None, "ALLOW"),
+    ("sho", None, "board", "use", None, "ALLOW"),
+    ("investigating_officer", None, "board", "use", None, "ALLOW"),
     ("system_admin", None, "board", "use", None, "ALLOW"),
-    # Disaster approval (Prompt 17) — every command role, confined to its district
-    ("dysp_acp", 5, "disaster", "approve", 5, "ALLOW"),
-    ("dysp_acp", 5, "disaster", "approve", 9, "DENY"),                  # other district
-    ("investigating_officer", None, "disaster", "approve", None, "ALLOW"),
-    ("sho", None, "disaster", "approve", None, "ALLOW"),
-    ("dgp_state_command", None, "disaster", "approve", None, "ALLOW"),
+    # --- Disaster approval — confined to the seat's own district -------------
+    ("district_command", 5, "disaster", "approve", 5, "ALLOW"),
+    ("district_command", 5, "disaster", "approve", 6, "DENY"),
+    ("sho", 5, "disaster", "approve", 5, "ALLOW"),
+    ("sho", 5, "disaster", "approve", 6, "DENY"),
     ("system_admin", None, "disaster", "approve", 9, "ALLOW"),
-    # Admin/governance — INTERIM: granted to every command role
+    ("dgp_state_command", None, "disaster", "approve", 9, "ALLOW"),
+    # An unposted seat approves nothing, anywhere.
+    ("sho", None, "disaster", "approve", 5, "DENY"),
+    ("investigating_officer", None, "disaster", "approve", 5, "DENY"),
+    # --- Admin/governance — INTERIM: granted to every command role ----------
     ("system_admin", None, "admin", "manage", None, "ALLOW"),
+    ("dgp_state_command", None, "admin", "manage", None, "ALLOW"),
+    ("senior_command", None, "admin", "manage", None, "ALLOW"),
+    ("district_command", None, "admin", "manage", None, "ALLOW"),
     ("sho", None, "admin", "manage", None, "ALLOW"),
     ("investigating_officer", None, "admin", "manage", None, "ALLOW"),
-    ("dgp_state_command", None, "admin", "manage", None, "ALLOW"),
-    ("traffic_command", None, "admin", "manage", None, "ALLOW"),
 ]
 
 _ACTION_MAP = {

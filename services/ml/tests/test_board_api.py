@@ -1,4 +1,4 @@
-"""Phase 16 — Investigation Board API behaviour (TestClient).
+﻿"""Phase 16 â€” Investigation Board API behaviour (TestClient).
 
 These run WITHOUT a database (board records are Data Store-native / in-memory).
 Tests that need the operational PG (reference hydration, graph Search Around) are
@@ -20,7 +20,13 @@ from conftest import requires_db
 client = TestClient(app)
 
 IO = {"X-Role": "investigating_officer", "X-Demo-Actor": "demo.io"}
-ANALYST = {"X-Role": "crime_analyst", "X-Demo-Actor": "demo.crime_analyst"}
+# A third party who is NEITHER the board owner NOR a supervisor. It used to be
+# `crime_analyst`, which the six-role model folds into `senior_command` â€” and
+# senior_command IS supervisory, so it now legitimately passes the board's
+# owner-or-supervisor check. A second investigating officer is the seat that
+# actually carries no privilege over another officer's board, which is what these
+# sharing tests are about.
+OTHER = {"X-Role": "investigating_officer", "X-Demo-Actor": "demo.io.other"}
 SUP = {"X-Role": "sho", "X-Demo-Actor": "demo.sup"}
 POLICY = {"X-Role": "dgp_state_command", "X-Demo-Actor": "demo.pol"}
 
@@ -67,19 +73,19 @@ def test_io_creates_and_reads_own_board():
     assert r.json()["board"]["owner_actor"] == "demo.io"
 
 
-def test_analyst_cannot_read_unshared_board_but_can_when_shared():
+def test_third_party_cannot_read_unshared_board_but_can_when_shared():
     bid = _new_board(headers=IO)
-    assert client.get(f"/boards/{bid}", headers=ANALYST).status_code == 403
-    # supervisor shares with the analyst (board_share)
+    assert client.get(f"/boards/{bid}", headers=OTHER).status_code == 403
+    # supervisor shares with the third party (board_share)
     r = client.post(f"/boards/{bid}/collaborators", headers=SUP,
-                    json={"actor": "demo.crime_analyst", "role": "editor"})
+                    json={"actor": "demo.io.other", "role": "editor"})
     assert r.status_code == 201, r.text
-    assert client.get(f"/boards/{bid}", headers=ANALYST).status_code == 200
+    assert client.get(f"/boards/{bid}", headers=OTHER).status_code == 200
 
 
-def test_analyst_cannot_share():
+def test_third_party_cannot_share():
     bid = _new_board(headers=IO)
-    r = client.post(f"/boards/{bid}/collaborators", headers=ANALYST,
+    r = client.post(f"/boards/{bid}/collaborators", headers=OTHER,
                     json={"actor": "x", "role": "viewer"})
     assert r.status_code == 403
 

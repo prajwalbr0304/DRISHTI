@@ -200,6 +200,20 @@ export class ApiClient {
   post<T>(path: string, body?: unknown, params?: QueryParams, signal?: AbortSignal) {
     return this.request<T>(path, { method: "POST", body, params, signal });
   }
+  /** Full replacement. Used where the client owns the whole resource state — a
+   *  role's grant set is sent as a set, not as a diff the server has to trust. */
+  put<T>(path: string, body?: unknown, params?: QueryParams, signal?: AbortSignal) {
+    return this.request<T>(path, { method: "PUT", body, params, signal });
+  }
+  /** Partial update: only the fields present are written. */
+  patch<T>(path: string, body?: unknown, params?: QueryParams, signal?: AbortSignal) {
+    return this.request<T>(path, { method: "PATCH", body, params, signal });
+  }
+  /** `del`, not `delete` — `delete` is a reserved word and cannot be a bare
+   *  method name in the object-literal style the endpoint modules use. */
+  del<T>(path: string, params?: QueryParams, signal?: AbortSignal) {
+    return this.request<T>(path, { method: "DELETE", params, signal });
+  }
 
   /** Multipart upload (e.g. a scanned FIR page for OCR).
    *

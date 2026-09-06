@@ -105,6 +105,42 @@ def build_case_court_outcomes(world: C.World, *, case_id: int, lifecycle,
                 Json({"verdict": lifecycle.disposition}),
             ))
             last_court_event_id = ce
+        else:
+            # STILL AWAITING TRIAL: the court has the case and has not judged it,
+            # so the last thing that happened was an adjournment TO a date. That
+            # date was never written — ScheduledAt was NULL on every row in the
+            # corpus and every event carried an OccurredAt — which left nothing
+            # scheduled-but-not-yet-heard anywhere in the dataset and made a
+            # "next court date" figure impossible to compute rather than merely
+            # unaggregated.
+            #
+            # ScheduledAt set, OccurredAt NULL: that pair is what marks a hearing
+            # as still to come, and is what the next-hearing aggregate selects on.
+            ce = w.next_id("CourtEvent")
+            adjourned_from = 150 if last_court_event_id is not None else 120
+            # Real adjournment intervals are weeks, not days, and vary; a constant
+            # would make every pending case in the state share one court date.
+            gap = 21 + int(rng.g.integers(0, 55))
+
+            # Anchored on the LATER of this case's own timeline and the corpus
+            # horizon. Using the case timeline alone is wrong for a long-pending
+            # case: one registered in 2021 and still awaiting trial would get a
+            # "next" hearing in 2021, because nothing models the intervening chain
+            # of adjournments. Every such date would then be in the past, which is
+            # the gap this row exists to close.
+            horizon = dt.datetime(w.cfg.end_date.year, w.cfg.end_date.month,
+                                  w.cfg.end_date.day, 11, 0)
+            scheduled = max(base + dt.timedelta(days=adjourned_from),
+                            horizon) + dt.timedelta(days=gap)
+
+            w.add("CourtEvent", (
+                ce, case_id, court_id, "hearing",
+                _dts(scheduled),   # ScheduledAt — still to come
+                None,              # OccurredAt  — not yet heard; the whole point
+                "scheduled", Json({"synthetic": True, "adjourned_to": True}),
+            ))
+            last_court_event_id = ce
+            w.cover("court_event_scheduled")
 
     # bail for arrested accused
     for cpid in arrested_cpids[:2]:

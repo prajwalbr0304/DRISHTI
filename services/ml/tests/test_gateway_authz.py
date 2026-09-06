@@ -58,7 +58,9 @@ def _ctx(role="investigating_officer", *, scope="gateway", district_id=None, uni
 
 def test_functional_roles_in_sync():
     assert set(gc.FUNCTIONAL_ROLES) == set(hierarchy.FUNCTIONAL_ROLES)
-    assert len(gc.FUNCTIONAL_ROLES) == 10
+    # Six APPLICATION roles, not ten presentation seats. ADGP and DIG share
+    # senior_command and differ by scope_type; SP and CP share district_command.
+    assert len(gc.FUNCTIONAL_ROLES) == 6
 
 
 @pytest.mark.parametrize("role", sorted(hierarchy.FUNCTIONAL_ROLES))
@@ -83,13 +85,28 @@ def test_ambiguous_scope_is_rejected():
 
 
 def test_signed_scope_is_parsed():
-    b64, sig = _mint(_ctx(role="dysp_acp", district_id=7, unit_id=42,
+    b64, sig = _mint(_ctx(role="district_command", district_id=7, unit_id=42,
                           scope_level="district", nonce="n-scope"))
     ctx = gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=False)
-    assert ctx.role == "dysp_acp"
+    assert ctx.role == "district_command"
     assert ctx.district_id == 7
     assert ctx.unit_id == 42
     assert ctx.scope_level == "district"
+
+
+def test_superseded_role_in_a_signed_context_is_rejected():
+    """Defence in depth, and a deployment tripwire.
+
+    The gateway translates superseded role names (dysp_acp, cyber_cell, ...) before
+    it mints a context, so AppSail should never see one. If it does, the two sides
+    have drifted — a stale gateway function against a current AppSail — and the
+    right response is to refuse rather than to guess which seat was meant.
+    """
+    for stale in ("dysp_acp", "cyber_cell", "adgp_igp_range", "super_admin"):
+        b64, sig = _mint(_ctx(role=stale, district_id=7, unit_id=42,
+                              scope_level="district", nonce=f"n-{stale}"))
+        with pytest.raises(gc.ContextError):
+            gc.verify_signed_context(b64, sig, secret=_SECRET, check_replay=False)
 
 
 def test_service_scope_defaults_role_and_is_not_a_user():
@@ -194,10 +211,18 @@ def test_allow_deny_matrix_all_command_roles():
     """Sanity-check the backend allow/deny model for every role (full matrix is
     generated + verified by the auth-matrix artifact).
 
-    INTERIM ("all roles have access to everything"): every command role is
-    allowed every matrix action at its role-default scope. Geographic
-    containment is asserted separately in test_org_scope.py."""
+    Evaluated at each role's DEFAULT scope. The two roles unpinned by remit hold
+    everything; the four that must be posted hold their non-geographic
+    capabilities and are refused anything geographic until they are posted.
+    Containment for a POSTED seat is asserted in test_org_scope.py."""
     m = scope_mod.matrix_for_roles()
     assert set(m.keys()) == set(hierarchy.FUNCTIONAL_ROLES)
+
+    unpinned_by_remit = {"dgp_state_command", "system_admin"}
+    geographic = {"case_detail", "disaster_approval"}
+
     for role in hierarchy.FUNCTIONAL_ROLES:
-        assert all(m[role][a] for a in scope_mod.MATRIX_ACTIONS), role
+        assert set(m[role]) == set(scope_mod.MATRIX_ACTIONS), role
+        for action in scope_mod.MATRIX_ACTIONS:
+            expected = role in unpinned_by_remit or action not in geographic
+            assert m[role][action] is expected, (role, action)

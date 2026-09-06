@@ -22,7 +22,18 @@ GEO_ALERT_MODEL = "drishti-emerging-trend@1.0.0"
 
 def hotspots(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
              end: Optional[dt.date] = None, crime_head_id: Optional[int] = None,
-             limit: int = 500) -> HotspotResponse:
+             limit: int = 500, district_ids: Optional[list] = None,
+             crime_head_ids: Optional[list] = None) -> HotspotResponse:
+    """Active hotspots, optionally confined to a seat's districts and crime heads.
+
+    ``district_ids`` / ``crime_head_ids`` are the SEAT's confinement, applied
+    server-side. The frontend used to fetch this unscoped and narrow the rows in a
+    react-query `select`, which is fine for presentation but means the wire carried
+    every district's hotspots regardless of who asked.
+
+    An EMPTY list is meaningful and is not ignored: it denotes a seat entitled to
+    nothing, so it must return nothing rather than everything.
+    """
     from ..cases import analytics_policy
 
     limit = max(1, min(int(limit), 2000))
@@ -34,6 +45,16 @@ def hotspots(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
     if crime_head_id is not None:
         where.append('h."CrimeHeadID" = %s')
         params.append(crime_head_id)
+    if district_ids is not None:
+        if not district_ids:
+            where.append("FALSE")
+        else:
+            where.append('h."DistrictID" = ANY(%s)')
+            params.append([int(d) for d in district_ids])
+    # A WING seat is state-wide geographically and narrowed by crime head instead.
+    if crime_head_ids:
+        where.append('h."CrimeHeadID" = ANY(%s)')
+        params.append([int(h) for h in crime_head_ids])
     if start is not None:
         where.append('(h."PeriodEnd" IS NULL OR h."PeriodEnd" >= %s)')
         params.append(start)
@@ -85,11 +106,22 @@ def hotspots(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
 
 def trends_series(district_id=None, head_id=None, sub_head_id=None,
                   start=None, end=None, window: int = 6, k: float = 2.0,
-                  decompose: bool = True) -> TrendResponse:
+                  decompose: bool = True, district_ids=None,
+                  crime_head_ids=None) -> TrendResponse:
+    """Monthly trend series, optionally confined to a seat's districts/heads.
+
+    The returned ``scope`` echoes the confinement that was actually applied, so a
+    caller can tell a range total from a single district's — otherwise a DIG's
+    figure is indistinguishable from a state figure on the wire.
+    """
     with db.ro_conn() as conn:
-        periods, counts = trends.monthly_series(conn, district_id, head_id, sub_head_id, start, end)
+        periods, counts = trends.monthly_series(
+            conn, district_id, head_id, sub_head_id, start, end,
+            district_ids=district_ids, crime_head_ids=crime_head_ids)
     scope = {"district_id": district_id, "crime_head_id": head_id,
-             "sub_head_id": sub_head_id}
+             "sub_head_id": sub_head_id,
+             "district_ids": list(district_ids) if district_ids is not None else None,
+             "crime_head_ids": list(crime_head_ids) if crime_head_ids else None}
     if not periods:
         result = AiResult(answer="No cases match this scope.", confidence=0.0,
                           source_record_ids=[], reasoning_summary="Empty series.",
@@ -218,16 +250,32 @@ def active_alerts(bbox=None, severity: Optional[str] = None, alert_type: Optiona
 
 def points(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
            end: Optional[dt.date] = None, crime_head_id: Optional[int] = None,
-           limit: int = 5000):
-    """Raw incident coordinates for the Live Map. Point-level, so only for
-    authorised roles (the router applies the point-level cap). Capped + filtered."""
+           limit: int = 5000, district_ids: Optional[list] = None,
+           unit_id: Optional[int] = None):
+    """Raw incident coordinates for the Live Map.
+
+    Point-level and therefore the most sensitive read here: each row is one
+    reported crime at one place on one date. The router refuses aggregate-only and
+    unposted seats; ``district_ids`` / ``unit_id`` confine what is left to the
+    seat's jurisdiction, so a bbox cannot be used to pan across the state.
+    """
     from .schemas import PointFeature, PointsResponse
     limit = max(1, min(int(limit), 20000))
     where = ['cm."geom" IS NOT NULL']
     params: list = []
+    join_unit = district_ids is not None or unit_id is not None
     if bbox:
         where.append('ST_Intersects(cm."geom", ST_MakeEnvelope(%s,%s,%s,%s,4326))')
         params.extend(bbox)
+    if unit_id is not None:
+        where.append('cm."PoliceStationID" = %s')
+        params.append(int(unit_id))
+    if district_ids is not None:
+        if not district_ids:
+            where.append("FALSE")
+        else:
+            where.append('pu."DistrictID" = ANY(%s)')
+            params.append([int(d) for d in district_ids])
     if crime_head_id is not None:
         where.append('cm."CrimeMajorHeadID" = %s')
         params.append(crime_head_id)
@@ -250,6 +298,7 @@ def points(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
         'COALESCE((cv.attrs->>\'excluded_from_derived_analytics\')::boolean,FALSE) '
         'FROM "CaseMaster" cm '
         'LEFT JOIN "CrimeHead" ch ON ch."CrimeHeadID" = cm."CrimeMajorHeadID" '
+        + ('JOIN "Unit" pu ON pu."UnitID" = cm."PoliceStationID" ' if join_unit else '') +
         'LEFT JOIN LATERAL (SELECT cv0."SnapshotAttributes" AS attrs '
         '  FROM "CaseVersion" cv0 WHERE cv0."CaseMasterID"=cm."CaseMasterID" '
         '  AND cv0."IsCurrent"=TRUE ORDER BY cv0."VersionNo" DESC LIMIT 1) cv ON TRUE '

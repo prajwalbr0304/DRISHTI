@@ -144,3 +144,12 @@ artifacts/**/_*.png
 # regenerable with pg_dump - so it is kept locally but never committed.
 # ---------------------------------------------------------------------------
 _migration/
+
+# ---------------------------------------------------------------------------
+# Pre-migration safety dumps written by scripts/migrations/backup_*.ps1.
+# Same reasoning as _migration/ above: these are pg_dump archives of the
+# synthetic corpus, taken immediately before a migration so it can be rolled
+# back. Large, binary, and regenerable by re-running the backup script, so they
+# stay on the machine that took them and are never committed.
+# ---------------------------------------------------------------------------
+backups/

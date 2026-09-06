@@ -16,7 +16,7 @@ import {
 import { socioTiles } from "@/routes/home/socioTiles";
 import {
   COMMUNITY_LIMIT, useCommunities, useContractAudit, useDataQualitySummary,
-  useJurisdictionFreshness, useOpenTasks, useStatePerformance,
+  useJurisdictionFreshness, useOpenTasks, useOutcomes, useStatePerformance,
 } from "@/routes/home/useStateCommandData";
 import { usePatterns, useForecastBacktest } from "@/routes/analytics/useAnalyticsData";
 import { STATE_WIDE_NOTE } from "@/stores/useScopeStore";
@@ -27,18 +27,25 @@ import { defaultCrimeCategory } from "@/lib/socio";
 /* ============================================================================
    DGP / State Command Center (doc 01 §4.1 + §7).
 
-   Its own board, not a relabelled policymaker board. The IGP and SP seats keep
-   PolicymakerHome; this one answers the questions a state chief is actually
-   accountable for — throughput, disposal, load balance, forecast accuracy and
-   data integrity — instead of restating the forecast total and the socio-economic
-   footer as KPI cards.
+   RETAINED DELIBERATELY, though no route renders it. `CommandCenter` now serves
+   every seat from the registry-driven `RoleBoard`, and the four sibling boards
+   (Policymaker/Supervisor/Analyst/Investigator) have been deleted as dead code.
+   This one stays because `StateCommandHome.test.tsx` is the only coverage of the
+   KPI VALUE-RESOLUTION layer — useKpiValues -> useStateCommandData -> the card's
+   number, scale and staleness note. The RoleBoard tests stub `useKpiValues`
+   entirely, so deleting this would silently drop the tests that catch a fraction
+   being rendered as a percentage. Delete it once that coverage is ported.
+
+   It answers the questions a state chief is accountable for — throughput,
+   disposal, load balance, forecast accuracy and data integrity — rather than
+   restating the forecast total and the socio-economic footer as KPI cards.
 
    AGGREGATE-ONLY, same hard constraint as the policymaker board: district-level
    and state-level counts, ratios and queue depths. No case list, no point-level
    map, no individual profiles. Every card below binds to a field that exists on
    a live response, or ships with KpiCard's honest `pending` state.
 
-   The widget set is deliberately unchanged from PolicymakerHome — this slice is
+   The widget set is deliberately unchanged from the board it replaced — this slice is
    the KPI band only.
    ========================================================================== */
 
@@ -90,6 +97,9 @@ export function StateCommandHome() {
   const hotspots = useHotspots();
   const caseload = useCaseload();
   const perf = useStatePerformance(WINDOW_DAYS);
+  /* Court outcomes: cumulative rather than windowed, because a verdict lands long
+     after registration — a 90-day window would report almost nothing. */
+  const outcomes = useOutcomes();
 
   /* --- band D: forecast + model trust ------------------------------------ */
   const forecast = useForecastMap();
@@ -446,9 +456,33 @@ export function StateCommandHome() {
       key: "kpi-conviction",
       icon: <Gavel />,
       label: "Conviction rate",
-      pending: true,
-      pendingNote:
-        "No aggregate court-outcomes endpoint exists yet. A conviction rate needs convictions and acquittals as state-level counts over a period; court results are held per case, and reading case rows is exactly what this aggregate-only seat must not do. Blocked on an aggregate outcomes endpoint — shown here rather than omitted so the gap is visible.",
+      value: pct(outcomes.data?.conviction_rate),
+      unit: "%",
+      improveWhenDown: false,
+      loading: outcomes.isLoading,
+      error: outcomes.error,
+      hint:
+        `Convictions as a share of cases that reached a VERDICT${
+          outcomes.data
+            ? ` (${outcomes.data.convicted} of ${outcomes.data.verdicts})`
+            : ""
+        }. The denominator is convictions plus acquittals only: a B-report (undetected) or a C-report (false complaint) is a decision not to prosecute, not a lost prosecution, so folding them in would conflate "never went to court" with "lost in court" and understate court performance. Those are on the prosecution-rate card instead.`,
+    },
+    {
+      key: "kpi-prosecution-rate",
+      icon: <Scale />,
+      label: "Prosecution rate",
+      value: pct(outcomes.data?.prosecution_rate),
+      unit: "%",
+      improveWhenDown: false,
+      loading: outcomes.isLoading,
+      error: outcomes.error,
+      hint:
+        `Cases reaching a verdict as a share of all finally-disposed cases${
+          outcomes.data
+            ? ` (${outcomes.data.verdicts} of ${outcomes.data.total_disposed})`
+            : ""
+        }. Reported beside the conviction rate because the two only mean something together: a high conviction rate on very few prosecutions is a different picture from the same rate on many.`,
     },
   ];
 

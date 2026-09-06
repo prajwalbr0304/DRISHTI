@@ -32,13 +32,21 @@ def _iter_months(first: str, last: str):
 def monthly_series(conn, district_id: Optional[int] = None, head_id: Optional[int] = None,
                    sub_head_id: Optional[int] = None,
                    start: Optional[dt.date] = None, end: Optional[dt.date] = None,
-                   valid_geo_only: bool = False):
+                   valid_geo_only: bool = False,
+                   district_ids: Optional[list] = None,
+                   crime_head_ids: Optional[list] = None):
     """Return (periods, counts) monthly, zero-filled, for the given scope.
 
     ``valid_geo_only`` (Phase 12) restricts the series to canonical, valid
     geography: incidents whose coordinates fall outside the state polygon are
     excluded. It is a safe no-op when no jurisdiction boundary is loaded, so the
     descriptive-analytics callers (which pass the default False) are unaffected.
+
+    ``district_ids`` / ``crime_head_ids`` carry a SEAT's confinement: a district
+    SET for a range seat (which a single ``district_id`` cannot express), and a
+    crime-head set for a wing seat (which is state-wide geographically and narrowed
+    by head instead). An EMPTY district list means a seat entitled to nothing and
+    yields an empty series, never an unfiltered one.
     """
     from ..cases import casedata
 
@@ -46,13 +54,24 @@ def monthly_series(conn, district_id: Optional[int] = None, head_id: Optional[in
              casedata.analytics_eligible_sql("cm")]
     params: list = []
     joins = ""
-    if district_id is not None:
+    # One Unit join serves both the single-district and the district-set filter.
+    if district_id is not None or district_ids is not None:
         joins += ' JOIN "Unit" u ON u."UnitID" = cm."PoliceStationID"'
+    if district_id is not None:
         where.append('u."DistrictID" = %s')
         params.append(district_id)
+    if district_ids is not None:
+        if not district_ids:
+            where.append("FALSE")
+        else:
+            where.append('u."DistrictID" = ANY(%s)')
+            params.append([int(d) for d in district_ids])
     if head_id is not None:
         where.append('cm."CrimeMajorHeadID" = %s')
         params.append(head_id)
+    if crime_head_ids:
+        where.append('cm."CrimeMajorHeadID" = ANY(%s)')
+        params.append([int(h) for h in crime_head_ids])
     if sub_head_id is not None:
         where.append('cm."CrimeMinorHeadID" = %s')
         params.append(sub_head_id)

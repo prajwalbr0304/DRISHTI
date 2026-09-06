@@ -21,16 +21,18 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from ..admin.permissions import require_admin_read, require_admin_write
 from ..intake.guards import require_write_allowed
+from .. import roles as _roles
 from ..roles import normalize_role
 from . import hierarchy, scope as scope_mod, service
 from .schemas import (AssignRoleRequest, CreateUserRequest, HierarchyResponse,
-                      MyScopeResponse, RolesResponse, ScopeMatrixResponse,
-                      SetActiveRequest, SetScopeRequest, UserMutationResponse,
-                      UsersResponse)
+                      MyScopeResponse, RangesResponse, RolesResponse,
+                      ScopeMatrixResponse, SeatsResponse, SetActiveRequest,
+                      SetScopeRequest, UserMutationResponse, UsersResponse,
+                      WingsResponse)
 
 router = APIRouter(prefix="/org", tags=["org"])
 
@@ -72,6 +74,44 @@ def get_roles(_role: str = Depends(require_admin_read)):
 @router.get("/users", response_model=UsersResponse)
 def get_users(_role: str = Depends(require_admin_read)):
     return service.list_users()
+
+
+@router.get("/wings", response_model=WingsResponse)
+def get_wings():
+    """The six ADGP functional wings and the crime heads each covers.
+
+    Unauthenticated read: this is organizational reference data (the KSP org
+    chart), carries no case content, and the seat picker needs it before a seat
+    has been chosen.
+    """
+    return service.list_wings()
+
+
+@router.get("/ranges", response_model=RangesResponse)
+def get_ranges():
+    """The seven police ranges with member districts, plus the six
+    Commissionerates that sit outside the range hierarchy."""
+    return service.list_ranges()
+
+
+@router.get("/seats", response_model=SeatsResponse)
+def get_seats(q: Optional[str] = Query(None, max_length=120),
+              role: Optional[str] = Query(None, max_length=64),
+              scope_type: Optional[str] = Query(None, max_length=32),
+              active_only: bool = Query(True),
+              page: int = Query(1, ge=1),
+              page_size: int = Query(50, ge=1, le=200)):
+    """Searchable seat directory for the login picker (~11,800 seats).
+
+    Returns postings and rank labels only — never permissions. Choosing a seat
+    selects a view; the server re-derives that seat's scope on every request.
+    """
+    if role:
+        role = normalize_role(role, default=role)
+    if scope_type and scope_type not in _roles.SCOPE_TYPES:
+        raise HTTPException(status_code=400, detail=f"unknown scope_type '{scope_type}'")
+    return service.list_seats(q=q, role=role, scope_type=scope_type,
+                              active_only=active_only, page=page, page_size=page_size)
 
 
 @router.get("/my-scope", response_model=MyScopeResponse)

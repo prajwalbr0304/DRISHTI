@@ -21,6 +21,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..org.deps import GeoScope, geo_scope, require_case_level
+from ..org.scope import ScopeContext
 from . import explorer, service
 from .permissions import require_case_read, require_case_write
 from .schemas import (CaseDetailResponse, CaseListResponse, CaseloadResponse,
@@ -35,8 +37,6 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 @router.get("", response_model=CaseListResponse)
 def list_cases(
     q: Optional[str] = Query(None, description="free text over CrimeNo / CaseNo / brief facts"),
-    district_id: Optional[int] = Query(None, ge=1),
-    station_id: Optional[int] = Query(None, ge=1),
     major_head_id: Optional[int] = Query(None, ge=1),
     minor_head_id: Optional[int] = Query(None, ge=1),
     status_id: Optional[int] = Query(None, ge=1),
@@ -48,9 +48,20 @@ def list_cases(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     _role: str = Depends(require_case_read),
+    _seat: ScopeContext = Depends(require_case_level),
+    geo: GeoScope = Depends(geo_scope),
 ):
+    """Filterable, paginated case index, CONFINED to the caller's jurisdiction.
+
+    `district_id` / `station_id` come from the `geo_scope` dependency rather than
+    being accepted raw: they can only narrow within the seat's own scope, and an
+    out-of-scope value is a 403. Omitting them narrows to the seat's jurisdiction
+    rather than returning every case in the state.
+    """
     filters = {
-        "q": q, "district_id": district_id, "station_id": station_id,
+        "q": q,
+        "district_id": geo.district_id, "station_id": geo.unit_id,
+        "district_ids": geo.district_ids,
         "major_head_id": major_head_id, "minor_head_id": minor_head_id,
         "status_id": status_id, "gravity_id": gravity_id,
         "date_from": date_from, "date_to": date_to,
@@ -66,22 +77,26 @@ def case_filters(_role: str = Depends(require_case_read)):
 
 @router.get("/caseload", response_model=CaseloadResponse)
 def caseload(
-    district_id: Optional[int] = Query(None, ge=1),
-    station_id: Optional[int] = Query(None, ge=1),
     major_head_id: Optional[int] = Query(None, ge=1),
     minor_head_id: Optional[int] = Query(None, ge=1),
     gravity_id: Optional[int] = Query(None, ge=1),
     date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     _role: str = Depends(require_case_read),
+    geo: GeoScope = Depends(geo_scope),
 ):
     """Per-stage caseload counts for the Command Center 'My caseload' pipeline.
 
     A present-state snapshot: each case falls into exactly one lifecycle stage,
-    so the stage counts sum to the total. Optional filters scope the caseload
-    (e.g. by district / station). Case-scoped, behind the cases role gate."""
+    so the stage counts sum to the total. CONFINED to the caller's jurisdiction by
+    the geo_scope dependency.
+
+    Unlike the case index this is an AGGREGATE, so it is available to state and
+    wing seats — counts by stage disclose no individual record.
+    """
     filters = {
-        "district_id": district_id, "station_id": station_id,
+        "district_id": geo.district_id, "station_id": geo.unit_id,
+        "district_ids": geo.district_ids,
         "major_head_id": major_head_id, "minor_head_id": minor_head_id,
         "gravity_id": gravity_id, "date_from": date_from, "date_to": date_to,
     }

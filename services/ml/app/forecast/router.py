@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..cases import analytics_policy
+from ..org.deps import GeoScope, confine_geo, geo_scope, resolve_seat_scope
 from . import horizons as horizons_mod
 from . import service
 from .schemas import (BacktestResponse, DistrictForecastResponse, ForecastMapResponse,
@@ -32,6 +33,11 @@ def _serve(call, *args, **kwargs):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except analytics_policy.DerivedArtifactUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _district_scope(geo: GeoScope):
+    """Delegates to GeoScope.effective_district_ids (single source of precedence)."""
+    return geo.effective_district_ids()
 
 
 @router.get("/horizons")
@@ -54,7 +60,16 @@ def layers():
 
 @router.get("/district/{district_id}", response_model=DistrictForecastResponse)
 def district(district_id: int, head_id: int | None = Query(None, ge=1),
-             layer: str | None = Query(None, description="tabfm|timesfm|near_repeat|st_gnn|fused")):
+             layer: str | None = Query(None, description="tabfm|timesfm|near_repeat|st_gnn|fused"),
+             request: Request = None):
+    """One district's forecast, refused if that district is outside the caller's scope.
+
+    The district is a PATH parameter here, so it cannot be routed through the
+    `geo_scope` dependency the way a query parameter is — the confinement has to be
+    checked explicitly.
+    """
+    scope = resolve_seat_scope(request)
+    confine_geo(scope, district_id=district_id)
     resp = _serve(service.district_forecast, district_id, head_id=head_id, layer=layer)
     if resp is None:
         raise HTTPException(status_code=404, detail=f"District {district_id} not found")
@@ -65,11 +80,21 @@ def district(district_id: int, head_id: int | None = Query(None, ge=1),
 def forecast_map(layer: str = Query("fused", description="tabfm|timesfm|near_repeat|st_gnn|fused"),
                  head_id: int | None = Query(None, ge=1),
                  min_lon: float | None = None, min_lat: float | None = None,
-                 max_lon: float | None = None, max_lat: float | None = None):
+                 max_lon: float | None = None, max_lat: float | None = None,
+                 geo: GeoScope = Depends(geo_scope)):
+    """Forecast cells, CONFINED to the caller's districts.
+
+    An aggregate (predicted counts per district-month), so it is available to
+    aggregate-only seats. The frontend previously fetched this unscoped and
+    narrowed rows in a react-query `select`, which left the whole state's forecast
+    on the wire regardless of who asked.
+    """
     bbox = None
     if None not in (min_lon, min_lat, max_lon, max_lat):
         bbox = (min_lon, min_lat, max_lon, max_lat)
-    return _serve(service.forecast_map, layer=layer, head_id=head_id, bbox=bbox)
+    districts = _district_scope(geo)
+    return _serve(service.forecast_map, layer=layer, head_id=head_id, bbox=bbox,
+                  district_ids=districts)
 
 
 @router.post("/near-repeat", response_model=NearRepeatTriggerResponse)

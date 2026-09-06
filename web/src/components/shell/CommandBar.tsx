@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/command";
 import { visibleDestinations } from "@/config/destinations";
 import { useRole } from "@/providers/RoleProvider";
+import { useUiVisibility } from "@/hooks/useUiVisibility";
+import { useMyScope } from "@/hooks/useMyScope";
 import { useUIStore } from "@/stores/useUIStore";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { useAskStore } from "@/stores/useAskStore";
@@ -68,7 +70,14 @@ export function CommandBar() {
     }
   }, [open, commandSeed, setCommandSeed]);
 
-  const destinations = visibleDestinations(role, isAdmin);
+  /* The palette honours the admin's destination switches too. Leaving it out
+     would make ⌘K a way to reach a page the sidebar had deliberately hidden,
+     which turns a tidy-up into a confusing inconsistency. */
+  const ui = useUiVisibility();
+  const seat = useMyScope();
+  const destinations = visibleDestinations(role, isAdmin, "crime",
+                                          { aggregateOnly: seat.aggregateOnly })
+    .filter((d) => !ui.hidden.destination.has(d.path));
   const trimmed = query.trim();
   const numberMatch = trimmed.match(/(\d{1,10})/);
   const recordId = numberMatch ? Number(numberMatch[1]) : null;

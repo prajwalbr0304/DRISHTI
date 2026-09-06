@@ -109,3 +109,83 @@ class MyScopeResponse(BaseModel):
     source: str
     trusted: bool
     note: str
+    # --- seat model (migrations 026/027) ------------------------------------
+    scope_type: str = "unresolved"
+    wing_id: Optional[int] = None
+    range_id: Optional[int] = None
+    crime_head_ids: Optional[list[int]] = None
+    # True when the seat must never read individual case rows (state / wing).
+    aggregate_only: bool = False
+    is_lead_investigator: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Seat model (migrations 026/027/033/034/035)
+# ---------------------------------------------------------------------------
+class WingOut(BaseModel):
+    wing_id: int
+    wing_code: str
+    wing_name: str
+    description: Optional[str] = None
+    crime_head_ids: list[int] = Field(default_factory=list)
+    crime_head_names: list[str] = Field(default_factory=list)
+    covers_all_heads: bool = False
+    seat_count: int = 0
+
+
+class WingsResponse(BaseModel):
+    total: int
+    items: list[WingOut] = Field(default_factory=list)
+    note: str
+
+
+class RangeDistrictOut(BaseModel):
+    district_id: int
+    district_name: str
+
+
+class RangeOut(BaseModel):
+    range_id: int
+    range_code: str
+    range_name: str
+    hq_district_id: Optional[int] = None
+    districts: list[RangeDistrictOut] = Field(default_factory=list)
+    district_count: int = 0
+    station_count: int = 0
+    seat_count: int = 0
+
+
+class RangesResponse(BaseModel):
+    total: int
+    items: list[RangeOut] = Field(default_factory=list)
+    commissionerates: list[RangeDistrictOut] = Field(default_factory=list)
+    note: str
+
+
+class SeatOut(BaseModel):
+    """One selectable seat in the picker. Deliberately carries no permissions:
+    the picker chooses a view, and the server re-derives what that seat may read."""
+    user_id: int
+    username: str
+    display_name: Optional[str] = None
+    role: str
+    scope_type: str
+    scope_label: str
+    posting_label: Optional[str] = None
+    rank_label: Optional[str] = None
+    designation_label: Optional[str] = None
+    is_lead_investigator: bool = False
+    is_active: bool = True
+    wing_id: Optional[int] = None
+    range_id: Optional[int] = None
+    district_id: Optional[int] = None
+    unit_id: Optional[int] = None
+
+
+class SeatsResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[SeatOut] = Field(default_factory=list)
+    scope_type_counts: dict[str, int] = Field(default_factory=dict)
+    note: str

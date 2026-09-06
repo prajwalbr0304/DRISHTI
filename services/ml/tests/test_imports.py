@@ -306,7 +306,7 @@ def test_money_scan_writes_reason_coded_reviewable_alerts(rw_rollback):
         row = cur.fetchone()
     assert row and row[1] == "STRUCT_SUBTHRESHOLD_FANIN" and row[2] == "open"
     # reviewer disposition transitions the alert + records a review
-    disp = analytics._disposition(conn, int(row[0]), "false_positive", "crime_analyst", "benign")
+    disp = analytics._disposition(conn, int(row[0]), "false_positive", "senior_command", "benign")
     assert disp["status"] == "false_positive"
     with conn.cursor() as cur:
         cur.execute('SELECT count(*) FROM "MoneyAlertReview" WHERE "MoneyAlertID"=%s', (int(row[0]),))

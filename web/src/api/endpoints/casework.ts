@@ -26,6 +26,9 @@ import type {
 export const caseworkApi = {
   lookups: (signal?: AbortSignal) =>
     apiClient.get<CwLookups>("/casework/lookups", undefined, signal),
+  /** Soonest scheduled hearings in the caller's scope, confined server-side. */
+  nextHearings: (params: { limit?: number } = {}, signal?: AbortSignal) =>
+    apiClient.get<NextHearingsResponse>("/casework/hearings/next", params, signal),
 
   timeline: (caseId: number, signal?: AbortSignal) =>
     apiClient.get<CwTimelineResponse>(`/casework/cases/${caseId}/timeline`, undefined, signal),
@@ -78,3 +81,46 @@ export const caseworkApi = {
     signal?: AbortSignal,
   ) => apiClient.post(`/casework/cases/${caseId}/lifecycle-events`, body, undefined, signal),
 };
+
+
+/* ============================================================================
+   Scoped "next court date".
+
+   This card shipped in an honest `pending` state because nothing in the corpus was
+   scheduled-but-not-yet-heard: CourtEvent.ScheduledAt was unset on every row and
+   each event already carried an OccurredAt. Migration 036 and datagen now write the
+   adjourned-to date for cases awaiting trial.
+   ========================================================================== */
+
+export interface NextHearingRow {
+  court_event_id: number;
+  case_id: number;
+  case_number?: string | null;
+  scheduled_on?: string | null;
+  /** Counted from the corpus as-of date, NOT from today: the synthetic dataset
+   *  ends before the current date, so counting from today would report every
+   *  hearing as overdue by however long the demo has been running. */
+  days_away?: number | null;
+  unit_id?: number | null;
+  unit_name?: string | null;
+  district_name?: string | null;
+  court_name?: string | null;
+}
+
+export interface NextHearingsResponse {
+  scope: { district_ids?: number[] | null; unit_id?: number | null };
+  /** The corpus reference point — the last court event that actually happened.
+   *  Reported so "in 21 days" is anchored to something the caller can see. */
+  as_of?: string | null;
+  data_age_days?: number | null;
+  /** null, never 0, when nothing is listed: "no hearing scheduled" and "a hearing
+   *  today" are different statements and must not render identically. */
+  days_to_next_hearing?: number | null;
+  next_hearing_on?: string | null;
+  pending_hearings: number;
+  cases_awaiting_hearing: number;
+  hearings: NextHearingRow[];
+  empty: boolean;
+  limitations: string[];
+  dataset: string;
+}

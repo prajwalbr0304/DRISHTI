@@ -25,21 +25,52 @@ def _hdr(role: str) -> dict:
 # B.1 — rank / assignment -> functional role + scope (pure)
 # ===========================================================================
 def test_rank_mapping_covers_organizer_hierarchy():
-    # DGP -> IGP -> DIG -> SP -> Station Chief (SHO) -> Investigating Officer.
+    # DGP -> ADGP/IGP -> DIG -> SP/CP -> Station Chief (SHO) -> Investigating Officer.
     assert hierarchy.map_rank("Director General of Police").functional_role == "dgp_state_command"
     assert hierarchy.map_rank("Director General of Police").scope_level == "state"
-    assert hierarchy.map_rank("Inspector General of Police").functional_role == "adgp_igp_range"
+    assert hierarchy.map_rank("Inspector General of Police").functional_role == "senior_command"
     assert hierarchy.map_rank("Inspector General of Police").scope_level == "range"
     assert hierarchy.map_rank("Deputy Inspector General").scope_level == "range"
-    assert hierarchy.map_rank("Superintendent of Police").functional_role == "sp_district_command"
+    assert hierarchy.map_rank("Superintendent of Police").functional_role == "district_command"
     assert hierarchy.map_rank("Superintendent of Police").scope_level == "district"
-    assert hierarchy.map_rank("Dy.SP").functional_role == "dysp_acp"
+    assert hierarchy.map_rank("Dy.SP").functional_role == "district_command"
     # A Police Inspector who is the SHO is a station-chief supervisor.
     assert hierarchy.map_rank("Police Inspector", "Station House Officer").scope_level == "station"
     assert hierarchy.map_rank("Police Inspector", "Station House Officer").functional_role == "sho"
     # A PSI who is the IO is a case-scoped investigator.
     m = hierarchy.map_rank("Police Sub-Inspector", "Investigating Officer")
     assert m.functional_role == "investigating_officer" and m.scope_level == "assigned_case"
+
+
+def test_adgp_and_dig_share_a_role_but_differ_in_scope_type():
+    """The distinction the old single `senior_command` role could not express.
+
+    An ADGP heads a functional wing (state-wide, crime-head narrowed); an IGP/DIG
+    commands a geographic range. Same UI surface, different data breadth — so the
+    role must match and the scope_type must not.
+    """
+    adgp = hierarchy.map_rank("Additional Director General of Police")
+    dig = hierarchy.map_rank("Deputy Inspector General")
+    assert adgp.functional_role == dig.functional_role == "senior_command"
+    assert adgp.scope_type == "wing"
+    assert dig.scope_type == "range"
+
+
+def test_sp_and_cp_share_a_role_but_differ_in_scope_type():
+    sp = hierarchy.map_rank("Superintendent of Police")
+    cp = hierarchy.map_rank("Commissioner of Police")
+    assert sp.functional_role == cp.functional_role == "district_command"
+    assert sp.scope_type == "district"
+    assert cp.scope_type == "commissionerate"
+
+
+def test_staff_cells_are_wings_not_roles():
+    """Crime analyst, cyber and traffic used to be roles of their own. They are
+    ADGP wings now, so they must resolve to senior_command at wing scope."""
+    for label in ("crime analyst", "SCRB", "cyber cell", "traffic", "intelligence"):
+        m = hierarchy.map_rank(label)
+        assert m.functional_role == "senior_command", label
+        assert m.scope_type == "wing", label
 
 
 def test_rank_mapping_abbreviations_and_aliases():
@@ -55,11 +86,26 @@ def test_scope_levels_ordering():
     assert hierarchy.scope_covers("station", "station") is True
 
 
-def test_ten_command_roles_present():
+def test_six_application_roles_present():
+    """Six APPLICATION roles. A role answers only "which UI surface"; how much
+    data a seat sees is users.scope_type, which is why ADGP+DIG collapse into
+    senior_command and SP+CP into district_command."""
     assert set(hierarchy.FUNCTIONAL_ROLES) == {
-        "dgp_state_command", "adgp_igp_range", "sp_district_command", "dysp_acp",
-        "sho", "investigating_officer", "crime_analyst", "cyber_cell",
-        "traffic_command", "system_admin"}
+        "dgp_state_command", "senior_command", "district_command",
+        "sho", "investigating_officer", "system_admin"}
+
+
+def test_every_role_declares_its_allowed_scope_types():
+    from app import roles as R
+    for role in hierarchy.FUNCTIONAL_ROLES:
+        allowed = R.scope_types_for_role(role)
+        assert allowed, role
+        for st in allowed:
+            assert st in R.SCOPE_TYPES, (role, st)
+    # And the pairing is enforced, not advisory.
+    assert R.scope_type_allowed("senior_command", "wing") is True
+    assert R.scope_type_allowed("senior_command", "state") is False
+    assert R.scope_type_allowed("sho", "district") is False
 
 
 # ===========================================================================
@@ -95,40 +141,88 @@ def test_district_supervisor_confined_to_assigned_district():
 
 
 def test_investigator_case_scoped_to_assigned_cases():
-    sc = scope_mod.derive_scope("investigating_officer", district_id=3,
+    sc = scope_mod.derive_scope("investigating_officer", unit_id=33, district_id=3,
+                                scope_type="assigned_case",
                                 rank="Police Sub-Inspector", designation="Investigating Officer",
                                 assigned_case_ids=[101, 102])
-    assert scope_mod.can_view_case_detail(sc, district_id=3, case_id=101) is True
-    assert scope_mod.can_view_case_detail(sc, district_id=3, case_id=999) is False
+    assert scope_mod.can_view_case_detail(sc, district_id=3, unit_id=33, case_id=101) is True
+    assert scope_mod.can_view_case_detail(sc, district_id=3, unit_id=33, case_id=999) is False
 
 
 def test_disaster_approval_confined_to_the_assigned_district():
     # Every command role may approve (interim), but a district-assigned seat is
     # still confined to its own district.
-    dc = scope_mod.derive_scope("dysp_acp", district_id=7)
+    dc = scope_mod.derive_scope("district_command", district_id=7)
     assert scope_mod.can_approve_disaster(dc, district_id=7) is True
     assert scope_mod.can_approve_disaster(dc, district_id=8) is False
-    # A seat with no district assignment is not geographically narrowed.
+    # An UNPOSTED seat approves nothing. This is the fail-closed change: it used
+    # to fall through to "no geographic narrowing", so an IO with no posting could
+    # approve a disaster action in any district in Karnataka.
     io = scope_mod.derive_scope("investigating_officer")
-    assert scope_mod.can_approve_disaster(io, district_id=7) is True
+    assert io.scope_type == "unresolved"
+    assert scope_mod.can_approve_disaster(io, district_id=7) is False
+    # The platform admin is genuinely unpinned, by remit rather than by omission.
     sa = scope_mod.derive_scope("system_admin")
+    assert sa.scope_type == "platform"
     assert scope_mod.can_approve_disaster(sa, district_id=7) is True
 
 
-def test_every_role_allows_all_actions_unscoped():
-    for role in hierarchy.FUNCTIONAL_ROLES:
+def test_unposted_seat_is_refused_every_geographic_action():
+    """The fail-closed rule, asserted directly.
+
+    `derive_scope` used to fall through to ``districts, units = None, None`` for a
+    posted role with no assignment, and None means "no restriction" — so an SHO
+    with no posting on record resolved to exactly the same unbounded scope as the
+    DGP. An unposted seat must now see nothing.
+    """
+    geographic = ("case_detail", "disaster_approval")
+    for role in ("senior_command", "district_command", "sho", "investigating_officer"):
         sc = scope_mod.derive_scope(role)
+        assert sc.scope_type == "unresolved", role
+        assert sc.resolved is False, role
+        assert sc.district_ids == frozenset(), role
+        for action in geographic:
+            assert scope_mod.decide(sc, action, district_id=1, case_id=1) is False, (role, action)
+
+
+def test_posted_seats_hold_their_actions():
+    """The counterpart: once posted, a seat holds the interim full action set
+    within its own geography."""
+    posted = {
+        "dgp_state_command": {},
+        "senior_command": {"wing_id": 1},
+        "district_command": {"district_id": 1},
+        "sho": {"unit_id": 33, "district_id": 1},
+        "system_admin": {},
+    }
+    for role, anchor in posted.items():
+        sc = scope_mod.derive_scope(role, **anchor)
+        assert sc.resolved is True, role
         for action in scope_mod.MATRIX_ACTIONS:
-            assert scope_mod.decide(sc, action, district_id=1, case_id=1) is True, (role, action)
+            assert scope_mod.decide(sc, action, district_id=1, unit_id=33,
+                                    case_id=1) is True, (role, action)
 
 
-def test_scope_matrix_shape_and_interim_full_access():
+def test_scope_matrix_shape_and_role_default_access():
+    """The matrix is reported at each role's DEFAULT scope, so the two roles that
+    are unpinned by remit hold everything and the posted roles hold only the
+    non-geographic actions until they are actually posted."""
     m = scope_mod.matrix_for_roles()
     assert set(m) == set(hierarchy.FUNCTIONAL_ROLES)
     for role in hierarchy.FUNCTIONAL_ROLES:
         assert set(m[role]) == set(scope_mod.MATRIX_ACTIONS)
-        # INTERIM: every command role is allowed every matrix action.
+
+    # Unpinned by remit: state command and the platform admin.
+    for role in ("dgp_state_command", "system_admin"):
         assert all(m[role][a] for a in scope_mod.MATRIX_ACTIONS), role
+
+    # Posted roles default to 'unresolved', so anything geographic is refused
+    # while the non-geographic capabilities still register.
+    for role in ("senior_command", "district_command", "sho", "investigating_officer"):
+        assert m[role]["case_detail"] is False, role
+        assert m[role]["disaster_approval"] is False, role
+        assert m[role]["aggregate_dashboard"] is True, role
+        assert m[role]["investigation_board"] is True, role
 
 
 def test_browser_header_cannot_widen_scope():
@@ -148,7 +242,9 @@ def test_scope_matrix_endpoint_open_to_every_role_and_refuses_unknown():
     for role in hierarchy.FUNCTIONAL_ROLES:
         r = client.get("/org/scope-matrix", headers=_hdr(role))
         assert r.status_code == 200, role
-        assert r.json()["matrix"][role]["case_detail"] is True
+        # Reported at the role's default scope: case detail needs a posting.
+        expected = role in ("dgp_state_command", "system_admin")
+        assert r.json()["matrix"][role]["case_detail"] is expected, role
     # An unknown role falls back to the configured default seat, not an error.
     assert client.get("/org/scope-matrix", headers=_hdr("wizard")).status_code == 200
 
@@ -173,7 +269,7 @@ def test_credential_provisioning_granted_to_every_role():
 def test_create_reaches_service_without_persist():
     # A non-admin seat now passes the gate + write guard and reaches the service,
     # which rejects a duplicate username -> proves the gate without persisting.
-    body = {"username": "admin", "role": "crime_analyst"}  # 'admin' already exists
+    body = {"username": "admin", "role": "senior_command"}  # 'admin' already exists
     for role in ("system_admin", "investigating_officer"):
         r = client.post("/org/users", json=body, headers=_hdr(role))
         assert r.status_code == 400, role
@@ -220,4 +316,4 @@ def test_create_user_rejects_unknown_role_and_duplicate(rw_rollback):
     with pytest.raises(service.OrgError):
         service.create_user("x.bad.role", "X", "wizard", conn=rw_rollback)
     with pytest.raises(service.OrgError):
-        service.create_user("admin", "dup", "crime_analyst", conn=rw_rollback)  # exists
+        service.create_user("admin", "dup", "senior_command", conn=rw_rollback)  # exists

@@ -55,10 +55,17 @@ def socioeconomic_report(start: Optional[dt.date] = None, end: Optional[dt.date]
 
 def crime_patterns_report(pattern_type: Optional[str] = None,
                           crime_head_id: Optional[int] = None,
-                          limit: int = 60) -> CrimePatternsResponse:
-    """Detected crime patterns + their evidencing FIRs, wrapped in AiResult."""
+                          limit: int = 60,
+                          crime_head_ids: Optional[list] = None) -> CrimePatternsResponse:
+    """Detected crime patterns + their evidencing FIRs, wrapped in AiResult.
+
+    ``crime_head_ids`` is a WING seat's confinement. There is deliberately no
+    geographic confinement: a pattern links cases that may span districts, and a
+    cross-boundary serial offender is the case the detector exists to surface.
+    """
     with db.ro_conn() as conn:
-        data = patterns_mod.compute(conn, pattern_type, crime_head_id, limit)
+        data = patterns_mod.compute(conn, pattern_type, crime_head_id, limit,
+                                    crime_head_ids=crime_head_ids)
 
     items = [CrimePatternCard(**c) for c in data["items"]]
     confs = [c.confidence for c in items if c.confidence is not None]

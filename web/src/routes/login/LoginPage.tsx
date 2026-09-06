@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { ROLES, ROLE_LIST, type UserRole } from "@/config/roles";
 import { useAuth } from "@/auth/AuthProvider";
+import { SeatPicker } from "@/routes/login/SeatPicker";
+import { useSeatStore, type SelectedSeat } from "@/stores/useSeatStore";
 import { cn } from "@/lib/utils";
 import "@/routes/login/login.css";
 
@@ -50,14 +52,10 @@ type Accent = "command" | "field" | "admin";
 
 const ROLE_META: Record<UserRole, { icon: LucideIcon; accent: Accent }> = {
   dgp_state_command: { icon: Landmark, accent: "command" },
-  adgp_igp_range: { icon: Layers, accent: "command" },
-  sp_district_command: { icon: Building2, accent: "command" },
-  dysp_acp: { icon: Users, accent: "command" },
+  senior_command: { icon: Layers, accent: "command" },
+  district_command: { icon: Building2, accent: "command" },
   sho: { icon: ShieldCheck, accent: "field" },
   investigating_officer: { icon: Search, accent: "field" },
-  crime_analyst: { icon: LineChart, accent: "field" },
-  cyber_cell: { icon: Cpu, accent: "field" },
-  traffic_command: { icon: TrafficCone, accent: "field" },
   system_admin: { icon: KeyRound, accent: "admin" },
 };
 
@@ -79,6 +77,8 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
   const [workspace, setWorkspace] = useState<UserRole | null>(null);
+  const setSeat = useSeatStore((s) => s.setSeat);
+  const clearSeat = useSeatStore((s) => s.clearSeat);
 
   // Keep the public sign-in route as a single-screen experience, then restore
   // normal document scrolling as soon as the user leaves /login.
@@ -106,8 +106,22 @@ export function LoginPage() {
     // Keep RoleProvider and the offline identity in sync in the same click.
     // Without this, a previously explored demo role could override the newly
     // selected login card when the authenticated identity mounted.
+    //
+    // Clears any previously chosen seat: opening a GENERIC seat by role must not
+    // silently keep sending the last specific seat's actor, or the board would
+    // render for a jurisdiction the user thought they had left.
+    clearSeat();
     rememberWorkspace(role);
     signInOffline(role);
+  };
+
+  const openSeat = (seat: SelectedSeat) => {
+    // The seat carries both halves: its role picks the board, its posting picks
+    // the jurisdiction. Store it before signing in so the first request already
+    // sends the right actor.
+    setSeat(seat);
+    rememberWorkspace(seat.role);
+    signInOffline(seat.role);
   };
 
   if (status === "initializing") {
@@ -147,12 +161,20 @@ export function LoginPage() {
           <div className="mt-5">
             {mode === "offline" ? (
               <>
-                <div className="login-role-cards">
-                  <RolePicker onPick={openOfflineWorkspace} />
-                </div>
-                <div className="login-role-select">
-                  <RoleSelect onPick={openOfflineWorkspace} actionLabel="Open workspace" />
-                </div>
+                {/* Seat first. A role card can only open a generic seat, and with
+                    ~11,825 provisioned seats the question is not "which role" but
+                    "which posting" — an SP of Mysuru and an SP of Belagavi share a
+                    role and command different districts. The role cards stay below
+                    as a quick path when the specific posting does not matter. */}
+                <SeatPicker onPick={openSeat} />
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-12 text-content-dim transition-colors hover:text-content">
+                    Or open a generic seat by role
+                  </summary>
+                  <div className="mt-2">
+                    <RoleSelect onPick={openOfflineWorkspace} actionLabel="Open workspace" />
+                  </div>
+                </details>
               </>
             ) : (
               <div className="space-y-4">

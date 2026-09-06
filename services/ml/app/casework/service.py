@@ -16,7 +16,7 @@ Safety rules enforced server-side (Phase 7 DoD):
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from psycopg2.extras import Json
@@ -1136,3 +1136,120 @@ def add_lifecycle_event(cid: int, req: S.LifecycleEventInput, role: Optional[str
 def timeline(cid: int) -> S.TimelineResponse:
     with db.ro_conn() as conn:
         return _timeline(conn, cid)
+
+
+# --------------------------------------------------------------------------- #
+# Scoped "next hearing" aggregate                                             #
+# --------------------------------------------------------------------------- #
+_HEARING_LIST_CAP = 25
+
+
+def next_hearings(*, district_ids=None, unit_id=None, limit: int = _HEARING_LIST_CAP) -> dict:
+    """The soonest scheduled hearings in the caller's scope.
+
+    Backs the "Next court date" KPI, which shipped in an honest `pending` state
+    because no hearing in the corpus was scheduled-but-not-yet-heard: ScheduledAt
+    was NULL on every row and every row carried an OccurredAt. Migration 036 (and
+    datagen, for freshly built corpora) writes the adjourned-to date for cases
+    awaiting trial, which is the population selected here.
+
+    ``ScheduledAt IS NOT NULL AND OccurredAt IS NULL`` is the definition of
+    "still to come". Every historical row has the opposite pair, so the two
+    populations cannot be confused.
+
+    DAYS ARE COUNTED FROM THE CORPUS AS-OF DATE, NOT wall-clock today. The dataset
+    is synthetic and ends before today, so counting from today would report every
+    hearing as overdue by however long the demo has been running. ``as_of`` and
+    ``data_age_days`` are returned so the caller can say what the number is
+    relative to — the same contract /performance and /outcomes use.
+    """
+    scope_sql: list[str] = []
+    params: list = []
+    if district_ids is not None:
+        if not district_ids:
+            # Entitled to nothing. An impossible predicate, not a skipped filter:
+            # treating empty as "no filter" is what leaks every district to an
+            # unposted seat.
+            scope_sql.append("FALSE")
+        else:
+            scope_sql.append('u."DistrictID" = ANY(%s)')
+            params.append([int(d) for d in district_ids])
+    if unit_id is not None:
+        scope_sql.append('cm."PoliceStationID" = %s')
+        params.append(int(unit_id))
+    where = (" AND " + " AND ".join(scope_sql)) if scope_sql else ""
+
+    with db.ro_conn() as conn, conn.cursor() as cur:
+        # The corpus reference point: the last thing that actually happened in
+        # court. Read once and reported, so "in 14 days" is anchored to something
+        # the caller can see rather than to an unstated assumption.
+        cur.execute('SELECT max("OccurredAt")::date FROM "CourtEvent" '
+                    'WHERE "OccurredAt" IS NOT NULL')
+        row = cur.fetchone()
+        as_of = row[0] if row and row[0] else None
+
+        cur.execute(
+            'SELECT count(*) AS pending, '
+            '       min(ce."ScheduledAt")::date AS soonest, '
+            '       count(DISTINCT ce."CaseMasterID") AS cases '
+            '  FROM "CourtEvent" ce '
+            '  JOIN "CaseMaster" cm ON cm."CaseMasterID" = ce."CaseMasterID" '
+            '  JOIN "Unit" u ON u."UnitID" = cm."PoliceStationID" '
+            ' WHERE ce."OccurredAt" IS NULL AND ce."ScheduledAt" IS NOT NULL'
+            + where,
+            params)
+        agg = cur.fetchone()
+        pending, soonest, cases_n = int(agg[0] or 0), agg[1], int(agg[2] or 0)
+
+        hearings = []
+        if pending:
+            cur.execute(
+                'SELECT ce."CourtEventID", ce."CaseMasterID", cm."CaseNo", '
+                '       ce."ScheduledAt"::date, u."UnitID", u."UnitName", '
+                '       d."DistrictName", ct."CourtName" '
+                '  FROM "CourtEvent" ce '
+                '  JOIN "CaseMaster" cm ON cm."CaseMasterID" = ce."CaseMasterID" '
+                '  JOIN "Unit" u ON u."UnitID" = cm."PoliceStationID" '
+                '  LEFT JOIN "District" d ON d."DistrictID" = u."DistrictID" '
+                '  LEFT JOIN "Court" ct ON ct."CourtID" = ce."CourtID" '
+                ' WHERE ce."OccurredAt" IS NULL AND ce."ScheduledAt" IS NOT NULL'
+                + where +
+                ' ORDER BY ce."ScheduledAt" ASC LIMIT %s',
+                params + [int(limit)])
+            for r in cur.fetchall():
+                sched = r[3]
+                hearings.append({
+                    "court_event_id": int(r[0]),
+                    "case_id": int(r[1]),
+                    "case_number": r[2],
+                    "scheduled_on": sched.isoformat() if sched else None,
+                    "days_away": (sched - as_of).days if (sched and as_of) else None,
+                    "unit_id": int(r[4]) if r[4] is not None else None,
+                    "unit_name": r[5],
+                    "district_name": r[6],
+                    "court_name": r[7],
+                })
+
+    days_to_next = (soonest - as_of).days if (soonest and as_of) else None
+    today = date.today()
+    return {
+        "scope": {"district_ids": district_ids, "unit_id": unit_id},
+        "as_of": as_of.isoformat() if as_of else None,
+        "data_age_days": (today - as_of).days if as_of else None,
+        # None, not 0, when nothing is listed: "no hearing scheduled" and "a hearing
+        # today" are different statements and must not render the same.
+        "days_to_next_hearing": days_to_next,
+        "next_hearing_on": soonest.isoformat() if soonest else None,
+        "pending_hearings": pending,
+        "cases_awaiting_hearing": cases_n,
+        "hearings": hearings,
+        "empty": pending == 0,
+        "limitations": [
+            "Synthetic hackathon data.",
+            "Days are counted from the corpus as-of date, not today, because the "
+            "dataset ends before the current date.",
+            "Covers cases with an adjourned-to date on record; a case awaiting "
+            "trial with no listed date does not appear.",
+        ],
+        "dataset": "synthetic",
+    }

@@ -73,11 +73,14 @@ def _linked_case_row(r) -> dict:
 
 
 def compute(conn, pattern_type: Optional[str] = None, crime_head_id: Optional[int] = None,
-            limit: int = 60) -> dict:
+            limit: int = 60, crime_head_ids: Optional[list] = None) -> dict:
     """Return policy-safe active patterns plus their evidencing cases.
 
     Persisted pattern rows fail closed: inactive rows, empty case lineage, and any
     lineage containing a currently ineligible case are omitted as stale artifacts.
+
+    ``crime_head_ids`` confines the result to a WING seat's crime heads. There is
+    no geographic filter by design — see crime_patterns_report.
     """
     lineage_guard = _pattern_lineage_guard("p")
     clauses = ['p."IsActive" = TRUE', lineage_guard]
@@ -88,6 +91,9 @@ def compute(conn, pattern_type: Optional[str] = None, crime_head_id: Optional[in
     if crime_head_id is not None:
         clauses.append('p."CrimeHeadID" = %s')
         params.append(crime_head_id)
+    if crime_head_ids:
+        clauses.append('p."CrimeHeadID" = ANY(%s)')
+        params.append([int(h) for h in crime_head_ids])
     where = " WHERE " + " AND ".join(clauses)
 
     with conn.cursor() as cur:

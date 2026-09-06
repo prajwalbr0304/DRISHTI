@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from . import hierarchy
+from .. import roles as _roles
 from ..roles import ALL_ROLES, DEFAULT_ROLE, normalize_role
 
 # Roles that are never geographically pinned (platform-wide seats).
@@ -49,13 +50,45 @@ class ScopeContext:
     rank: Optional[str] = None
     source: str = "role-default"          # provenance of the derivation
     trusted: bool = True                  # False if we had to fall back
+    # --- seat model (migrations 026/027) ------------------------------------
+    # scope_type is what the seat actually carries; scope_level above remains the
+    # ordered geographic ladder used by hierarchy.scope_covers.
+    scope_type: str = "unresolved"
+    wing_id: Optional[int] = None
+    range_id: Optional[int] = None
+    # Crime heads a WING seat is accountable for. None = every head. This is the
+    # only narrowing a wing seat gets; it has no geographic filter.
+    crime_head_ids: Optional[frozenset] = None
+    is_lead_investigator: bool = False
+
+    @property
+    def aggregate_only(self) -> bool:
+        """True when this seat must never read individual case rows.
+
+        State and wing seats are accountable for the whole force or a whole
+        functional wing; neither has a case-level remit, and both would otherwise
+        be able to page through every FIR in Karnataka.
+        """
+        return self.scope_type in ("state", "wing")
+
+    @property
+    def resolved(self) -> bool:
+        """False when the seat has no posting on record. Such a seat must see
+        NOTHING rather than everything (see derive_scope)."""
+        return self.scope_type != "unresolved"
 
     def as_dict(self) -> dict:
         return {
             "role": self.role, "scope_level": self.scope_level,
+            "scope_type": self.scope_type,
             "district_ids": (sorted(self.district_ids) if self.district_ids is not None else None),
             "unit_ids": (sorted(self.unit_ids) if self.unit_ids is not None else None),
+            "wing_id": self.wing_id, "range_id": self.range_id,
+            "crime_head_ids": (sorted(self.crime_head_ids)
+                               if self.crime_head_ids is not None else None),
             "assigned_case_scoped": self.assigned_case_ids is not None,
+            "aggregate_only": self.aggregate_only,
+            "is_lead_investigator": self.is_lead_investigator,
             "user_id": self.user_id, "username": self.username, "rank": self.rank,
             "source": self.source, "trusted": self.trusted,
         }
@@ -69,42 +102,101 @@ def derive_scope(role: str, *, user_id: Optional[int] = None,
                  designation: Optional[str] = None,
                  district_id: Optional[int] = None, unit_id: Optional[int] = None,
                  assigned_case_ids: Optional[list] = None,
-                 source: str = "trusted-assignment") -> ScopeContext:
+                 source: str = "trusted-assignment",
+                 scope_type: Optional[str] = None,
+                 wing_id: Optional[int] = None, range_id: Optional[int] = None,
+                 district_ids: Optional[list] = None,
+                 crime_head_ids: Optional[list] = None,
+                 is_lead_investigator: bool = False) -> ScopeContext:
     """Build a :class:`ScopeContext` from trusted assignment fields.
 
     The scope LEVEL comes from the rank mapping when a rank/designation is known,
     otherwise from the role default. The geographic sets come only from the
     trusted ``district_id``/``unit_id`` assignment (never a client header)."""
-    role = (role or DEFAULT_ROLE).strip()
+    # translate_legacy_role, NOT normalize_role: a superseded name is mapped
+    # forward, but an unknown or forged role is preserved so that every capability
+    # check below refuses it. Coercing it to the default seat here would hand a
+    # forged role a real seat's authority.
+    role = _roles.translate_legacy_role(role) or DEFAULT_ROLE
     mapping = hierarchy.map_rank(rank, designation)
     scope_level = mapping.scope_level if mapping else hierarchy.scope_level_for_role(role)
 
-    # State/range seats and the platform admin are not district-pinned unless assigned.
-    broad = scope_level in ("state", "range")
-    districts: Optional[frozenset]
-    units: Optional[frozenset]
-    if role in UNPINNED_ROLES:
+    # The seat's scope_type is authoritative. When a caller has not supplied one
+    # (legacy call sites, the offline dev path), infer it from whichever anchor is
+    # present, and fall back to the role default -- which is 'unresolved' for
+    # every posted role.
+    st = (scope_type or "").strip()
+    if not st:
+        if role in UNPINNED_ROLES:
+            st = "platform"
+        elif wing_id is not None:
+            st = "wing"
+        elif range_id is not None:
+            st = "range"
+        elif unit_id is not None:
+            st = "station" if scope_level == "station" else "assigned_case"
+        elif district_id is not None:
+            # A rank that is a city command (CP) is a commissionerate seat, not a
+            # district one. Both anchor on district_id, so the rank is the only
+            # thing that tells them apart.
+            st = (mapping.scope_type if mapping and mapping.scope_type == "commissionerate"
+                  else "district")
+        elif mapping and mapping.scope_type in ("wing", "platform"):
+            # A wing or platform seat needs no geographic anchor to be resolved:
+            # a wing is state-wide by construction. Without this, an ADGP with no
+            # district would fall through to 'unresolved' and see nothing.
+            st = mapping.scope_type
+        else:
+            st = _roles.ROLE_DEFAULT_SCOPE_TYPE.get(role, "unresolved")
+
+    districts: Optional[frozenset] = None
+    units: Optional[frozenset] = None
+    heads: Optional[frozenset] = None
+
+    if st == "platform":
+        # Platform admin is not geographically pinned.
         districts, units = None, None
-    elif district_id is not None:
-        districts = frozenset({int(district_id)})
-        units = frozenset({int(unit_id)}) if unit_id is not None else None
-    elif broad:
+    elif st == "state":
+        # State command sees every district: no narrowing, by remit.
         districts, units = None, None
+    elif st == "wing":
+        # A wing is state-wide GEOGRAPHICALLY and narrowed by crime head instead.
+        districts, units = None, None
+        if crime_head_ids is not None:
+            heads = frozenset(int(h) for h in crime_head_ids)
+    elif st == "range":
+        # Range districts must be expanded by the caller (DB lookup) and passed in
+        # via district_ids. An empty set means "range with no districts", which
+        # correctly yields nothing rather than everything.
+        districts = (frozenset(int(d) for d in district_ids)
+                     if district_ids is not None else frozenset())
+    elif st in ("district", "commissionerate"):
+        districts = (frozenset({int(district_id)}) if district_id is not None
+                     else frozenset())
+    elif st in ("station", "assigned_case"):
+        units = frozenset({int(unit_id)}) if unit_id is not None else frozenset()
+        if district_id is not None:
+            districts = frozenset({int(district_id)})
     else:
-        # District/station/case seat without a trusted district assignment: the
-        # role's capability still applies but no geographic narrowing is asserted
-        # (documented demo fallback; a real deployment pins this from SSO).
-        districts, units = None, None
+        # FAIL CLOSED. An unposted seat previously fell through to
+        # `districts, units = None, None`, which means "no restriction" -- so an
+        # SHO with no posting on record saw the entire state, identically to the
+        # DGP. Empty frozensets mean "assigned to nothing", so nothing passes
+        # within_geo_scope until the seat is actually posted.
+        st = "unresolved"
+        districts, units = frozenset(), frozenset()
 
     cases: Optional[frozenset] = None
-    if scope_level == "assigned_case" and assigned_case_ids is not None:
+    if st == "assigned_case" and assigned_case_ids is not None:
         cases = frozenset(int(c) for c in assigned_case_ids)
 
     return ScopeContext(
         role=role, scope_level=scope_level, district_ids=districts, unit_ids=units,
         assigned_case_ids=cases, user_id=user_id, username=username,
         rank=(mapping.rank if mapping else rank), source=source,
-        trusted=(district_id is not None or broad or role in UNPINNED_ROLES),
+        trusted=(st not in ("unresolved",)),
+        scope_type=st, wing_id=wing_id, range_id=range_id, crime_head_ids=heads,
+        is_lead_investigator=bool(is_lead_investigator),
     )
 
 
@@ -165,14 +257,23 @@ def can_use_investigation_board(scope: ScopeContext) -> bool:
     return scope.role in ALL_ROLES
 
 
-def can_approve_disaster(scope: ScopeContext, *, district_id: Optional[int] = None) -> bool:
+def can_approve_disaster(scope: ScopeContext, *, district_id: Optional[int] = None,
+                         unit_id: Optional[int] = None) -> bool:
     """Disaster warning/allocation/evacuation approval. INTERIM: every command
-    role may approve, still confined to its geographic scope."""
+    role may approve, still confined to its geographic scope.
+
+    ``unit_id`` must be forwarded for a station seat. Without it, a seat whose
+    ``unit_ids`` is set can never satisfy :func:`within_geo_scope` — so an SHO
+    would be refused approval inside its own district, which is the one place it
+    certainly holds authority.
+    """
     if scope.role not in ALL_ROLES:
         return False
     if scope.role in UNPINNED_ROLES:
         return True
-    return within_geo_scope(scope, district_id=district_id)
+    if not scope.resolved:
+        return False
+    return within_geo_scope(scope, district_id=district_id, unit_id=unit_id)
 
 
 def decide(scope: ScopeContext, action: str, *, district_id: Optional[int] = None,
@@ -189,7 +290,7 @@ def decide(scope: ScopeContext, action: str, *, district_id: Optional[int] = Non
     if action == "investigation_board":
         return can_use_investigation_board(scope)
     if action == "disaster_approval":
-        return can_approve_disaster(scope, district_id=district_id)
+        return can_approve_disaster(scope, district_id=district_id, unit_id=unit_id)
     raise ValueError(f"unknown action: {action}")
 
 
@@ -206,6 +307,19 @@ def enforce_geo_request(scope: ScopeContext, *, unit_id: Optional[int] = None,
     unrestricted (state/super_admin) seat may request any/no filter. This is how
     "station chiefs -> their station, SP -> assigned units, higher -> aggregates"
     is enforced server-side (never from a browser header)."""
+    # A seat confined to NOTHING must be refused, not left unfiltered.
+    #
+    # An empty frozenset means "assigned to nothing" (an unposted seat, or a range
+    # with no member districts). The forcing branches below only fire on a set of
+    # exactly one, so an empty set used to fall straight through and return
+    # (None, None) — i.e. no filter at all, which every service reads as
+    # "state-wide". That handed an unposted seat the entire force: verified as
+    # /cases/caseload returning the full 58,011 open cases, identical to the DGP.
+    if ((scope.unit_ids is not None and len(scope.unit_ids) == 0)
+            or (scope.district_ids is not None and len(scope.district_ids) == 0)):
+        raise ScopeDenied(
+            "this seat has no jurisdiction on record, so no data is in scope")
+
     if scope.unit_ids is not None:
         if unit_id is not None and int(unit_id) not in scope.unit_ids:
             raise ScopeDenied("requested station is outside your assigned scope")

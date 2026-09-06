@@ -27,11 +27,21 @@ if str(_REPO_ROOT) not in sys.path:
 
 client = TestClient(app)
 
-COORD = {"X-Role": "dysp_acp", "X-Demo-Actor": "demo.coord", "X-Disaster-District": "24"}
-COORD5 = {"X-Role": "dysp_acp", "X-Demo-Actor": "demo.coord", "X-Disaster-District": "5"}
-SUPER = {"X-Role": "system_admin", "X-Demo-Actor": "demo.sa"}
-CRIME = {"X-Role": "investigating_officer", "X-Demo-Actor": "demo.io"}
-POLICY = {"X-Role": "dgp_state_command", "X-Demo-Actor": "demo.pol"}
+# Seats are named by their PROVISIONED username, because the district a seat may
+# act in is now read from its own record rather than from X-Disaster-District.
+# `demo.coord` used to work with a district header; that header could name any
+# district, and omitting it granted state-wide authority — so it is no longer a
+# way to obtain a jurisdiction.
+#
+# The fixture seeds hazard data in district 24 (Mandya) and 5 (Belagavi).
+COORD = {"X-Demo-Actor": "sp.mandya"}            # posted to district 24
+COORD5 = {"X-Demo-Actor": "sp.belagavi"}         # posted to district 5
+SUPER = {"X-Demo-Actor": "sysadmin"}             # platform, unpinned by remit
+POLICY = {"X-Demo-Actor": "dgp.state"}           # state, unpinned by remit
+CRIME = {"X-Demo-Actor": "io.852"}               # IO posted to a station in d24
+# A seat with no posting on record. Holds the role but no jurisdiction, so every
+# district-scoped action must be refused.
+UNPOSTED = {"X-Role": "district_command", "X-Demo-Actor": "demo.unposted"}
 
 
 @pytest.fixture(autouse=True)

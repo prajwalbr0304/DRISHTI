@@ -36,38 +36,70 @@ DISASTER_READ_ROLES = set(ALL_ROLES)
 DISASTER_FORECAST_ROLES = set(ALL_ROLES)
 RESOURCE_ALLOCATION_ROLES = set(ALL_ROLES)
 EVACUATION_PLAN_ROLES = set(ALL_ROLES)
-# Roles confined to a single assigned district/station (cannot act state-wide):
-# every seat whose default scope level is narrower than a range.
+# Superseded. Confinement is now decided by the SEAT's district set, not by its
+# role, because role no longer determines breadth: `senior_command` is state-wide
+# when wing-scoped and multi-district when range-scoped, and this set would have
+# treated both as unconfined. Retained only so existing imports keep working.
 DISTRICT_SCOPED_ROLES = {r for r, lvl in ROLE_SCOPE_LEVEL.items()
                          if lvl in ("district", "subdivision", "station", "assigned_case")}
 
 
 class DisasterScope:
-    """The resolved actor scope for a request (demo simulation of a DDMA seat)."""
+    """The resolved actor scope for a request.
+
+    ``districts`` is the seat's TRUSTED district set, resolved server-side from the
+    seat record — not from a request header. Semantics match
+    :class:`app.org.scope.ScopeContext`:
+
+        None            not geographically narrowed (state seat, wing seat, admin)
+        frozenset()     entitled to nothing (unposted seat)
+        {1, 4, 9}       confined to those districts (a district or range seat)
+    """
 
     def __init__(self, role: str, actor: str, district_id: Optional[int],
-                 unit_id: Optional[int]):
+                 unit_id: Optional[int], districts: Optional[frozenset] = None,
+                 scope_type: str = "unresolved"):
         self.role = role
         self.actor = actor
         self.district_id = district_id
         self.unit_id = unit_id
+        self.districts = districts
+        self.scope_type = scope_type
         self.is_super = role in {"system_admin"}
 
     def covers_district(self, district_id: Optional[int]) -> bool:
-        """The platform admin covers everywhere. A district-scoped seat that has
-        an ASSIGNED district covers only that district; a seat with no assignment
-        asserted is not geographically narrowed (interim demo posture)."""
+        """True when this seat may act on ``district_id``.
+
+        FAIL CLOSED. The previous implementation returned True whenever the seat
+        had no asserted district — and the district came from the
+        ``X-Disaster-District`` request header, so OMITTING the header granted
+        state-wide authority to approve warnings, allocate resources and sign off
+        evacuation plans. Setting it granted authority over whichever district the
+        client named. Both are now impossible: the district set comes from the seat
+        record, and an empty set covers nothing.
+        """
         if self.is_super:
             return True
         if self.role not in DISASTER_WRITE_ROLES:
             return False
-        if self.role not in DISTRICT_SCOPED_ROLES or self.district_id is None:
+        if self.districts is None:
+            # Unrestricted BY REMIT (state command, or a wing that is state-wide
+            # geographically). A wing's narrowing is by crime head, not district.
             return True
-        return district_id is None or int(district_id) == int(self.district_id)
+        if not self.districts:
+            return False          # unposted seat: no jurisdiction, no authority
+        if district_id is None:
+            # An action with no district cannot be checked against a confined
+            # seat, so it is refused rather than waved through.
+            return False
+        return int(district_id) in self.districts
 
     def as_dict(self) -> dict:
         return {"role": self.role, "actor": self.actor,
                 "district_id": self.district_id, "unit_id": self.unit_id,
+                "scope_type": self.scope_type,
+                "districts": (sorted(self.districts)
+                              if self.districts is not None else None),
                 "is_super": self.is_super}
 
 
@@ -94,14 +126,44 @@ def _int_header(request: Request, name: str) -> Optional[int]:
 
 
 def resolve_scope(request: Request) -> DisasterScope:
-    """Resolve the caller's disaster scope. District/unit come from demo headers
-    (``X-Disaster-District`` / ``X-Disaster-Unit``) which simulate the seat the
-    Catalyst-authenticated coordinator is assigned to. Never a security boundary
-    on their own — combined with the role gate below."""
-    role = _resolve_role(request.headers.get("x-role"))
+    """Resolve the caller's disaster scope from the TRUSTED seat record.
+
+    ``X-Disaster-District`` / ``X-Disaster-Unit`` are still read, but only as a
+    NARROWING preference within the seat's own scope: a coordinator posted to a
+    range may focus one of its districts. A header naming a district outside the
+    seat's scope is discarded, so it can no longer be used to select a
+    jurisdiction — which is what it previously did.
+    """
+    from ..org.deps import resolve_seat_scope
+
+    seat = resolve_seat_scope(request)
+    role = seat.role or _resolve_role(request.headers.get("x-role"))
+
+    districts = seat.district_ids
+    # A wing seat is state-wide geographically; its narrowing is by crime head, so
+    # it is not district-confined for disaster actions.
+    if seat.scope_type == "wing":
+        districts = None
+
+    requested = _int_header(request, "x-disaster-district")
+    focus = None
+    if requested is not None and (districts is None or requested in districts):
+        focus = requested
+    elif districts is not None and len(districts) == 1:
+        focus = next(iter(districts))
+
+    requested_unit = _int_header(request, "x-disaster-unit")
+    unit = None
+    if seat.unit_ids is None:
+        unit = requested_unit
+    elif requested_unit is not None and requested_unit in seat.unit_ids:
+        unit = requested_unit
+    elif len(seat.unit_ids) == 1:
+        unit = next(iter(seat.unit_ids))
+
     return DisasterScope(role=role, actor=resolve_actor(request),
-                         district_id=_int_header(request, "x-disaster-district"),
-                         unit_id=_int_header(request, "x-disaster-unit"))
+                         district_id=focus, unit_id=unit,
+                         districts=districts, scope_type=seat.scope_type)
 
 
 # --- coarse role gates (FastAPI dependencies) -------------------------------
@@ -180,11 +242,19 @@ def enforce_district_scope(scope: DisasterScope, district_id: Optional[int],
     if not scope.covers_district(district_id):
         _record_denied(action, scope.role,
                        detail={"assigned": scope.district_id, "target": district_id})
+        if scope.districts is not None and not scope.districts:
+            raise HTTPException(
+                status_code=403,
+                detail=(f"'{action}' is refused: this seat has no district on "
+                        "record, so it holds no jurisdiction to act in. An "
+                        "administrator must post it first."))
+        allowed = (", ".join(str(d) for d in sorted(scope.districts))
+                   if scope.districts else "none")
         raise HTTPException(
             status_code=403,
-            detail=(f"'{action}' is outside your assigned district "
-                    f"({scope.district_id}). A district-scoped seat may only act "
-                    "within its assigned synthetic district/unit."))
+            detail=(f"'{action}' is outside your jurisdiction (districts: "
+                    f"{allowed}). A district- or range-scoped seat may only act "
+                    "within the districts it is posted to."))
 
 
 # --- audit of allow/deny decisions ------------------------------------------

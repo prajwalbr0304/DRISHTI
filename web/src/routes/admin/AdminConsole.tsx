@@ -6,6 +6,9 @@ import {
   ReconciliationPanel, ReportsPanel, RetentionPanel, StatusPanel, UsagePanel,
 } from "./panels";
 import { OrgAccessPanel } from "./OrgAccessPanel";
+import { UiVisibilityPanel } from "./UiVisibilityPanel";
+import { RolesPanel } from "./RolesPanel";
+import { SeatProfilePanel } from "./SeatProfilePanel";
 
 /* Phase-15 Admin / governance console. Replaces the model-registry-only
    placeholder with the hackathon administration + observability surface:
@@ -16,13 +19,20 @@ import { OrgAccessPanel } from "./OrgAccessPanel";
    synthetic-demo data; writes are role-gated + write-guarded server-side. */
 
 type Tab =
-  | "status" | "identity" | "access" | "reconciliation" | "retention" | "models"
-  | "queues" | "usage" | "audit" | "reports" | "notifications" | "assistant";
+  | "status" | "identity" | "access" | "roles" | "seats" | "visibility"
+  | "reconciliation" | "retention" | "models" | "queues" | "usage" | "audit"
+  | "reports" | "notifications" | "assistant";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "status", label: "Status" },
   { id: "identity", label: "Identity & roles" },
   { id: "access", label: "Access & hierarchy" },
+  // The three organisation-administration tabs sit together, after access and
+  // before platform operations: creating a role, editing the seats that hold it
+  // and choosing what those seats see are one continuous job.
+  { id: "roles", label: "Roles & permissions" },
+  { id: "seats", label: "Seat profiles" },
+  { id: "visibility", label: "UI visibility" },
   { id: "reconciliation", label: "Reconciliation" },
   { id: "retention", label: "Retention & legal hold" },
   { id: "models", label: "Model review" },
@@ -63,6 +73,9 @@ export function AdminConsole() {
       {tab === "status" && <StatusPanel />}
       {tab === "identity" && <IdentityPanel />}
       {tab === "access" && <OrgAccessPanel />}
+      {tab === "roles" && <RolesPanel />}
+      {tab === "seats" && <SeatProfilePanel />}
+      {tab === "visibility" && <UiVisibilityPanel />}
       {tab === "reconciliation" && <ReconciliationPanel />}
       {tab === "retention" && <RetentionPanel />}
       {tab === "models" && <ModelsPanel />}

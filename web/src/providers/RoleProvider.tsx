@@ -11,6 +11,7 @@ import {
 import { useAuthOptional } from "@/auth";
 import { deriveDisplayRole } from "@/auth/roleMapping";
 import { useDisasterStore } from "@/stores/useDisasterStore";
+import { selectedActor } from "@/stores/useSeatStore";
 
 /* ============================================================================
    Role context. The shell reads the active role to adapt the sidebar and data
@@ -96,11 +97,19 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
   useEffect(() => {
     apiClient.setRoleGetter(() => roleRef.current);
-    // Actor = authenticated email for the audit trail when available; otherwise
-    // the seat's SEEDED demo username, which the server can resolve to that
-    // seat's trusted district/station scope (see demoActorFor). Display/audit
-    // only — never authentication.
-    apiClient.setActorGetter(() => userRef.current?.email || demoActorFor(roleRef.current));
+    // Actor precedence, most to least specific:
+    //   1. the SEAT chosen in the picker — one of ~11,825 provisioned seats, and
+    //      the only thing that identifies WHICH SP or WHICH station;
+    //   2. the authenticated email, for the audit trail;
+    //   3. the role's seeded demo seat, so the app still works before a pick.
+    // The seat comes first because a role no longer identifies a jurisdiction: an
+    // SP of Mysuru and an SP of Belagavi share a role and see different districts,
+    // and only the seat distinguishes them.
+    //
+    // Display/audit only. The server resolves that seat's scope from its own
+    // record, so naming a seat cannot grant its jurisdiction.
+    apiClient.setActorGetter(() =>
+      selectedActor() || userRef.current?.email || demoActorFor(roleRef.current));
     // Emergency Response: send the seat's assigned district so the server scopes
     // disaster writes. A state-level/admin seat covers all districts server-side.
     apiClient.setDistrictGetter(() => useDisasterStore.getState().assignedDistrict);

@@ -113,6 +113,19 @@ _REGISTRY: tuple[DomainBoundary, ...] = (
                    "persist natively in Data Store (disaster/repo.py over the shared "
                    "DataStoreRepository). The AWS PostGIS mirror is reconstructable "
                    "and adapter-only.", migration=MIG_NATIVE),
+    DomainBoundary("cctv", CATALYST_OPERATIONAL,
+                   "Catalyst Data Store canvas (native); PostGIS responder proximity pending adapter",
+                   "CCTV cameras, detections, alerts, dispatch and activity persist "
+                   "natively in Data Store (cctv/repo.py over the shared "
+                   "DataStoreRepository), the same pattern as disaster/ and board/. "
+                   "CctvDetection and CctvActivity are APPEND-ONLY, so a detection "
+                   "cannot be rewritten after the fact to agree with a review "
+                   "decision. NOT yet fully native: cctv/dispatch.py reads RDS "
+                   "directly for a PostGIS proximity scan when proposing a "
+                   "responder. It degrades to a pure-Python haversine over Data "
+                   "Store rows, so the feature works without RDS, but the direct "
+                   "read should move behind the protected adapter like board/'s "
+                   "Search Around. Tracked, not hidden.", migration=MIG_PENDING),
     DomainBoundary("scenarios", CATALYST_OPERATIONAL, "Catalyst Data Store (native) / bundled fixtures",
                    "Prompt 20 synthetic scenario registry is additive fixture data "
                    "loaded at runtime; no RDS access.", migration=MIG_NATIVE),
@@ -175,8 +188,33 @@ _REGISTRY: tuple[DomainBoundary, ...] = (
                    "are code-based config (work without DATABASE_URL); the deeper "
                    "governance read models still use RDS (tracked closure).",
                    migration=MIG_PENDING),
+    DomainBoundary("admin_console", CATALYST_OPERATIONAL,
+                   "Catalyst Data Store (target); RDS today",
+                   "Organisation administration: per-role UI visibility switches, "
+                   "admin-created roles composed from the permission catalogue, role "
+                   "presentation settings and per-seat profile edits. Operational "
+                   "configuration rather than analytics, so it follows org/ to the "
+                   "Data Store. NOT an enforcement boundary while auth and RLS are "
+                   "off: the grants describe intent and drive rendering, and become "
+                   "enforcing with the capability matrix.",
+                   migration=MIG_PENDING),
     DomainBoundary("governance", CATALYST_OPERATIONAL, "Catalyst Data Store (target); RDS today",
                    "Governance artifact/audit read models.", migration=MIG_PENDING),
+    DomainBoundary("face", CATALYST_OPERATIONAL,
+                   "AWS RDS pgvector gallery (PersonFaceEmbedding); Data Store target",
+                   "1:N face search over the canonical person gallery. BIOMETRIC and "
+                   "therefore the most sensitive surface here: descriptors are "
+                   "compared only within one ModelVersionID (a cosine distance "
+                   "across two encoders' output spaces is a meaningless number that "
+                   "still looks like a confident answer), the FaceSearchProbe audit "
+                   "row is written in the SAME transaction as the search so an "
+                   "unlogged biometric query is not possible, and a match never "
+                   "asserts an identity — it raises an EntityResolutionCandidate "
+                   "for human review. Model weights are not vendored and never "
+                   "fetched on the request path; until they are installed the API "
+                   "reports models_present=false and falls back to an explicitly "
+                   "non-biometric duplicate-photo descriptor rather than pretending "
+                   "to recognise anyone.", migration=MIG_PENDING),
     DomainBoundary("livefeed", CATALYST_OPERATIONAL, "Catalyst Data Store projection (target); RDS today",
                    "Live Command Center committed-FIR projection/freshness. "
                    "Idempotent projection; no person rescore, no auto-dispatch.",
@@ -216,6 +254,18 @@ _REGISTRY: tuple[DomainBoundary, ...] = (
     DomainBoundary("performance", AWS_ANALYTICS, "AWS RDS via protected adapter",
                    "Prompt 20 supervisor station/officer performance metrics "
                    "(derived aggregate; scoped server-side)."),
+    DomainBoundary("dashboard", AWS_ANALYTICS,
+                   "AWS RDS materialized view (mv_case_daily) via protected adapter",
+                   "Pre-aggregated case counts and open-case ageing for the KPI "
+                   "band. A derived rollup, not an operational record: it is "
+                   "refreshed on a schedule and declines to serve when its "
+                   "analytics-policy attestation is not current, falling back to "
+                   "the live /performance path."),
+    DomainBoundary("outcomes", AWS_ANALYTICS, "AWS RDS via protected adapter",
+                   "Aggregate court outcomes — conviction and prosecution rates over "
+                   "finally-disposed cases. Counts only, which is what makes it "
+                   "available to the aggregate-only state and wing seats that need "
+                   "the metric and must not read case rows. Scoped server-side."),
 
     # --- disabled / out-of-scope in the submitted demo ----------------------
     DomainBoundary("stream", DISABLED_OUT_OF_SCOPE, "n/a (SSE channel; off by default)",
