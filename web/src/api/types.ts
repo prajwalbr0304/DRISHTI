@@ -1198,6 +1198,10 @@ export interface EntityListItem {
   community?: number | null;
   district_id?: number | null;
   district?: string | null;
+  /** Canonical person this graph node resolves to, when it has one. Null for
+   *  non-person nodes and for legacy rows with no canonical link. The face
+   *  gallery is keyed on this, not on entity_id. */
+  canonical_person_id?: number | null;
 }
 export interface EntityListResponse {
   items: EntityListItem[];
@@ -1225,6 +1229,10 @@ export interface EntityDetailResponse {
   ref_table?: string | null;
   ref_id?: string | null;
   accused_master_id?: number | null;
+  canonical_entity_id?: number | null;
+  /** Canonical person behind this node, when it has one — the key the face
+   *  gallery and canonical profile are addressed by. */
+  canonical_person_id?: number | null;
   attributes: Record<string, unknown>;
   longitude?: number | null;
   latitude?: number | null;
@@ -2819,4 +2827,242 @@ export interface GovOutcomeLabelListResponse {
   leakage_safe: boolean;
   splits: Record<string, number>;
   items: GovOutcomeLabel[];
+}
+
+/* ==========================================================================
+   Facial recognition (services/ml/app/face) — 1:N search of a probe photo
+   against the canonical person gallery.
+
+   A score is an investigative LEAD requiring human confirmation, never an
+   identification: `matched` means "cleared the model threshold, worth a look".
+   Confirming a hit records a reviewable entity-resolution candidate; it never
+   merges identities. Probe bytes are never persisted server-side.
+   ========================================================================== */
+
+export interface FaceEngineInfo {
+  name?: string | null;
+  version?: string | null;
+  family?: string | null;
+  dim?: number | null;
+  /** False = the backend compares IMAGES, not identities. The UI must say so. */
+  biometric: boolean;
+  recommended_threshold?: number | null;
+  strong_threshold?: number | null;
+  note?: string | null;
+  providers: string[];
+  pack?: string | null;
+}
+export interface FaceModelsInfo {
+  pack: string;
+  present: boolean;
+  detector?: string | null;
+  recogniser?: string | null;
+  approx_download_mb?: number | null;
+  /** Exact command an operator must run when the weights are absent. */
+  install_command?: string | null;
+  directory?: string | null;
+}
+export interface FaceGalleryInfo {
+  model_version_id?: number | null;
+  model_name?: string | null;
+  face_count: number;
+  person_count: number;
+  /** Gallery built by a different encoder — the two vector spaces don't compare. */
+  model_mismatch: boolean;
+}
+export interface FaceStatusResponse {
+  enabled: boolean;
+  available: boolean;
+  /** Engine present AND a non-empty, model-matched gallery to search. */
+  search_ready: boolean;
+  engine: FaceEngineInfo;
+  models?: FaceModelsInfo | null;
+  gallery: FaceGalleryInfo;
+  probes: Record<string, number>;
+  onnxruntime: Record<string, unknown>;
+  max_image_bytes: number;
+  recommended_long_edge: number;
+  default_top_k: number;
+  max_top_k: number;
+  max_gallery_per_person: number;
+  unavailable_reason?: string | null;
+  warnings: string[];
+}
+
+export type FaceCaptureMode = "upload" | "camera";
+export type FaceOrigin =
+  | "intake_fir" | "standalone" | "case_file" | "person_page" | "enrolment";
+export type FaceBand = "strong" | "probable" | "weak";
+export type FaceDecision = "confirmed" | "rejected" | "no_match" | "new_person";
+
+export interface FaceSearchRequest {
+  /** Raw or data-URL base64. Downscale in the browser first (see status). */
+  image_base64: string;
+  top_k?: number;
+  min_similarity?: number;
+  capture_mode?: FaceCaptureMode;
+  origin?: FaceOrigin;
+  intake_draft_key?: string | null;
+  case_id?: number | null;
+  actor?: string | null;
+}
+export interface FaceRecentCase {
+  case_id?: number | null;
+  crime_no?: string | null;
+  registered_date?: string | null;
+  role_type?: string | null;
+  crime_group?: string | null;
+  district?: string | null;
+  status?: string | null;
+}
+export interface FacePersonRecord {
+  canonical_person_id: number;
+  public_ref: string;
+  display_label?: string | null;
+  is_unknown: boolean;
+  primary_gender_id?: number | null;
+  approx_birth_year?: number | null;
+  is_juvenile: boolean;
+  resolution_status: string;
+  canonical_entity_id?: number | null;
+  aliases: string[];
+  case_count: number;
+  role_types: string[];
+  districts: string[];
+  recent_cases: FaceRecentCase[];
+  first_seen?: string | null;
+  last_seen?: string | null;
+}
+export interface FaceMatch {
+  rank: number;
+  canonical_person_id: number;
+  similarity: number;
+  distance?: number | null;
+  band: FaceBand;
+  above_threshold: boolean;
+  gallery_hits: number;
+  gallery_quality?: number | null;
+  image_label?: string | null;
+  person_face_embedding_id?: number | null;
+  evidence_item_id?: number | null;
+  person: FacePersonRecord;
+}
+export interface FaceProbeInfo {
+  probe_ref: string;
+  faces_detected: number;
+  /** Detector box in SOURCE image pixels — drives the on-screen face bracket. */
+  bounding_box: { x?: number; y?: number; w?: number; h?: number };
+  /** 5 landmarks [x, y] in source pixels (eyes, nose, mouth corners). */
+  landmarks: number[][];
+  detector_score?: number | null;
+  quality?: number | null;
+  image_width?: number | null;
+  image_height?: number | null;
+  image_sha256?: string | null;
+  capture_mode: FaceCaptureMode;
+}
+export interface FaceSearchResponse {
+  probe: FaceProbeInfo;
+  matches: FaceMatch[];
+  best_match?: FaceMatch | null;
+  matched: boolean;
+  threshold: number;
+  model_name: string;
+  model_version_id: number;
+  biometric: boolean;
+  gallery_face_count: number;
+  gallery_person_count: number;
+  latency_ms: number;
+  disclaimer: string;
+  warnings: string[];
+}
+
+export interface FaceEnrolRequest {
+  image_base64: string;
+  canonical_person_id: number;
+  image_label?: string | null;
+  evidence_item_id?: number | null;
+  make_primary?: boolean;
+  capture_mode?: FaceCaptureMode;
+  actor?: string | null;
+}
+export interface FaceRecord {
+  person_face_embedding_id: number;
+  model_version_id: number;
+  model_name?: string | null;
+  image_sha256: string;
+  image_label?: string | null;
+  bounding_box: Record<string, unknown>;
+  detector_score?: number | null;
+  quality_score?: number | null;
+  is_primary: boolean;
+  enrolment_source: string;
+  enrolled_by_actor?: string | null;
+  evidence_item_id?: number | null;
+  is_archived: boolean;
+  created_at?: string | null;
+  sensitivity: string;
+}
+export interface FaceEnrolResponse {
+  created: boolean;
+  face: FaceRecord;
+  canonical_person_id: number;
+  gallery_face_count: number;
+  detector_score?: number | null;
+  quality?: number | null;
+  warnings: string[];
+}
+export interface FaceListResponse {
+  canonical_person_id: number;
+  faces: FaceRecord[];
+  model_name?: string | null;
+  biometric: boolean;
+}
+export interface FaceDeleteResponse {
+  archived: boolean;
+  person_face_embedding_id: number;
+  canonical_person_id?: number | null;
+  gallery_face_count: number;
+}
+
+export interface FaceDecisionRequest {
+  decision: FaceDecision;
+  canonical_person_id?: number | null;
+  /** Add the probe photo to that person's gallery (deliberate, off by default). */
+  enrol_probe?: boolean;
+  /** Identity already on the draft/case — a mismatch raises a review candidate. */
+  existing_canonical_person_id?: number | null;
+  note?: string | null;
+  actor?: string | null;
+}
+export interface FaceDecisionResponse {
+  probe_ref: string;
+  decision: FaceDecision;
+  canonical_person_id?: number | null;
+  enrolled_face_id?: number | null;
+  entity_resolution_candidate_id?: number | null;
+  message: string;
+  warnings: string[];
+}
+
+export interface FaceProbeTrailItem {
+  probe_ref: string;
+  actor?: string | null;
+  actor_role?: string | null;
+  origin?: string | null;
+  capture_mode?: string | null;
+  faces_detected: number;
+  match_count: number;
+  top_similarity?: number | null;
+  top_canonical_person_id?: number | null;
+  top_display_label?: string | null;
+  top_public_ref?: string | null;
+  decision: string;
+  created_at?: string | null;
+  latency_ms?: number | null;
+  model_name?: string | null;
+}
+export interface FaceProbeTrailResponse {
+  items: FaceProbeTrailItem[];
+  total: number;
 }

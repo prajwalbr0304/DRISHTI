@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { Trash2, UserPlus } from "lucide-react";
+import {
+  AlertTriangle, CheckCircle2, Info, ScanFace, Trash2, UserPlus, X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Field, SectionCard } from "@/routes/intake/components";
 import { errorMessage } from "@/api/contracts";
+import { FaceScanDialog } from "@/components/face/FaceScanDialog";
+import type { FaceConfirmation } from "@/components/face/FaceScanner";
+import { useFaceStatus } from "@/components/face/faceShared";
 import type { StepProps } from "@/routes/intake/fir/stepTypes";
 import type { IntakePartyInput } from "@/api/types";
 
@@ -23,19 +28,64 @@ const blank: IntakePartyInput = {
   display_name: "", attributes: {},
 };
 
+/** Roles where checking the face against existing records actually pays off:
+    a suspect/accused (or an unidentified body) is the party most likely to
+    already be on file under a different name. */
+const FACE_ROLES = new Set(["accused", "suspect", "victim", "unknown"]);
+
 /** Step 5 — people & organisations. Every party becomes a canonical identity +
     CasePartyRole on approval (no name-based joins). */
 export function PeopleStep({ editor, workflow }: StepProps) {
-  const { caseKind, parties, addParty, removeParty, isEditable } = editor;
+  const { caseKind, parties, addParty, removeParty, isEditable, draft } = editor;
   const [form, setForm] = useState<IntakePartyInput>({ ...blank });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  /** The face-confirmed identity currently attached to the party being added. */
+  const [faceHit, setFaceHit] = useState<FaceConfirmation | null>(null);
+  const [faceChecked, setFaceChecked] = useState(false);
+  const faceStatus = useFaceStatus();
 
   const roles = workflow?.kinds.find((k) => k.kind === caseKind)?.allowed_party_roles ?? [];
   const roleOpts = roles.map((r) => ({ value: r, label: r.replace(/_/g, " ") }));
 
   const setAttr = (patch: Record<string, unknown>) =>
     setForm((f) => ({ ...f, attributes: { ...f.attributes, ...patch } }));
+
+  const faceRelevant = form.party_nature === "person" && FACE_ROLES.has(form.role_type);
+  const faceReady = !!faceStatus.data?.search_ready;
+
+  const clearFaceHit = () => {
+    setFaceHit(null);
+    setForm((f) => ({ ...f, canonical_person_id: null }));
+  };
+
+  /** A confirmed match pre-fills the party from the EXISTING record, so the case
+      links to that canonical identity instead of minting a near-duplicate. */
+  const onFaceConfirm = (c: FaceConfirmation) => {
+    const p = c.match.person;
+    setFaceHit(c);
+    setFaceChecked(true);
+    setForm((f) => ({
+      ...f,
+      canonical_person_id: p.canonical_person_id,
+      display_name: p.is_unknown ? f.display_name : (p.display_label ?? f.display_name),
+      attributes: {
+        ...f.attributes,
+        gender_id: p.primary_gender_id ?? f.attributes.gender_id,
+        // Provenance for the link, so a reviewer can see WHY this party was
+        // bound to an existing identity rather than a fresh one.
+        face_probe_ref: c.probeRef,
+        face_match_similarity: Number(c.similarity.toFixed(4)),
+        face_match_band: c.match.band,
+        identity_source: "face_match",
+        ...(c.entityResolutionCandidateId
+          ? { face_entity_resolution_candidate_id: c.entityResolutionCandidateId }
+          : {}),
+      },
+    }));
+    setScanOpen(false);
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -48,6 +98,8 @@ export function PeopleStep({ editor, workflow }: StepProps) {
         display_name: isUnknown ? null : (form.display_name || null),
       });
       setForm({ ...blank, role_type: form.role_type });
+      setFaceHit(null);
+      setFaceChecked(false);
     } catch (e) {
       setErr(errorMessage(e));
     } finally {
@@ -72,6 +124,20 @@ export function PeopleStep({ editor, workflow }: StepProps) {
                     <Badge variant="primary" className="capitalize">{p.role_type.replace(/_/g, " ")}</Badge>
                     <span className="capitalize">{p.party_nature}</span>
                     {typeof p.attributes?.age === "number" && <span>Age {String(p.attributes.age)}</span>}
+                    {p.canonical_person_id && (
+                      <Badge variant="outline" className="gap-1">
+                        <CheckCircle2 className="size-3" aria-hidden />
+                        Linked to existing record
+                      </Badge>
+                    )}
+                    {p.attributes?.identity_source === "face_match" && (
+                      <Badge variant="accent" className="gap-1">
+                        <ScanFace className="size-3" aria-hidden />
+                        face match
+                        {typeof p.attributes?.face_match_similarity === "number"
+                          && ` ${Math.round(Number(p.attributes.face_match_similarity) * 100)}%`}
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 {isEditable && (
@@ -122,6 +188,79 @@ export function PeopleStep({ editor, workflow }: StepProps) {
               </>
             )}
           </div>
+
+          {/* ---- face check: does this person already exist in the records? ---- */}
+          {faceRelevant && (
+            <div className="mt-3 rounded-card border border-hairline bg-surface-2/40 p-3">
+              {faceHit ? (
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-severity-low" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="text-13 font-medium text-content">
+                        Linked to {faceHit.match.person.display_label
+                          ?? faceHit.match.person.public_ref}
+                      </p>
+                      <p className="mt-0.5 text-12 text-content-dim">
+                        {faceHit.match.person.public_ref} ·{" "}
+                        {Math.round(faceHit.similarity * 100)}% face similarity ·{" "}
+                        {faceHit.match.person.case_count} case
+                        {faceHit.match.person.case_count === 1 ? "" : "s"} on record.
+                        {" "}This party will reuse that canonical identity instead of
+                        creating a new one.
+                      </p>
+                      {faceHit.entityResolutionCandidateId && (
+                        <p className="mt-1 flex items-start gap-1 text-12 text-severity-medium">
+                          <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />
+                          A match candidate was raised for review — identities are
+                          never merged on a face score alone.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={clearFaceHit}>
+                    <X /> Unlink
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <ScanFace className="mt-0.5 size-4 shrink-0 text-content-dim" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="text-13 font-medium text-content">
+                        Check this face against existing records
+                      </p>
+                      <p className="mt-0.5 text-12 text-content-dim">
+                        {faceReady
+                          ? "Take or upload a photo to see whether this person is already"
+                            + " on file under another name, before creating a new identity."
+                          : faceStatus.data?.unavailable_reason
+                            ?? "No reference photos are enrolled yet, so there is nothing"
+                              + " to match against."}
+                      </p>
+                      {faceChecked && !faceHit && (
+                        <p className="mt-1 flex items-start gap-1 text-12 text-content-dim">
+                          <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
+                          Recorded as not on file — this party will be created as a
+                          new identity.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScanOpen(true)}
+                    disabled={!faceReady}
+                  >
+                    <ScanFace /> Scan face
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {err && <p className="mt-2 text-12 text-severity-high">{err}</p>}
           <div className="mt-3">
             <Button type="button" size="sm" onClick={submit} disabled={busy}>
@@ -130,6 +269,25 @@ export function PeopleStep({ editor, workflow }: StepProps) {
           </div>
         </SectionCard>
       )}
+
+      <FaceScanDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        origin="intake_fir"
+        intakeDraftKey={draft?.draft_key ?? null}
+        caseId={draft?.case_master_id ?? null}
+        existingCanonicalPersonId={form.canonical_person_id ?? null}
+        onConfirm={onFaceConfirm}
+        confirmLabel="Use this record"
+        onNoMatch={() => {
+          setFaceChecked(true);
+          setScanOpen(false);
+        }}
+        title="Check the face against person records"
+        description="Photograph or upload the person's face. DRISHTI searches enrolled
+          records and shows any existing identity, so the FIR links to it instead of
+          creating a duplicate."
+      />
     </div>
   );
 }

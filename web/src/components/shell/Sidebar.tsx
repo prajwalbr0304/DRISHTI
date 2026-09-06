@@ -1,9 +1,14 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen, ScanEye, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/useUIStore";
 import { useRole } from "@/providers/RoleProvider";
-import { contextForPath, groupDestinations, visibleDestinations } from "@/config/destinations";
+import {
+  contextForPath,
+  destinationByPath,
+  groupDestinations,
+  visibleDestinations,
+} from "@/config/destinations";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { WorkspaceSwitcher } from "@/components/shell/WorkspaceSwitcher";
@@ -33,6 +38,7 @@ export function Sidebar() {
   const { pathname } = useLocation();
   const context = contextForPath(pathname);
   const groups = groupDestinations(visibleDestinations(role, isAdmin, context));
+  const activeDestinationId = destinationByPath(pathname)?.id;
   const emergency = context === "emergency";
 
   return (
@@ -88,7 +94,10 @@ export function Sidebar() {
       </div>
 
       {/* Sectioned navigation */}
-      <nav aria-label={t("Destinations")} className="flex-1 overflow-y-auto py-3">
+      <nav
+        aria-label={t("Destinations")}
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-3"
+      >
         {groups.map((group, gi) => (
           <div key={group.section}>
             {gi > 0 && <div className={cn("my-3 border-t border-hairline", collapsed ? "mx-2" : "mx-4")} />}
@@ -99,32 +108,28 @@ export function Sidebar() {
               <h2 className="px-4 pb-1 text-body-m font-bold text-content">{t(group.section)}</h2>
             )}
 
-            <ul className={cn("space-y-0.5", collapsed ? "px-2" : "px-2")}>
+            <ul className={cn("px-2", collapsed ? "space-y-1" : "space-y-0.5")}>
               {group.items.map((d) => {
                 const Icon = d.icon;
+                const isActive = d.id === activeDestinationId;
                 const link = (
-                  <NavLink
+                  <Link
                     to={d.path}
-                    end={d.path === "/"}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center gap-2.5 rounded-control py-2 text-body-m transition-colors",
-                        collapsed ? "justify-center px-0" : "px-2.5",
-                        isActive
-                          ? "bg-primary/12 font-bold text-primary"
-                          : "font-normal text-content-dim hover:bg-surface-2/60 hover:text-content",
-                      )
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <Icon
-                          className={cn("size-[18px] shrink-0", isActive ? "text-primary" : undefined)}
-                        />
-                        {!collapsed && <span className="truncate">{t(d.label)}</span>}
-                      </>
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-control text-body-m transition-colors",
+                      collapsed ? "h-10 justify-center px-0" : "min-h-9 px-2.5 py-2",
+                      isActive
+                        ? "bg-primary/12 font-bold text-primary"
+                        : "font-normal text-content-dim hover:bg-surface-2/60 hover:text-content",
                     )}
-                  </NavLink>
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className={cn("size-[18px] shrink-0", isActive ? "text-primary" : undefined)}
+                    />
+                    {!collapsed && <span className="truncate">{t(d.label)}</span>}
+                  </Link>
                 );
                 return (
                   <li key={d.id}>

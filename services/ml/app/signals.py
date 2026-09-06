@@ -57,6 +57,16 @@ EVENT_CASE_COMMITTED = "case.committed"
 # disabled (DRISHTI_PREDICTION_DISPATCH_ENABLED unset) until Prompt 23 deploys it.
 # Payload carries only {prediction_request_id, task, state, district_id}.
 EVENT_PREDICTION_REQUESTED = "prediction.requested"
+# CCTV monitoring — published AFTER the authoritative Data Store commit. Payloads
+# are data-minimised (ids / type / severity / confidence / district only) and never
+# carry a frame, a clip, a bounding box or any identifier of a person in view.
+#   cctv.alert_review_required -> video analytics PROPOSED an alert for a human
+#   cctv.alert_reviewed        -> a human confirmed or dismissed it (with reason)
+#   cctv.dispatch_confirmed    -> a responder was actually sent (second confirmation)
+# None of these events dispatches anything on its own; they are notification only.
+EVENT_CCTV_ALERT_REVIEW_REQUIRED = "cctv.alert_review_required"
+EVENT_CCTV_ALERT_REVIEWED = "cctv.alert_reviewed"
+EVENT_CCTV_DISPATCH_CONFIRMED = "cctv.dispatch_confirmed"
 
 _VALID_EVENTS = (
     EVENT_PREDICTION_REQUESTED,
@@ -64,6 +74,8 @@ _VALID_EVENTS = (
     EVENT_TASK_ESCALATED, EVENT_SOURCE_RECONCILE, EVENT_BOARD_ACTIVITY,
     EVENT_FEED_STALE, EVENT_FORECAST_COMPLETED, EVENT_ALERT_REVIEW_REQUIRED,
     EVENT_ALLOCATION_APPROVED, EVENT_CASE_COMMITTED,
+    EVENT_CCTV_ALERT_REVIEW_REQUIRED, EVENT_CCTV_ALERT_REVIEWED,
+    EVENT_CCTV_DISPATCH_CONFIRMED,
 )
 
 

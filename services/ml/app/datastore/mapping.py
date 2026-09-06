@@ -333,6 +333,18 @@ _MAPPINGS: list[TableMapping] = [
     _m("CrimeRiskScore", "CrimeRiskScore", Domain.ANALYTICS, Disposition.ANALYTICS_ONLY,
        ("RiskScoreID",), "riskscore",
        note="Synthetic individual risk is NOT operationalised (Prompt 13). AWS only."),
+    # Biometrics never leave RDS: face descriptors are restricted-sensitivity
+    # personal data and the probe trail records who searched for whom.
+    _m("PersonFaceEmbedding", "PersonFaceEmbedding", Domain.ANALYTICS,
+       Disposition.ANALYTICS_ONLY, ("PersonFaceEmbeddingID",), "faceembed",
+       note="Biometric face descriptors (restricted). Stay in AWS RDS; never "
+            "imported to Data Store. Matching is a review lead, never an identity."),
+    _m("FaceSearchProbe", "FaceSearchProbe", Domain.ANALYTICS,
+       Disposition.ANALYTICS_ONLY, ("FaceSearchProbeID",), "faceprobe",
+       note="Biometric search audit (actor + image hash + decision). AWS only."),
+    _m("FaceProbeMatch", "FaceProbeMatch", Domain.ANALYTICS,
+       Disposition.ANALYTICS_ONLY, ("FaceProbeMatchID",), "facematch",
+       note="Shortlist an officer was shown for one face probe. AWS only."),
 
     # --- reference / lookups ----------------------------------------------
     _m("Act", "Act", Domain.REFERENCE, Disposition.OPERATIONAL, ("ActID",), "act",

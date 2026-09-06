@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -10,6 +10,7 @@ import {
   Lock,
   MapPin,
   Network,
+  ScanFace,
   ShieldAlert,
   Users,
 } from "lucide-react";
@@ -26,6 +27,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
+import { FaceEnrolDialog } from "@/components/face/FaceEnrolDialog";
+import { useFaceStatus, usePersonFaces } from "@/components/face/faceShared";
 import { Widget } from "@/components/widget/Widget";
 import { MiniDensity } from "@/components/dashboard/MiniDensity";
 import { EvidenceTrail } from "@/components/widget/EvidenceTrail";
@@ -71,6 +74,16 @@ export function EntityProfile() {
     queryFn: ({ signal }) => api.graph.entityDetail(entityId, signal),
     enabled: roleCan(role, "case_read") && Number.isFinite(entityId) && entityId > 0,
   });
+
+  // Face gallery for this node, when it resolves to a canonical person. Declared
+  // with the other hooks, above the early returns, per the Rules of Hooks.
+  const [faceOpen, setFaceOpen] = useState(false);
+  const cpid = detailQ.data?.canonical_person_id ?? null;
+  const isPerson = detailQ.data?.entity_type === "person";
+  const faceStatus = useFaceStatus();
+  const facesQ = usePersonFaces(isPerson ? cpid : null);
+  const faceCount = (facesQ.data?.faces ?? []).filter((f) => !f.is_archived).length;
+  const enrolReady = !!faceStatus.data?.enabled && !!faceStatus.data?.available;
 
   if (!roleCan(role, "case_read")) {
     return (
@@ -130,6 +143,18 @@ export function EntityProfile() {
         <PageHeader
           title={detailQ.isLoading ? <Skeleton className="h-6 w-48" /> : (detail?.label ?? `Entity ${entityId}`)}
           description={detail ? `${detail.entity_type} · Entity ${detail.entity_id}` : undefined}
+          actions={isPerson && cpid ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!enrolReady}
+              title={enrolReady ? undefined : faceStatus.data?.unavailable_reason ?? undefined}
+              onClick={() => setFaceOpen(true)}
+            >
+              <ScanFace className="size-3.5" /> Reference photos
+              {faceCount > 0 && <Badge variant="primary" className="tnum">{faceCount}</Badge>}
+            </Button>
+          ) : undefined}
         />
         {detailQ.isLoading ? (
           <div className="space-y-3"><Skeleton className="h-48 w-full" /><Skeleton className="h-24 w-full" /></div>
@@ -137,6 +162,15 @@ export function EntityProfile() {
           <SubPage tab={tab} detail={detail} entityId={entityId} />
         ) : null}
       </div>
+
+      {isPerson && cpid && (
+        <FaceEnrolDialog
+          open={faceOpen}
+          onOpenChange={setFaceOpen}
+          canonicalPersonId={cpid}
+          personLabel={detail?.label ?? null}
+        />
+      )}
     </div>
   );
 }

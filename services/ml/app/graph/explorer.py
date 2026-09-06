@@ -45,14 +45,17 @@ def list_entities(
     clauses: list[str] = []
     params: list[Any] = []
 
+    # Every clause is qualified with the "e" alias: the row query below joins
+    # CanonicalEntity, which also has "Attributes", so a bare column reference
+    # would be ambiguous.
     if entity_type:
-        clauses.append('"EntityType"::text = %s')
+        clauses.append('e."EntityType"::text = %s')
         params.append(entity_type)
     if q:
         ts = _prefix_tsquery(q)
         if ts:
             # to_tsquery with the SAME 'english' config as the stored vector.
-            clauses.append('"SearchVector" @@ to_tsquery(%s, %s)')
+            clauses.append('e."SearchVector" @@ to_tsquery(%s, %s)')
             params.append(_FTS_CONFIG)
             params.append(ts)
         else:
@@ -62,7 +65,7 @@ def list_entities(
     if gang_affiliated:
         clauses.append('EXISTS(SELECT 1 FROM "GangMembership" gm WHERE gm."MemberEntityID"=e."EntityID")')
     if district_id:
-        clauses.append('("Attributes"->>\'district_id\')::int = %s')
+        clauses.append('(e."Attributes"->>\'district_id\')::int = %s')
         params.append(district_id)
 
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
@@ -72,14 +75,25 @@ def list_entities(
         with conn.cursor() as cur:
             cur.execute(f'SELECT COUNT(*) FROM "EntityGraph" e{where}', params)
             total = int(cur.fetchone()[0])
+            # CanonicalEntity is joined so a person row carries the canonical
+            # person it resolves to. The face gallery is keyed on
+            # CanonicalPersonID, so without this the explorer could not offer a
+            # reference-photo action on the row the officer is already looking at.
+            # LEFT, not INNER: legacy/unprovenanced nodes have no canonical link
+            # and must still be listed. COUNT needs no join at all — the join is
+            # on CanonicalEntity's primary key, so it cannot change the total.
             cur.execute(
-                f'SELECT "EntityID","EntityType"::text,"Label","RefTable","RefID",'
-                f'("Attributes"->>\'pagerank\')::float,'
-                f'("Attributes"->>\'community\')::int,'
-                f'("Attributes"->>\'district_id\')::int,'
-                f'"Attributes"->>\'district\' '
-                f'FROM "EntityGraph" e{where} '
-                f'ORDER BY "EntityID" DESC LIMIT %s OFFSET %s',
+                f'SELECT e."EntityID",e."EntityType"::text,e."Label",e."RefTable",e."RefID",'
+                f'(e."Attributes"->>\'pagerank\')::float,'
+                f'(e."Attributes"->>\'community\')::int,'
+                f'(e."Attributes"->>\'district_id\')::int,'
+                f'e."Attributes"->>\'district\','
+                f'ce."CanonicalPersonID" '
+                f'FROM "EntityGraph" e '
+                f'LEFT JOIN "CanonicalEntity" ce '
+                f'ON ce."CanonicalEntityID" = e."CanonicalEntityID"'
+                f'{where} '
+                f'ORDER BY e."EntityID" DESC LIMIT %s OFFSET %s',
                 params + [page_size, offset],
             )
             rows = cur.fetchall()
@@ -95,6 +109,7 @@ def list_entities(
             "community": r[6],
             "district_id": r[7],
             "district": r[8],
+            "canonical_person_id": int(r[9]) if r[9] is not None else None,
         }
         for r in rows
     ]
@@ -109,11 +124,14 @@ def entity_detail(entity_id: int) -> Optional[dict]:
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                'SELECT "EntityID","EntityType"::text,"Label","RefTable","RefID",'
-                '"AccusedMasterID","Attributes"::text,'
-                'ST_X("geom")::float, ST_Y("geom")::float,'
-                '"CreatedAt"::text,"CanonicalEntityID" '
-                'FROM "EntityGraph" WHERE "EntityID"=%s',
+                'SELECT e."EntityID",e."EntityType"::text,e."Label",e."RefTable",e."RefID",'
+                'e."AccusedMasterID",e."Attributes"::text,'
+                'ST_X(e."geom")::float, ST_Y(e."geom")::float,'
+                'e."CreatedAt"::text,e."CanonicalEntityID",ce."CanonicalPersonID" '
+                'FROM "EntityGraph" e '
+                'LEFT JOIN "CanonicalEntity" ce '
+                'ON ce."CanonicalEntityID" = e."CanonicalEntityID" '
+                'WHERE e."EntityID"=%s',
                 (entity_id,),
             )
             row = cur.fetchone()
@@ -132,6 +150,9 @@ def entity_detail(entity_id: int) -> Optional[dict]:
                 "ref_id": row[4],
                 "accused_master_id": row[5],
                 "canonical_entity_id": canonical_entity_id,
+                # Drives the profile's reference-photo action: the face gallery
+                # is keyed on CanonicalPersonID, not EntityID.
+                "canonical_person_id": int(row[11]) if row[11] is not None else None,
                 "attributes": attrs,
                 "longitude": row[7],
                 "latitude": row[8],

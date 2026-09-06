@@ -193,6 +193,65 @@ class Settings(BaseSettings):
     openmeteo_url: str = "https://api.open-meteo.com/v1/forecast"
     live_feed_timeout_s: float = 12.0
 
+    # --- Facial recognition (1:N search over the canonical person gallery) ---
+    # Ops kill-switch. Biometric matching is a sensitive capability; turning this
+    # off makes every /face endpoint report unavailable rather than half-working.
+    face_search_enabled: bool = True
+    # Probe images arrive base64-encoded in the JSON body (a transient probe is
+    # not evidence and is never persisted), so this cap must leave headroom under
+    # max_request_bytes: base64 inflates by ~4/3 plus JSON overhead. The browser
+    # downscales to the long edge below before encoding, which keeps a normal
+    # capture well under 300 KB.
+    face_probe_max_bytes: int = 1_200_000     # 1.2 MB of raw image bytes
+    face_probe_long_edge: int = 1280          # advertised to the client for resizing
+    face_top_k: int = 5                       # default shortlist length
+    face_max_top_k: int = 25
+    # A person with dozens of gallery photos would dominate an ANN shortlist, so
+    # enrolment is bounded per person.
+    face_max_gallery_per_person: int = 8
+    # Enrolling a gallery photo requires a real detected face; a probe with no
+    # face is simply reported as "no face found".
+    face_require_detection_for_enrol: bool = True
+
+    # --- CCTV monitoring (video-analytics review + nearest-station dispatch) --
+    # Ops kill-switch for the whole surface. Off makes every /cctv endpoint report
+    # unavailable rather than half-working. This is a SEPARATE flag from
+    # evidence_extraction_enabled on purpose: watching a live camera feed for
+    # incident classes is a different capability from extracting canonical fields
+    # out of uploaded evidence, and enabling one must never imply the other.
+    cctv_enabled: bool = True
+    # Which detector produces detections:
+    #   "synthetic"  -> the in-repo deterministic scene generator (labelled
+    #                   synthetic_replay on every row; the honest demo path)
+    #   "external"   -> detections arrive ONLY through POST /cctv/detections/ingest
+    #                   from an external/edge video-analytics service
+    # There is no vision model in the reviewed Bedrock allow-list
+    # (APPROVED_CHINESE_BEDROCK_MODELS is text-only), so the service never claims
+    # to run frame inference itself. See app/cctv/detectors.py.
+    cctv_detector: str = "synthetic"
+    # Shared secret required on POST /cctv/detections/ingest. Blank = the ingest
+    # endpoint is DISABLED (fail closed) rather than open to unauthenticated posts.
+    cctv_ingest_token: str = ""
+    # A detection below this confidence is recorded but flagged low_confidence, so
+    # the review queue can sort it and the card never implies certainty.
+    cctv_low_confidence_threshold: float = 0.55
+    # A detection below this confidence never raises a reviewable alert at all
+    # (it stays an audited detection row). Prevents queue flooding.
+    cctv_min_alert_confidence: float = 0.35
+    # Cap on alerts a single analytics run may propose, so one bad camera cannot
+    # bury the queue.
+    cctv_max_alerts_per_run: int = 25
+    # Nearest-responder search radius + the versioned ETA speed assumption.
+    cctv_dispatch_max_km: float = 25.0
+    cctv_dispatch_avg_speed_kmh: float = 28.0
+    # Max normalised bounding boxes stored per detection (size guard).
+    cctv_max_boxes: int = 24
+    # Optional single stream URL applied to every seeded demo camera (a looping
+    # mp4 or HLS manifest you host). Blank leaves seeded cameras registered with
+    # stream_kind='none', and the wall then renders an explicit "no stream
+    # configured" panel instead of a placeholder that looks like live video.
+    cctv_demo_stream_url: str = ""
+
     model_config = SettingsConfigDict(
         env_file=(str(_REPO_ROOT / ".env"), ".env"),
         env_file_encoding="utf-8",
@@ -244,6 +303,16 @@ class Settings(BaseSettings):
 
     def evidence_allowed_mime_set(self) -> set[str]:
         return {m.strip().lower() for m in self.evidence_allowed_mime.split(",") if m.strip()}
+
+    # --- CCTV monitoring helpers -------------------------------------------
+    def cctv_detector_kind(self) -> str:
+        """Normalised detector selector ("synthetic" | "external")."""
+        v = (self.cctv_detector or "").strip().lower()
+        return v if v in ("synthetic", "external") else "synthetic"
+
+    def cctv_ingest_configured(self) -> bool:
+        """External detection ingest is enabled only with a shared secret set."""
+        return bool(self.cctv_ingest_token.strip())
 
     # --- Prompt 19 semantic-planner helpers ---------------------------------
     def semantic_provider(self) -> str:

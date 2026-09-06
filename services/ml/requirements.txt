@@ -36,6 +36,17 @@ sentence-transformers>=2.2   # optional but preferred; hashing fallback if absen
 # forecasting still runs if they are absent.
 timesfm==2.0.2          # ships the TimesFM 2.5 200M PyTorch model
 torch-geometric>=2.8    # ST-GNN spatial conv (native scatter; no torch-scatter/sparse)
+# --- Facial recognition: 1:N face search over the canonical person gallery ---
+# SCRFD (detection) + ArcFace (512-dim identity descriptor) run as plain ONNX
+# graphs, so this needs only onnxruntime + Pillow + numpy — no OpenCV, no
+# insightface Cython build. Swap in onnxruntime-gpu on a CUDA host for ~10x.
+# The weights are NOT vendored and are NEVER fetched on the request path; run
+#   python -m app.batch face-models --pack buffalo_l
+# once (~275 MB, cached under ~/.drishti/face-models). Until then the face API
+# reports models_present=false and falls back to an explicitly non-biometric
+# duplicate-photo descriptor rather than pretending to recognise anyone.
+onnxruntime>=1.20        # CPU inference for the SCRFD + ArcFace graphs
+Pillow>=10.0             # probe/gallery image decode (EXIF-aware, bomb-guarded)
 # NOTE: torch-geometric-temporal is intentionally NOT pinned — it hard-requires
 # torch-scatter/torch-sparse, which have no wheels for this torch build (and need
 # MSVC to compile). The ST-GNN is therefore built directly on torch-geometric to

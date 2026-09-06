@@ -31,6 +31,7 @@ from .sonic import router as sonic_router
 from .intake.router import router as intake_router
 from .identity.router import router as identity_router
 from .evidence.router import router as evidence_router
+from .face.router import router as face_router
 from .casework.router import router as casework_router
 from .imports.router import router as imports_router
 from .governance.router import router as governance_router
@@ -50,6 +51,7 @@ from .reports.router import router as reports_router
 from .rag.router import router as rag_router
 from .board.router import router as board_router
 from .disaster.router import router as disaster_router
+from .cctv.router import router as cctv_router
 from .guards import HonestyMiddleware
 from .hardening import (BodySizeLimitMiddleware, RateLimitMiddleware,
                         install_error_handlers, masked_db_target,
@@ -122,6 +124,10 @@ app.include_router(chat_router)
 app.include_router(intake_router)
 app.include_router(identity_router)
 app.include_router(evidence_router)
+# Facial recognition: 1:N search of a probe photo against the canonical person
+# gallery (pgvector HNSW cosine). Descriptors stay in RDS; every probe is audited;
+# a confirmed match raises a reviewable EntityResolutionCandidate, never a merge.
+app.include_router(face_router)
 app.include_router(casework_router)
 app.include_router(imports_router)
 app.include_router(governance_router)
@@ -164,6 +170,14 @@ app.include_router(board_router)
 # evacuation). Data Store-native; synthetic disaster_coordinator role + district
 # scope; no forecast auto-publishes an alert, auto-dispatches or declares safe.
 app.include_router(disaster_router)
+# CCTV monitoring — the live watch wall. Video analytics PROPOSES an incident
+# alert (fight / road rage / traffic block / ...), a human analyst confirms or
+# dismisses it, and only a confirmed alert may raise a nearest-station dispatch
+# which needs its own fresh confirmation. This service runs NO video frame
+# inference: detections come from the deterministic synthetic scene generator or
+# are pushed by an external analytics service (see app/cctv/detectors.py).
+# Nothing here auto-dispatches. Off unless CCTV_ENABLED.
+app.include_router(cctv_router)
 
 
 @app.get("/health", response_model=HealthReport)

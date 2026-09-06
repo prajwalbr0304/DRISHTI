@@ -207,6 +207,36 @@ export default {
           "70%": { boxShadow: "0 0 0 12px rgb(239 68 68 / 0)" },
           "100%": { boxShadow: "0 0 0 0 rgb(239 68 68 / 0)" },
         },
+        /* --- Face-scan feedback -------------------------------------------
+           These loop, which the motion budget above otherwise forbids. They are
+           PROGRESS INDICATORS, scoped to the face-scan viewport and mounted only
+           while a scan is actually in flight — the same exception the existing
+           `animate-spin` spinner relies on. Nothing here loops on an idle screen,
+           and every one of them is suppressed under prefers-reduced-motion. */
+        "face-sweep": {
+          "0%": { transform: "translateY(-8%)", opacity: "0" },
+          "12%": { opacity: "1" },
+          "88%": { opacity: "1" },
+          "100%": { transform: "translateY(108%)", opacity: "0" },
+        },
+        "face-scanline-glow": {
+          "0%, 100%": { opacity: "0.35" },
+          "50%": { opacity: "0.9" },
+        },
+        // Corner brackets settling onto the detected face box.
+        "face-lock": {
+          from: { transform: "scale(1.14)", opacity: "0" },
+          to: { transform: "scale(1)", opacity: "1" },
+        },
+        // Staggered dossier reveal (one-shot, 220ms).
+        "face-reveal": {
+          from: { transform: "translateY(6px)", opacity: "0" },
+          to: { transform: "translateY(0)", opacity: "1" },
+        },
+        "face-tick": {
+          from: { transform: "translateX(-4px)", opacity: "0" },
+          to: { transform: "translateX(0)", opacity: "1" },
+        },
         "fade-in": {
           from: { opacity: "0" },
           to: { opacity: "1" },
@@ -226,6 +256,12 @@ export default {
       },
       animation: {
         "redzone-pulse": "redzone-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
+        // Face-scan progress feedback (see the keyframes note above).
+        "face-sweep": "face-sweep 1.5s cubic-bezier(0.45,0,0.55,1) infinite",
+        "face-scanline-glow": "face-scanline-glow 1.5s ease-in-out infinite",
+        "face-lock": "face-lock 260ms cubic-bezier(0.16,1,0.3,1) both",
+        "face-reveal": "face-reveal 220ms ease-out both",
+        "face-tick": "face-tick 180ms ease-out both",
         "fade-in": "fade-in 160ms ease-out",
         "slide-in-right": "slide-in-right 180ms ease-out",
         "accordion-down": "accordion-down 180ms ease-out",

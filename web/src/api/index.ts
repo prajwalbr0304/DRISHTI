@@ -3,11 +3,13 @@ import { adminApi } from "@/api/endpoints/admin";
 import { analyticsApi } from "@/api/endpoints/analytics";
 import { boardApi } from "@/api/endpoints/board";
 import { casesApi } from "@/api/endpoints/cases";
+import { cctvApi } from "@/api/endpoints/cctv";
 import { disasterApi } from "@/api/endpoints/disaster";
 import { caseworkApi } from "@/api/endpoints/casework";
 import { chatApi } from "@/api/endpoints/chat";
 import { evidenceApi } from "@/api/endpoints/evidence";
 import { explainApi } from "@/api/endpoints/explain";
+import { faceApi } from "@/api/endpoints/face";
 import { forecastApi } from "@/api/endpoints/forecast";
 import { geoApi } from "@/api/endpoints/geo";
 import { governanceApi } from "@/api/endpoints/governance";
@@ -36,6 +38,7 @@ export const api = {
   cases: casesApi,
   casework: caseworkApi,
   evidence: evidenceApi,
+  face: faceApi,
   geo: geoApi,
   graph: graphApi,
   identity: identityApi,
@@ -59,6 +62,7 @@ export const api = {
   rag: ragApi,
   board: boardApi,
   disaster: disasterApi,
+  cctv: cctvApi,
 };
 
 export { apiClient };

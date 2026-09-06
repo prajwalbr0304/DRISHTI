@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { AlertTriangle, ChevronLeft, ChevronRight, Lock, Search, Users } from "lucide-react";
+import {
+  AlertTriangle, ChevronLeft, ChevronRight, ImageUp, Lock, ScanFace, Search, Users,
+} from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
-import type { EntityListItem } from "@/api/types";
-import { cn, formatNumber } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { roleCan } from "@/config/roles";
 import { useRole } from "@/providers/RoleProvider";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,11 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
+import { FaceEnrolDialog } from "@/components/face/FaceEnrolDialog";
+import {
+  FaceEnrolPickerDialog, type FaceEnrolTarget,
+} from "@/components/face/FaceEnrolPickerDialog";
+import { useFaceStatus } from "@/components/face/faceShared";
 
 const PAGE_SIZE = 25;
 const TYPE_OPTIONS = [
@@ -35,6 +41,10 @@ export function EntityExplorer() {
   const [hasRisk, setHasRisk] = useState(false);
   const [gangAffiliated, setGangAffiliated] = useState(false);
   const [page, setPage] = useState(1);
+  /** Reference-photo flow: pick a person (picker), then add photos (enrol). */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [enrolTarget, setEnrolTarget] = useState<FaceEnrolTarget | null>(null);
+  const faceStatus = useFaceStatus();
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(q.trim()), 400);
@@ -79,18 +89,36 @@ export function EntityExplorer() {
   const items = listQ.data?.items ?? [];
   const total = listQ.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Enrolment needs an engine but not a populated gallery — enrolling is what
+  // populates it. Searching an empty gallery is pointless, so that button only
+  // navigates and lets the face page explain its own readiness.
+  const enrolReady = !!faceStatus.data?.enabled && !!faceStatus.data?.available;
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-2">
-        <PageHeader
-          title="People & Entities"
-          description="Search and browse persons, phones, vehicles, gangs and accounts in the intelligence graph."
-        />
-        <Button variant="outline" size="sm" className="mt-1 shrink-0" onClick={() => navigate("/review/entities")}>
-          <Users className="size-3.5" /> Entity resolution
-        </Button>
-      </div>
+      <PageHeader
+        title="People & Entities"
+        description="Search and browse persons, phones, vehicles, gangs and accounts in the intelligence graph."
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!enrolReady}
+              title={enrolReady ? undefined : faceStatus.data?.unavailable_reason ?? undefined}
+              onClick={() => setPickerOpen(true)}
+            >
+              <ImageUp className="size-3.5" /> Add reference photo
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/people/face")}>
+              <ScanFace className="size-3.5" /> Face search
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/review/entities")}>
+              <Users className="size-3.5" /> Entity resolution
+            </Button>
+          </>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[240px] flex-1">
@@ -133,13 +161,14 @@ export function EntityExplorer() {
                 <th className="px-3 py-2 text-left text-12 font-semibold text-content-dim">Source</th>
                 <th className="px-3 py-2 text-right text-12 font-semibold text-content-dim">PageRank</th>
                 <th className="px-3 py-2 text-right text-12 font-semibold text-content-dim">Community</th>
+                <th className="px-3 py-2 text-right text-12 font-semibold text-content-dim">Photo</th>
               </tr>
             </thead>
             <tbody>
               {listQ.isLoading &&
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="border-b border-hairline">
-                    <td className="px-3 py-2" colSpan={5}><Skeleton className="h-5 w-full" /></td>
+                    <td className="px-3 py-2" colSpan={6}><Skeleton className="h-5 w-full" /></td>
                   </tr>
                 ))}
               {!listQ.isLoading && items.map((e) => (
@@ -155,6 +184,34 @@ export function EntityExplorer() {
                   <td className="px-3 py-2 text-content-dim">{e.ref_table ?? "—"}</td>
                   <td className="tnum px-3 py-2 text-right text-content-dim">{e.pagerank?.toFixed(5) ?? "—"}</td>
                   <td className="tnum px-3 py-2 text-right text-content-dim">{e.community ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">
+                    {/* Only a person has a face gallery, and only a node with a
+                        canonical link can be addressed by one. Anyone else is
+                        reachable through "Add reference photo" in the header. */}
+                    {e.entity_type === "person" && e.canonical_person_id ? (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={!enrolReady}
+                        aria-label={`Add a reference photo for ${e.label}`}
+                        title={enrolReady
+                          ? `Add a reference photo for ${e.label}`
+                          : faceStatus.data?.unavailable_reason ?? undefined}
+                        onClick={(ev) => {
+                          // The row itself navigates to the profile.
+                          ev.stopPropagation();
+                          setEnrolTarget({
+                            canonicalPersonId: e.canonical_person_id as number,
+                            label: e.label,
+                          });
+                        }}
+                      >
+                        <ImageUp />
+                      </Button>
+                    ) : (
+                      <span className="text-content-dim">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -177,6 +234,25 @@ export function EntityExplorer() {
           </Button>
         </div>
       </div>
+
+      <FaceEnrolPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onPick={(t) => {
+          setPickerOpen(false);
+          setEnrolTarget(t);
+        }}
+      />
+      {enrolTarget && (
+        <FaceEnrolDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setEnrolTarget(null);
+          }}
+          canonicalPersonId={enrolTarget.canonicalPersonId}
+          personLabel={enrolTarget.label}
+        />
+      )}
     </div>
   );
 }

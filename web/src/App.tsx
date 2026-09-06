@@ -9,6 +9,7 @@ import { CaseExplorer } from "@/routes/cases/CaseExplorer";
 import { CaseFile } from "@/routes/cases/CaseFile";
 import { EntityExplorer } from "@/routes/entities/EntityExplorer";
 import { EntityProfile } from "@/routes/entities/EntityProfile";
+import { FaceSearchPage } from "@/routes/face/FaceSearchPage";
 import { NetworkAnalysis } from "@/routes/network/NetworkAnalysis";
 import { MyBoards } from "@/routes/board/MyBoards";
 import { BoardWorkspace } from "@/routes/board/BoardWorkspace";
@@ -91,6 +92,8 @@ export default function App() {
         <Route path="/review/entities" element={<EntityResolution />} />
         <Route path="/review/jurisdiction" element={<JurisdictionReview />} />
         <Route path="/people" element={<EntityExplorer />} />
+        {/* Declared before /people/:entityId so "face" is not read as an entity id. */}
+        <Route path="/people/face" element={<FaceSearchPage />} />
         <Route path="/people/canonical/:cpid" element={<CanonicalProfile />} />
         <Route path="/people/:entityId" element={<EntityProfile />} />
         <Route path="/network" element={<NetworkAnalysis />} />

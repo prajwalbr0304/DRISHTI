@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, BadgeCheck, GitMerge, Undo2, UserCog } from "lucide-react";
+import {
+  AlertTriangle, ArrowLeft, BadgeCheck, GitMerge, ScanFace, Undo2, UserCog,
+} from "lucide-react";
 import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import type { IdentityPersonDetail } from "@/api/types";
@@ -11,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
+import { FaceEnrolDialog } from "@/components/face/FaceEnrolDialog";
+import { usePersonFaces } from "@/components/face/faceShared";
 import { SectionCard } from "@/routes/intake/components";
 
 const SENS: Record<string, "neutral" | "low" | "medium" | "high"> = {
@@ -28,6 +32,9 @@ export function CanonicalProfile() {
   const [err, setErr] = useState<string | null>(null);
   const [alias, setAlias] = useState("");
   const [mergeLoser, setMergeLoser] = useState("");
+  const [faceOpen, setFaceOpen] = useState(false);
+  const facesQ = usePersonFaces(Number.isFinite(id) ? id : null);
+  const faceCount = (facesQ.data?.faces ?? []).filter((f) => !f.is_archived).length;
 
   const q = useQuery({
     queryKey: ["identity", "person", id],
@@ -65,7 +72,15 @@ export function CanonicalProfile() {
     <div>
       <Link to="/review/entities" className="mb-2 inline-flex items-center gap-1 text-12 text-content-dim hover:text-content"><ArrowLeft className="size-3.5" /> Entity resolution</Link>
       <PageHeader title={p.display_label ?? "Unknown / unidentified"}
-        description={`${p.public_ref} · canonical identity`} />
+        description={`${p.public_ref} · canonical identity`}
+        actions={
+          // Reference photos are what a face scan is matched against, so the
+          // control lives on the record itself rather than in a settings screen.
+          <Button variant="outline" size="sm" onClick={() => setFaceOpen(true)}>
+            <ScanFace /> Reference photos
+            {faceCount > 0 && <Badge variant="primary" className="tnum">{faceCount}</Badge>}
+          </Button>
+        } />
 
       {msg && <div className="mb-3 rounded-card border border-severity-low/40 bg-severity-low/5 px-3 py-2 text-13">{msg}</div>}
       {err && <div className="mb-3 flex items-center gap-1.5 rounded-card border border-severity-high/40 bg-severity-high/5 px-3 py-2 text-13 text-severity-high"><AlertTriangle className="size-4" />{err}</div>}
@@ -157,6 +172,13 @@ export function CanonicalProfile() {
           </div>
         </div>
       </div>
+
+      <FaceEnrolDialog
+        open={faceOpen}
+        onOpenChange={setFaceOpen}
+        canonicalPersonId={id}
+        personLabel={p.display_label ?? p.public_ref}
+      />
     </div>
   );
 }

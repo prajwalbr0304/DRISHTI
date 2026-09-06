@@ -9,6 +9,7 @@ import {
   ListChecks,
   Map,
   MessageSquareText,
+  ScanFace,
   Share2,
   ShieldAlert,
   ShieldCheck,
@@ -93,6 +94,17 @@ export const DESTINATIONS: Destination[] = [
     icon: Users,
     description: "Persons, gangs, vehicles, phones and accounts — with risk.",
     keywords: ["person", "entity", "offender", "gang", "vehicle", "phone", "risk"],
+  },
+  {
+    id: "face-search",
+    section: "Case work",
+    path: "/people/face",
+    label: "Face Recognition",
+    short: "Face",
+    icon: ScanFace,
+    description: "Photograph or upload a face and check it against person records.",
+    keywords: ["face", "facial", "recognition", "photo", "identify", "biometric",
+      "mugshot", "camera", "scan", "suspect", "match"],
   },
   {
     id: "network",
@@ -270,5 +282,5 @@ export function destinationByPath(path: string): Destination | undefined {
   // Prefer the longest matching path so "/er/live" wins over "/er".
   return [...DESTINATIONS]
     .sort((a, b) => b.path.length - a.path.length)
-    .find((d) => path === d.path || path.startsWith(d.path + "/") || path.startsWith(d.path));
+    .find((d) => path === d.path || path.startsWith(`${d.path}/`));
 }

@@ -251,6 +251,99 @@ def _cmd_geo_validate(args) -> int:
     return 0
 
 
+def _cmd_face_models(args) -> int:
+    """Fetch the ONNX face-recognition weights (explicit, one-time, ~275 MB).
+
+    Deliberately NOT done lazily on the request path: a first API call must not
+    block on a large download, and unannounced network egress from a request
+    handler is not something an operator should have to discover.
+    """
+    from .face import encoders as face_encoders, modelfiles
+    try:
+        bundle = modelfiles.fetch(args.pack, force=args.force, log=print)
+    except modelfiles.FaceModelsMissing as exc:
+        print(json.dumps({"status": "failed", "error": str(exc)}))
+        return 1
+    face_encoders.reset_encoder_cache()          # pick the real encoder up now
+    print(json.dumps({"status": "ok", **bundle.describe(),
+                      "encoder": face_encoders.get_encoder().describe()}, default=str))
+    return 0
+
+
+def _cmd_face_status(_args) -> int:
+    """Report engine, model presence, gallery size and probe counts."""
+    from .face import service as face_service
+    print(json.dumps(face_service.status().model_dump(), default=str))
+    return 0
+
+
+def _cmd_face_enrol(args) -> int:
+    """Enrol reference photos from a local folder into the person gallery.
+
+    Each file is matched to a canonical person by its filename stem, which must be
+    either a CanonicalPersonID (``1234.jpg``) or a PublicRef (``SYN-PERSON-000123.jpg``).
+    Ambiguous or unknown stems are reported and skipped rather than guessed at —
+    attaching biometrics to the wrong identity is not a recoverable mistake.
+    """
+    import base64
+    import pathlib
+
+    from . import db as _db
+    from .face import schemas as face_schemas, service as face_service, store
+
+    folder = pathlib.Path(args.dir).expanduser()
+    if not folder.is_dir():
+        print(json.dumps({"status": "failed", "error": f"{folder} is not a directory"}))
+        return 1
+    files = sorted(p for p in folder.iterdir()
+                   if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".bmp"))
+    if not files:
+        print(json.dumps({"status": "failed", "error": f"no images found in {folder}"}))
+        return 1
+
+    results = {"enrolled": 0, "reused": 0, "skipped": [], "failed": []}
+    for path in files:
+        stem = path.stem.strip()
+        cpid = None
+        try:
+            cpid = int(stem)
+        except ValueError:
+            with _db.ro_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT "CanonicalPersonID" FROM "CanonicalPerson" '
+                                'WHERE "PublicRef"=%s', (stem,))
+                    row = cur.fetchone()
+            if row:
+                cpid = int(row[0])
+        if cpid is None:
+            results["skipped"].append(
+                {"file": path.name,
+                 "reason": "filename is neither a CanonicalPersonID nor a PublicRef"})
+            continue
+        try:
+            resp = face_service.enrol(
+                face_schemas.FaceEnrolRequest(
+                    image_base64=base64.b64encode(path.read_bytes()).decode("ascii"),
+                    canonical_person_id=cpid, image_label=path.name,
+                    make_primary=args.primary, actor="batch"),
+                actor="batch")
+        except Exception as exc:  # noqa: BLE001 — report and continue the batch
+            results["failed"].append({"file": path.name,
+                                      "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        results["enrolled" if resp.created else "reused"] += 1
+        print(f"  {path.name} -> person {cpid} "
+              f"(quality {resp.quality}, gallery {resp.gallery_face_count})")
+
+    with _db.ro_conn() as conn:
+        live = store.gallery_model(conn)
+    results["gallery"] = ({"model_version_id": live[0], "model_name": live[1],
+                           "face_count": live[2], "person_count": live[3]}
+                          if live else None)
+    print(json.dumps({"status": "ok", **results}, default=str))
+    return 0 if not results["failed"] else 1
+
+
 def _cmd_apply_sql(args) -> int:
     import pathlib
     sql = pathlib.Path(args.file).read_text(encoding="utf-8")
@@ -390,6 +483,27 @@ def build_parser() -> argparse.ArgumentParser:
     ds.add_argument("--district", type=int, required=True)
     ds.add_argument("--score", type=float, default=0.5)
     ds.set_defaults(func=_cmd_demo_score)
+
+    # ---- facial recognition ----
+    fm = sub.add_parser("face-models",
+                        help="download the ONNX face-recognition weights (one time, ~275 MB)")
+    fm.add_argument("--pack", default="buffalo_l", choices=["buffalo_l", "buffalo_s"],
+                    help="buffalo_l = ArcFace R50 (accuracy default); "
+                         "buffalo_s = MobileFaceNet (~4x faster, smaller download)")
+    fm.add_argument("--force", action="store_true", help="re-download even if present")
+    fm.set_defaults(func=_cmd_face_models)
+
+    fs = sub.add_parser("face-status",
+                        help="report face engine, model presence, gallery size, probe counts")
+    fs.set_defaults(func=_cmd_face_status)
+
+    fe = sub.add_parser("face-enrol",
+                        help="enrol reference photos from a folder (filename = "
+                             "CanonicalPersonID or PublicRef)")
+    fe.add_argument("--dir", required=True, help="folder of .jpg/.png reference photos")
+    fe.add_argument("--primary", action="store_true",
+                    help="mark each enrolled photo as that person's reference image")
+    fe.set_defaults(func=_cmd_face_enrol)
 
     ap = sub.add_parser("apply-sql", help="apply a .sql migration file")
     ap.add_argument("--file", required=True)
