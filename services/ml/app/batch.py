@@ -13,6 +13,7 @@ Phases 6-13; this provides the runnable skeleton + the refresh step.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 
@@ -344,6 +345,274 @@ def _cmd_face_enrol(args) -> int:
     return 0 if not results["failed"] else 1
 
 
+def _cmd_face_enrol_portraits(args) -> int:
+    """Bulk-enrol a synthetic portrait dataset laid out one directory per person.
+
+    Expects the DRISHTI_Synthetic_Portraits shape, where the PublicRef lives in
+    the DIRECTORY name rather than the filename (which is why ``face-enrol``
+    cannot read it)::
+
+        <root>/portraits/SYN-PERSON-0000002_Ganesh_Pujar/
+            identity.json
+            synthetic_portrait.jpg
+
+    ``identity.json`` is treated as the authoritative per-person record. The
+    dataset's ``portrait_manifest.csv`` is NOT read: it has been observed to
+    disagree with the files on disk (naming a ``.png`` that does not exist and
+    reporting ``pending_generation`` for a portrait that is present), and
+    resolving a biometric identity from a stale index is not acceptable. Even
+    ``identity.json``'s own ``relative_image_path`` is verified against the
+    filesystem and re-globbed when it does not resolve.
+
+    Enrolment applies the SAME detection and quality gates as ``POST /face/enrol``
+    so a fixture gallery cannot be held to a lower bar than an officer upload —
+    a weak reference photo produces false matches for everyone, not just its own
+    subject. Rows are written with ``EnrolmentSource='fixture_import'`` so bulk
+    demo portraits stay distinguishable from evidence and officer uploads for the
+    life of the gallery.
+
+    Idempotent and resumable: the unique index on (person, image hash, model)
+    means a re-run re-enrols nothing, and already-enrolled pairs are skipped
+    before decode so a resumed run costs no inference.
+    """
+    import pathlib
+    import time
+
+    from . import audit, db as _db
+    from .face import encoders as face_encoders, store
+
+    if args.shards < 1 or not (0 <= args.shard < args.shards):
+        print(json.dumps({"status": "failed",
+                          "error": f"invalid shard {args.shard} of {args.shards}; "
+                                   "expected --shards >= 1 and 0 <= --shard < --shards"}))
+        return 1
+
+    root = pathlib.Path(args.dir).expanduser()
+    portraits = root / "portraits" if (root / "portraits").is_dir() else root
+    if not portraits.is_dir():
+        print(json.dumps({"status": "failed",
+                          "error": f"{root} has no portraits/ directory"}))
+        return 1
+
+    # --- 1. read the dataset (identity.json per person dir) -------------------
+    IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
+    entries: list[dict] = []          # {public_ref, path, label}
+    dataset_issues: list[dict] = []
+    for person_dir in sorted(p for p in portraits.iterdir() if p.is_dir()):
+        ident = person_dir / "identity.json"
+        public_ref, rel = None, None
+        if ident.is_file():
+            try:
+                meta = json.loads(ident.read_text(encoding="utf-8"))
+                public_ref = str(meta.get("public_ref") or "").strip() or None
+                rel = str(meta.get("relative_image_path") or "").strip() or None
+            except (OSError, ValueError) as exc:
+                dataset_issues.append({"dir": person_dir.name,
+                                       "issue": f"unreadable identity.json: {type(exc).__name__}"})
+        # Directory name is the fallback key: "<PublicRef>_<Name>".
+        if not public_ref:
+            public_ref = person_dir.name.split("_", 1)[0]
+
+        # Trust the filesystem over the recorded path (the dataset's own index is stale).
+        image = None
+        if rel:
+            candidate = root / rel
+            if candidate.is_file():
+                image = candidate
+        if image is None:
+            found = sorted(p for p in person_dir.iterdir()
+                           if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+            if found:
+                image = found[0]
+                if rel:
+                    dataset_issues.append(
+                        {"dir": person_dir.name, "public_ref": public_ref,
+                         "issue": "identity.json relative_image_path does not exist; "
+                                  f"used {image.name} found on disk instead"})
+        if image is None:
+            dataset_issues.append({"dir": person_dir.name, "public_ref": public_ref,
+                                   "issue": "no image file in directory"})
+            continue
+        entries.append({"public_ref": public_ref, "path": image,
+                        "label": f"{public_ref} synthetic portrait"})
+
+    if not entries:
+        print(json.dumps({"status": "failed",
+                          "error": f"no portrait images found under {portraits}",
+                          "dataset_issues": dataset_issues[:20]}))
+        return 1
+    if args.limit:
+        entries = entries[: args.limit]
+    total_entries = len(entries)
+    # Sharding exists because ORT sessions here are lock-serialised (see
+    # onnx_arcface._make_session / the per-session locks), so threads cannot
+    # parallelise inference — separate processes can. Shards are disjoint and
+    # deterministic, so N processes cover the dataset exactly once.
+    if args.shards > 1:
+        entries = [e for i, e in enumerate(entries) if i % args.shards == args.shard]
+        print(f"  shard {args.shard + 1}/{args.shards}: "
+              f"{len(entries)} of {total_entries} portraits")
+    print(f"  dataset: {len(entries)} portraits under {portraits}")
+    if dataset_issues:
+        print(f"  dataset issues: {len(dataset_issues)} "
+              f"(first: {dataset_issues[0]['issue']})")
+
+    # --- 2. resolve PublicRef -> CanonicalPersonID in bulk -------------------
+    refs = sorted({e["public_ref"] for e in entries})
+    ref_to_cpid: dict[str, int] = {}
+    merged: set[str] = set()
+    with _db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            for i in range(0, len(refs), 5000):
+                chunk = refs[i: i + 5000]
+                cur.execute(
+                    'SELECT "PublicRef","CanonicalPersonID","ResolutionStatus" '
+                    'FROM "CanonicalPerson" WHERE "PublicRef" = ANY(%s)', (chunk,))
+                for public_ref, cpid, status in cur.fetchall():
+                    if status == "merged":
+                        merged.add(public_ref)
+                    else:
+                        ref_to_cpid[public_ref] = int(cpid)
+    print(f"  resolved {len(ref_to_cpid)}/{len(refs)} PublicRefs to canonical persons")
+
+    # --- 3. encoder + model version ------------------------------------------
+    try:
+        encoder = face_encoders.get_encoder()
+    except Exception as exc:  # noqa: BLE001
+        print(json.dumps({"status": "failed",
+                          "error": f"face encoder unavailable: {exc}"}))
+        return 1
+    if not encoder.biometric:
+        print(json.dumps({
+            "status": "failed",
+            "error": "the active encoder is the non-biometric fallback; run "
+                     "'python -m app.batch face-models --pack buffalo_l' first"}))
+        return 1
+    min_quality = (args.min_quality if args.min_quality is not None
+                   else encoder.min_enrol_quality)
+    with _db.rw_conn() as conn:
+        model_version_id = store.model_version_for(conn, encoder)
+    print(f"  encoder: {encoder.name} v{encoder.version} "
+          f"(ModelVersionID {model_version_id}, min quality {min_quality:.2f})")
+
+    # --- 4. resume: skip pairs already enrolled under this model -------------
+    already: set[tuple[int, str]] = set()
+    with _db.ro_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT "CanonicalPersonID","ImageSha256" FROM "PersonFaceEmbedding" '
+                'WHERE "ModelVersionID"=%s', (model_version_id,))
+            already = {(int(r[0]), str(r[1])) for r in cur.fetchall()}
+    if already:
+        print(f"  gallery already holds {len(already)} descriptors for this model")
+
+    # --- 5. encode + insert --------------------------------------------------
+    counts = {"enrolled": 0, "reused": 0, "skipped_resume": 0,
+              "unresolved_person": 0, "merged_person": 0,
+              "no_face": 0, "low_quality": 0, "failed": 0}
+    failures: list[dict] = []
+    started = time.time()
+    pending = 0
+
+    # One long-lived read/write connection, committed in bounded batches. The
+    # context manager keeps rw_conn()'s session setup and final commit/close
+    # intact; the periodic commits inside simply bound each transaction.
+    with _db.rw_conn() as conn:
+        for index, entry in enumerate(entries, start=1):
+            public_ref = entry["public_ref"]
+            cpid = ref_to_cpid.get(public_ref)
+            if cpid is None:
+                counts["merged_person" if public_ref in merged
+                       else "unresolved_person"] += 1
+                continue
+            try:
+                data = entry["path"].read_bytes()
+                sha = hashlib.sha256(data).hexdigest()
+                if (cpid, sha) in already:
+                    counts["skipped_resume"] += 1
+                    continue
+
+                image = face_encoders.decode_image(data)
+                faces = encoder.detect_and_encode(image, max_faces=1)
+                if not faces:
+                    counts["no_face"] += 1
+                    failures.append({"public_ref": public_ref, "reason": "no face detected"})
+                    continue
+                face = faces[0]
+                if face.quality is not None and face.quality < min_quality:
+                    counts["low_quality"] += 1
+                    failures.append({"public_ref": public_ref,
+                                     "reason": f"quality {face.quality:.3f} < {min_quality:.2f}"})
+                    continue
+
+                _fid, created = store.enrol_face(
+                    conn, canonical_person_id=cpid,
+                    model_version_id=model_version_id,
+                    embedding=face.embedding, image_sha256=sha,
+                    bounding_box=(face.box.as_dict() if face.box else {}),
+                    detector_score=face.detector_score, quality=face.quality,
+                    face_count=len(faces), image_label=entry["label"],
+                    enrolment_source="fixture_import", actor=args.actor,
+                    make_primary=not args.no_primary)
+                counts["enrolled" if created else "reused"] += 1
+                already.add((cpid, sha))
+                pending += 1
+            except Exception as exc:  # noqa: BLE001 — report and continue the batch
+                counts["failed"] += 1
+                if len(failures) < 200:
+                    failures.append({"public_ref": public_ref,
+                                     "reason": f"{type(exc).__name__}: {exc}"})
+                conn.rollback()
+                pending = 0
+                continue
+
+            # Bounded transactions: a 16k-row single transaction is a long lock
+            # and loses everything on one late failure.
+            if pending >= args.commit_every:
+                conn.commit()
+                pending = 0
+
+            if index % args.progress_every == 0 or index == len(entries):
+                done = index
+                rate = done / max(1e-6, time.time() - started)
+                remaining = (len(entries) - done) / rate if rate else 0
+                print(f"  [{done}/{len(entries)}] enrolled={counts['enrolled']} "
+                      f"skipped={counts['skipped_resume']} no_face={counts['no_face']} "
+                      f"low_quality={counts['low_quality']} failed={counts['failed']} "
+                      f"| {rate:.1f} img/s | ETA {remaining / 60:.1f} min", flush=True)
+        conn.commit()
+
+        # One summary audit row: 16k individual rows would bury the trail that
+        # matters (who searched for whom), and this is a provisioning action.
+        audit.record("face.enrol.bulk", "PersonFaceEmbedding", None,
+                     actor=args.actor,
+                     detail={"source": "synthetic_portrait_fixture",
+                             "dataset_root": str(root), "model_name": encoder.name,
+                             "model_version_id": model_version_id,
+                             "enrolment_source": "fixture_import",
+                             "min_quality": min_quality, **counts},
+                     conn=conn)
+
+    face_count, person_count = 0, 0
+    with _db.ro_conn() as ro:
+        live = store.gallery_model(ro)
+        if live:
+            face_count, person_count = live[2], live[3]
+
+    elapsed = time.time() - started
+    print(json.dumps({
+        "status": "ok" if not counts["failed"] else "completed_with_errors",
+        "elapsed_s": round(elapsed, 1),
+        "model_version_id": model_version_id, "model_name": encoder.name,
+        **counts,
+        "gallery": {"face_count": face_count, "person_count": person_count},
+        "dataset_issues": len(dataset_issues),
+        "dataset_issues_sample": dataset_issues[:5],
+        "failures_sample": failures[:5],
+    }, default=str))
+    return 0 if not counts["failed"] else 1
+
+
 def _cmd_apply_sql(args) -> int:
     import pathlib
     sql = pathlib.Path(args.file).read_text(encoding="utf-8")
@@ -504,6 +773,31 @@ def build_parser() -> argparse.ArgumentParser:
     fe.add_argument("--primary", action="store_true",
                     help="mark each enrolled photo as that person's reference image")
     fe.set_defaults(func=_cmd_face_enrol)
+
+    fp = sub.add_parser("face-enrol-portraits",
+                        help="bulk-enrol a one-directory-per-person portrait dataset "
+                             "(PublicRef taken from the directory name)")
+    fp.add_argument("--dir", required=True,
+                    help="dataset root (the directory containing portraits/)")
+    fp.add_argument("--limit", type=int, default=0,
+                    help="only process the first N portraits (0 = all)")
+    fp.add_argument("--min-quality", type=float, default=None,
+                    help="override the encoder's enrolment quality floor")
+    fp.add_argument("--no-primary", action="store_true",
+                    help="do not mark each portrait as that person's reference photo")
+    fp.add_argument("--commit-every", type=int, default=200,
+                    help="commit after this many enrolments")
+    fp.add_argument("--progress-every", type=int, default=100,
+                    help="print a progress line after this many portraits")
+    fp.add_argument("--actor", default="batch.fixture_import",
+                    help="actor recorded on each gallery row and the audit entry")
+    fp.add_argument("--shards", type=int, default=1,
+                    help="split the dataset into N disjoint shards so N processes "
+                         "can run in parallel (ONNX sessions are lock-serialised, "
+                         "so threads do not help)")
+    fp.add_argument("--shard", type=int, default=0,
+                    help="0-based index of the shard this process handles")
+    fp.set_defaults(func=_cmd_face_enrol_portraits)
 
     ap = sub.add_parser("apply-sql", help="apply a .sql migration file")
     ap.add_argument("--file", required=True)
