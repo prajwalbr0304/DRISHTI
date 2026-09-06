@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { AlertTriangle, DatabaseZap, FilePlus2, Inbox, Lock } from "lucide-react";
+import { AlertTriangle, DatabaseZap, FilePlus2, Inbox, Lock, ScanLine } from "lucide-react";
 import { api } from "@/api";
 import { ApiError, errorMessage } from "@/api/contracts";
 import { cn, formatNumber } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { StatusPill } from "@/routes/intake/components";
+import { useScanCapability } from "@/routes/intake/scan/scanQueries";
 import type { IntakeReviewAction } from "@/api/endpoints/intake";
 
 const TABS = ["all", "draft", "submitted", "approved", "returned_for_correction", "rejected"] as const;
@@ -32,6 +33,10 @@ export function IntakeInbox() {
     enabled: roleCan(role, "intake_write"),
     placeholderData: keepPreviousData,
   });
+
+  // Drives whether the scanned-FIR entry point is offered at all. When OCR is
+  // off the button is simply absent rather than leading to a dead end.
+  const scanCapability = useScanCapability();
 
   const review = useMutation({
     mutationFn: ({ key, action }: { key: string; action: IntakeReviewAction }) =>
@@ -73,6 +78,13 @@ export function IntakeInbox() {
             <Button size="sm" variant="outline" onClick={() => navigate("/imports")}>
               <DatabaseZap /> Digital & financial imports
             </Button>
+            {/* Two ways to fill the same form: type it, or read a written page.
+                Both converge on one draft, one validator, one approval gate. */}
+            {scanCapability.data?.scan_ocr_enabled && (
+              <Button size="sm" variant="outline" onClick={() => navigate("/intake/scan")}>
+                <ScanLine /> Scan a written FIR
+              </Button>
+            )}
             <Button size="sm" onClick={() => navigate("/intake/fir/new")}><FilePlus2 /> New FIR</Button>
           </>
         } />

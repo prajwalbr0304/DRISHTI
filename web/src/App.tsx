@@ -19,6 +19,8 @@ import { AskDrishti } from "@/routes/ask/AskDrishti";
 import { IntakeInbox } from "@/routes/intake/IntakeInbox";
 import { NewFir } from "@/routes/intake/fir/NewFir";
 import { FirWizard } from "@/routes/intake/fir/FirWizard";
+import { ScanFir } from "@/routes/intake/scan/ScanFir";
+import { FirTemplatePrint } from "@/routes/intake/scan/FirTemplatePrint";
 import { IntakeImports } from "@/routes/intake/imports/IntakeImports";
 import { ImportsWorkspace } from "@/routes/imports/ImportsWorkspace";
 import { QualityReview } from "@/routes/review/quality/QualityReview";
@@ -86,6 +88,10 @@ export default function App() {
         <Route path="/intake" element={<IntakeInbox />} />
         <Route path="/intake/fir/new" element={<NewFir />} />
         <Route path="/intake/fir/:draftKey" element={<FirWizard />} />
+        {/* Scanned-FIR lane: reads a written form to PREFILL the wizard above.
+            It never registers a case — the draft still needs submit + approve. */}
+        <Route path="/intake/scan" element={<ScanFir />} />
+        <Route path="/intake/scan/form" element={<FirTemplatePrint />} />
         <Route path="/intake/imports" element={<IntakeImports />} />
         <Route path="/imports" element={<ImportsWorkspace />} />
         <Route path="/review/quality" element={<QualityReview />} />

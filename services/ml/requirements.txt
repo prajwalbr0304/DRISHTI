@@ -52,6 +52,9 @@ Pillow>=10.0             # probe/gallery image decode (EXIF-aware, bomb-guarded)
 # MSVC to compile). The ST-GNN is therefore built directly on torch-geometric to
 # the same end (A3TGCN-style GRU+GCN). Install torch-geometric-temporal on a
 # platform with those wheels to swap in its prebuilt cells.
+# Multipart form parsing — required by FastAPI/Starlette for UploadFile, used by
+# the scanned-FIR intake endpoint (POST /intake/scan/ocr).
+python-multipart==0.0.20
 # test/dev
 httpx==0.28.1
 # HTTP client backing the Catalyst REST data plane (app/catalyst_rest.py).

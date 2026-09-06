@@ -66,6 +66,39 @@ class Settings(BaseSettings):
     query_voice_enabled: bool = True
     evidence_extraction_enabled: bool = False
 
+    # --- Scanned-FIR intake lane (Catalyst Zia OCR) --------------------------
+    # A THIRD independent flag, for the same reason the two above are separate.
+    # It governs reading a written/printed FIR *intake form* so its fields can be
+    # PROPOSED to an officer, who must review and approve before a case exists.
+    #
+    # This is not a relaxation of evidence_extraction_enabled, which keeps its
+    # original meaning and stays false: files uploaded through the /evidence
+    # custody path are hashed and stored, never auto-parsed, never transcribed,
+    # and never run through face/object recognition. The distinction that makes
+    # intake prefill acceptable while evidence extraction is not:
+    #   * an intake scan is a form the complainant/officer just wrote, read back
+    #     to the same officer for confirmation — a typing shortcut with a human
+    #     in the loop on every field;
+    #   * OCR output lands only in staging (IntakeScan + IntakeDraft.Payload) and
+    #     CaseMaster is still created exclusively by the human approve transition;
+    #   * evidence extraction would mean the system asserting facts about case
+    #     material with no reviewer, which remains out of scope.
+    # Off by default: the manual lane is always fully available, and this costs a
+    # convenience rather than a capability when disabled.
+    intake_scan_ocr_enabled: bool = False
+    # Language hints sent to Zia. Karnataka FIRs are routinely bilingual (Kannada
+    # narrative, English section numbers/dates), so both scripts are hinted.
+    scan_ocr_languages: str = "en,kn"
+    # Below this Zia document-level confidence (0-1) the whole scan is flagged and
+    # the officer is told to expect heavy correction.
+    scan_ocr_low_confidence_threshold: float = 0.55
+    # A parsed field is only pre-filled at/above this derived confidence (0-1).
+    # Anything lower is offered as a suggestion the officer must accept, so the
+    # form is never silently populated with a low-trust guess.
+    scan_ocr_auto_fill_threshold: float = 0.7
+    # Cap on retained OCR text per scan (characters). Bounds a pathological PDF.
+    scan_ocr_max_text_chars: int = 200_000
+
     # --- Prompt 19 §B: semantic planner (Chinese-model-only, fail-closed) ----
     # Semantic planning is restricted to reviewed Chinese-origin model families.
     # There is no Claude, GPT/OpenAI, or other commercial-model fallback. The

@@ -1712,6 +1712,175 @@ export interface IntakeUpdateDraftRequest {
   autosave?: boolean;
 }
 
+/* --- scanned-FIR lane (Catalyst Zia OCR -> reviewed prefill) ---------------
+   Reading a scanned form never creates a case. It returns a PROPOSAL the officer
+   reviews; applying it produces an ordinary draft that still has to pass the same
+   validate -> submit -> approve gate as a manually typed FIR. */
+export interface IntakeScanField {
+  field: string;
+  value?: unknown;
+  raw_text: string;
+  /** Derived by the server's parser, NOT Zia's own score (Zia returns a single
+      document-level number). Drives what the UI flags for attention. */
+  confidence: number;
+  label_matched: string;
+  requires_review: boolean;
+  auto_filled: boolean;
+  note?: string | null;
+}
+export interface IntakeScanUnresolved {
+  field: string;
+  raw_text: string;
+  lookup: string;
+  candidates: { id?: number; name?: string; parent_id?: number | null; score?: number }[];
+  reason: string;
+}
+export interface IntakeScanProposedParty {
+  role_type: string;
+  party_nature: string;
+  is_unknown: boolean;
+  display_name?: string | null;
+  attributes: Record<string, unknown>;
+  confidence: number;
+}
+export interface IntakeScanResponse {
+  scan_key: string;
+  status: string;
+  review_state: string;
+  provider: string;
+  template_code?: string | null;
+  template_matched: boolean;
+  matched_label_count: number;
+  detected_language?: string | null;
+  /** Zia's document-level confidence, 0-1. Separate from field confidence. */
+  ocr_confidence?: number | null;
+  ocr_low_confidence: boolean;
+  raw_text: string;
+  payload: IntakeDraftPayload;
+  case_kind: string;
+  fields: IntakeScanField[];
+  parties: IntakeScanProposedParty[];
+  unresolved: IntakeScanUnresolved[];
+  fields_needing_review: number;
+  notes: string[];
+  draft_key?: string | null;
+  file_name?: string | null;
+  size_bytes?: number | null;
+  sha256?: string | null;
+  created_at?: string | null;
+}
+export interface IntakeScanApplyRequest {
+  payload?: IntakeDraftPayload | null;
+  parties?: IntakePartyInput[] | null;
+  case_kind?: string | null;
+  actor?: string | null;
+  idempotency_key?: string | null;
+  /** Paths the officer changed, so provenance separates accepted from corrected. */
+  edited_fields?: string[];
+}
+export interface IntakeScanApplyResult {
+  scan_key: string;
+  draft: IntakeDraftResponse;
+  fields_from_scan: number;
+  fields_edited: number;
+  fields_needing_review: number;
+}
+export interface IntakeScanFieldProvenance {
+  field: string;
+  extracted_text?: string | null;
+  proposed_value?: unknown;
+  accepted_value?: unknown;
+  confidence?: number | null;
+  origin: string;
+  was_edited: boolean;
+  requires_review: boolean;
+}
+export interface IntakeScanProvenanceResponse {
+  scan_key: string;
+  draft_key?: string | null;
+  template_code?: string | null;
+  detected_language?: string | null;
+  ocr_confidence?: number | null;
+  provider: string;
+  file_name?: string | null;
+  sha256?: string | null;
+  evidence_item_id?: number | null;
+  fields: IntakeScanFieldProvenance[];
+}
+export interface IntakeScanQueueItem {
+  scan_key: string;
+  status: string;
+  review_state: string;
+  detected_language?: string | null;
+  ocr_confidence?: number | null;
+  template_code?: string | null;
+  template_matched: boolean;
+  file_name?: string | null;
+  size_bytes?: number | null;
+  created_by_actor?: string | null;
+  created_at?: string | null;
+  draft_key?: string | null;
+  draft_status?: string | null;
+  case_kind?: string | null;
+  case_master_id?: number | null;
+  field_count: number;
+  fields_needing_review: number;
+  fields_edited: number;
+  unresolved_count: number;
+}
+export interface IntakeScanQueueResponse {
+  items: IntakeScanQueueItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  extraction_queue_present: boolean;
+}
+export interface IntakeScanTemplateLine {
+  index: number;
+  field: string;
+  kind: string;
+  label_en: string;
+  label_kn: string;
+  aliases_en: string[];
+  multiline: boolean;
+  /** Print character cells rather than a ruled line — legible handwriting is
+      what makes OCR work at all. */
+  boxed: boolean;
+  format_hint: string;
+  help_en: string;
+  party_role?: string | null;
+}
+export interface IntakeScanTemplateResponse {
+  template_code: string;
+  separator: string;
+  languages: string[];
+  lines: IntakeScanTemplateLine[];
+  auto_fill_threshold: number;
+  guidance_en: string[];
+  guidance_kn: string[];
+  notice_en: string;
+}
+export interface IntakeScanCapabilityResponse {
+  scan_ocr_enabled: boolean;
+  feature_enabled: boolean;
+  provider: string;
+  manual_entry_always_available: boolean;
+  languages: string[];
+  supported_languages: string[];
+  max_bytes: number;
+  max_mb: number;
+  allowed_extensions: string[];
+  low_confidence_threshold: number;
+  auto_fill_threshold: number;
+  requires_human_review: boolean;
+  creates_case_directly: boolean;
+  evidence_extraction_enabled: boolean;
+  handwriting_supported: boolean;
+  handwriting_caveat: string;
+  evidence?: string | null;
+  platform_limitation?: string | null;
+}
+
 /* --- data-quality review queue --- */
 export interface IntakeDataQualityIssue {
   data_quality_issue_id: number;

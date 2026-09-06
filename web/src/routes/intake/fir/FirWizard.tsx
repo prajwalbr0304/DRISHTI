@@ -20,6 +20,7 @@ import { PeopleStep } from "@/routes/intake/fir/steps/PeopleStep";
 import { NarrativeStep } from "@/routes/intake/fir/steps/NarrativeStep";
 import { ReviewStep } from "@/routes/intake/fir/steps/ReviewStep";
 import { CaseCreatedPanel } from "@/routes/intake/fir/CaseCreatedPanel";
+import { ScanProvenanceBanner } from "@/routes/intake/scan/ScanProvenanceBanner";
 
 const STEPS = [
   { key: "source", label: "Source & category" },
@@ -99,6 +100,10 @@ export function FirWizard() {
           <CaseCreatedPanel caseId={caseId} crimeNo={editor.draft?.crime_no ?? null} />
         </div>
       )}
+
+      {/* Renders only for drafts prefilled by reading a scanned form, so the
+          approving supervisor can tell machine-read values from typed ones. */}
+      <ScanProvenanceBanner draft={editor.draft} />
 
       <div className="flex gap-4">
         {/* step rail */}

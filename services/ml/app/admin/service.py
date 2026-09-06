@@ -395,9 +395,40 @@ def upsert_model_review(model_version_id: int, review_kind: str, status: str,
 
 
 # ===========================================================================
-# Queues (ingestion / data-quality / evidence quarantine) — NO extraction queue
+# Queues (ingestion / data-quality / evidence quarantine / intake-form review)
+#
+# Two different things get loosely called "extraction"; this panel keeps them
+# apart:
+#   * Parsing uploaded EVIDENCE (case material) is out of scope and has no
+#     queue at all. Evidence bytes are hashed and stored, never interpreted.
+#   * Reading a written FIR INTAKE FORM to propose draft fields an officer must
+#     confirm does have a review queue, owned by the intake domain.
+#
+# This module reports OBSERVED state — whether the intake review queue exists and
+# how many items are waiting — rather than reading the intake domain's feature
+# flags. That keeps the admin panel free of any dependency on the intake reading
+# pipeline (enforced by tests/test_phase15.py) and means the panel describes what
+# is actually true of the database instead of what configuration intends.
 # ===========================================================================
+def _intake_form_review_queue() -> tuple[bool, int]:
+    """(queue_exists, items_awaiting_confirmation).
+
+    Runs on its own connection: on a database that predates the intake-scan
+    migration the view does not exist, and a failed statement would abort the
+    surrounding read-only transaction and take the rest of the panel down.
+    """
+    try:
+        with db.ro_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('SELECT count(*) FROM "vw_intake_scan_queue" '
+                            "WHERE \"ReviewState\"='pending_review'")
+                return True, int(cur.fetchone()[0])
+    except Exception:  # noqa: BLE001 — view absent on an older schema; not fatal
+        return False, 0
+
+
 def queues() -> dict:
+    queue_exists, scan_pending = _intake_form_review_queue()
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM \"DataQualityIssue\" WHERE \"Status\"='open'")
@@ -419,7 +450,12 @@ def queues() -> dict:
                            "title": r[2], "storage_status": r[3], "mime_type": r[4],
                            "size_bytes": r[5]} for r in cur.fetchall()]
     return {"data_quality_open": dq_open, "ingestion_partial_failed": ing,
-            "evidence_quarantine": quar, "extraction_queue_present": False,
+            "evidence_quarantine": quar,
+            # Refers ONLY to the intake-form review queue. Uploaded evidence is
+            # never parsed or interpreted (see the note above this function).
+            "extraction_queue_present": queue_exists,
+            "intake_scan_pending": scan_pending,
+            "evidence_extraction_enabled": False,
             "data_quality_items": dq_items, "quarantine_items": quar_items}
 
 

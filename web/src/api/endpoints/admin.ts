@@ -122,7 +122,10 @@ export interface AdminQueues {
   data_quality_open: number;
   ingestion_partial_failed: number;
   evidence_quarantine: number;
+  /** True only for the intake-FORM reading queue. Evidence media is never parsed. */
   extraction_queue_present: boolean;
+  intake_scan_pending?: number;
+  evidence_extraction_enabled?: boolean;
   data_quality_items: Record<string, unknown>[];
   quarantine_items: Record<string, unknown>[];
 }

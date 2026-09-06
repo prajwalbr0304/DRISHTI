@@ -221,8 +221,13 @@ class QueuesResponse(BaseModel):
     data_quality_open: int
     ingestion_partial_failed: int
     evidence_quarantine: int
-    # explicit: no OCR/transcription/semantic-extraction queue exists.
+    # Refers ONLY to the intake-form review queue: a written FIR form read into a
+    # draft proposal that an officer must confirm field by field.
     extraction_queue_present: bool = False
+    intake_scan_pending: int = 0
+    # Unchanged posture: uploaded case material is hashed and stored, and is never
+    # parsed, interpreted or analysed by any model.
+    evidence_extraction_enabled: bool = False
     data_quality_items: list[dict[str, Any]] = Field(default_factory=list)
     quarantine_items: list[dict[str, Any]] = Field(default_factory=list)
 
