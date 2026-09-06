@@ -187,6 +187,9 @@ export type Capability =
   | "governance_run"     // run a governed pipeline
   | "governance_review"  // approve a governed prediction
   | "disaster_write"     // Emergency Response approvals + dispatch
+  | "cctv_review"        // confirm/dismiss a proposed CCTV video-analytics alert
+  | "cctv_dispatch"      // propose + send the nearest responder for a confirmed alert
+  | "cctv_admin"         // register/retire cameras and responders
   | "admin";             // admin, registry and governance console
 
 /**

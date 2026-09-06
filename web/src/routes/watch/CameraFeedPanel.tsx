@@ -235,60 +235,64 @@ export function CameraFeedPanel({
           </div>
         )}
 
-        {/* explicit non-playing states */}
+        {/* Explicit non-playing states. The media area is ALWAYS black, so this
+            copy uses fixed light colours rather than the theme's `content`
+            tokens — those are near-black in the light "desk" theme and would be
+            unreadable here. Extra bottom padding keeps the block clear of the
+            incident caption strip. */}
         {state !== "ready" && (
-          <div className="absolute inset-0 grid place-items-center p-4 text-center">
+          <div className={cn("absolute inset-0 grid place-items-center px-4 py-3 text-center",
+            detectionLabel && "pb-10")}>
             {state === "loading" && (
-              <div className="flex flex-col items-center gap-2 text-content-dim">
+              <div className="flex flex-col items-center gap-2 text-white/75">
                 <Video className="size-5 animate-pulse" />
                 <span className="text-12">Connecting to feed…</span>
               </div>
             )}
             {state === "not-watched" && (
               <div className="max-w-[17rem] space-y-1">
-                <VideoOff className="mx-auto size-5 text-content-dim" />
-                <p className="text-12 font-semibold text-content">
+                <VideoOff className="mx-auto size-5 text-white/60" />
+                <p className="text-12 font-semibold text-white">
                   Camera {camera.status}
                 </p>
-                <p className="text-11 text-content-dim">
-                  This camera is not producing frames, so it is not being analysed.
-                  No alert can originate here.
+                <p className="text-11 leading-snug text-white/70">
+                  Not producing frames, so it is not being analysed. No alert can
+                  originate here.
                 </p>
               </div>
             )}
             {state === "no-stream" && (
               <div className="max-w-[18rem] space-y-1">
-                <VideoOff className="mx-auto size-5 text-content-dim" />
-                <p className="text-12 font-semibold text-content">No stream configured</p>
-                <p className="text-11 text-content-dim">
-                  This camera is registered with a position but no imagery. Set{" "}
-                  <code className="rounded bg-surface-2 px-1">CCTV_DEMO_STREAM_URL</code>{" "}
-                  on the service, or PATCH the camera with a{" "}
-                  <code className="rounded bg-surface-2 px-1">stream_url</code>, to
-                  show video here.
+                <VideoOff className="mx-auto size-5 text-white/60" />
+                <p className="text-12 font-semibold text-white">No stream configured</p>
+                <p className="text-11 leading-snug text-white/70">
+                  Registered with a position but no imagery. Set{" "}
+                  <code className="rounded bg-white/15 px-1 text-white/90">CCTV_DEMO_STREAM_URL</code>,
+                  or give the camera a{" "}
+                  <code className="rounded bg-white/15 px-1 text-white/90">stream_url</code>.
                 </p>
               </div>
             )}
             {state === "unsupported" && (
               <div className="max-w-[18rem] space-y-1">
                 <AlertTriangle className="mx-auto size-5 text-severity-high" />
-                <p className="text-12 font-semibold text-content">
+                <p className="text-12 font-semibold text-white">
                   HLS not supported by this browser
                 </p>
-                <p className="text-11 text-content-dim">
-                  The feed is an HLS manifest and this build ships no HLS player.
-                  Safari plays it natively; elsewhere use an{" "}
-                  <code className="rounded bg-surface-2 px-1">mp4_loop</code> source.
+                <p className="text-11 leading-snug text-white/70">
+                  This build ships no HLS player. Safari plays HLS natively;
+                  elsewhere use an{" "}
+                  <code className="rounded bg-white/15 px-1 text-white/90">mp4_loop</code> source.
                 </p>
               </div>
             )}
             {state === "error" && (
               <div className="max-w-[18rem] space-y-1">
                 <AlertTriangle className="mx-auto size-5 text-severity-high" />
-                <p className="text-12 font-semibold text-content">Feed unavailable</p>
-                <p className="text-11 text-content-dim">
-                  The configured stream could not be loaded. The camera record and its
-                  alerts are unaffected.
+                <p className="text-12 font-semibold text-white">Feed unavailable</p>
+                <p className="text-11 leading-snug text-white/70">
+                  The configured stream could not be loaded. The camera record and
+                  its alerts are unaffected.
                 </p>
               </div>
             )}

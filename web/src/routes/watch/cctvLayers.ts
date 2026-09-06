@@ -216,27 +216,32 @@ export function responderMarkers(
   });
 }
 
+interface DispatchLink {
+  from: [number, number];
+  to: [number, number];
+  status: string;
+}
+
 /** Arc from the assigned responder to the incident, for dispatches in flight. */
 export function dispatchArcs(
   dispatches: CctvDispatch[],
   alertById: Map<number, CctvAlert>,
   responderById: Map<number, CctvResponder>,
 ): Layer {
-  const links = dispatches
-    .map((d) => {
-      const alert = alertById.get(d.cctv_alert_id);
-      const responder = d.patrol_unit_id != null
-        ? responderById.get(d.patrol_unit_id)
-        : undefined;
-      if (!alert || alert.lon == null || alert.lat == null || !responder) return null;
-      return {
-        from: [responder.lon, responder.lat] as [number, number],
-        to: [alert.lon, alert.lat] as [number, number],
-        status: d.status,
-      };
-    })
-    .filter((x): x is { from: [number, number]; to: [number, number]; status: string } => x != null);
-  return new ArcLayer<{ from: [number, number]; to: [number, number]; status: string }>({
+  const links: DispatchLink[] = [];
+  for (const d of dispatches) {
+    const alert = alertById.get(d.cctv_alert_id);
+    const responder = d.patrol_unit_id != null
+      ? responderById.get(d.patrol_unit_id)
+      : undefined;
+    if (!alert || alert.lon == null || alert.lat == null || !responder) continue;
+    links.push({
+      from: [responder.lon, responder.lat],
+      to: [alert.lon, alert.lat],
+      status: d.status,
+    });
+  }
+  return new ArcLayer<DispatchLink>({
     id: "cctv-dispatch-arcs",
     data: links,
     getSourcePosition: (d) => d.from,

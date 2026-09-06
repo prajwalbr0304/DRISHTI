@@ -14,6 +14,7 @@ import { NetworkAnalysis } from "@/routes/network/NetworkAnalysis";
 import { MyBoards } from "@/routes/board/MyBoards";
 import { BoardWorkspace } from "@/routes/board/BoardWorkspace";
 import { MapHotspots } from "@/routes/map/MapHotspots";
+import { LiveWatchWall } from "@/routes/watch/LiveWatchWall";
 import { Analytics } from "@/routes/analytics/Analytics";
 import { AskDrishti } from "@/routes/ask/AskDrishti";
 import { IntakeInbox } from "@/routes/intake/IntakeInbox";
@@ -106,6 +107,9 @@ export default function App() {
         <Route path="/board" element={<BoardGate><MyBoards /></BoardGate>} />
         <Route path="/board/:boardId" element={<BoardGate><BoardWorkspace /></BoardGate>} />
         <Route path="/map" element={<MapHotspots />} />
+        {/* CCTV video-analytics wall: propose -> human confirm/dismiss -> nearest
+            responder dispatch (each step separately confirmed). */}
+        <Route path="/watch" element={<LiveWatchWall />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/governance" element={<GovernanceRegistry />} />
         <Route path="/ask" element={<AskDrishti />} />

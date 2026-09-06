@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  Cctv,
   FilePlus2,
   FolderKanban,
   Gauge,
@@ -135,6 +136,18 @@ export const DESTINATIONS: Destination[] = [
     icon: Map,
     description: "Geospatial hotspots, forecasts and red-zone alerts.",
     keywords: ["geo", "hotspot", "heatmap", "spatial", "forecast", "alert"],
+  },
+  {
+    id: "watch",
+    section: "Analysis",
+    path: "/watch",
+    label: "Live Watch Wall",
+    short: "Watch",
+    icon: Cctv,
+    description:
+      "CCTV video analytics: review proposed incident alerts and dispatch the nearest responder.",
+    keywords: ["cctv", "camera", "video", "surveillance", "fight", "road rage",
+               "traffic block", "crowd", "alert", "dispatch", "live", "feed", "wall"],
   },
   {
     id: "analytics",
