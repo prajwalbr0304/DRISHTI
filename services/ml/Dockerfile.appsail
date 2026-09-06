@@ -5,8 +5,12 @@
 # (external AWS GPU). It is deliberately lightweight:
 #
 #   * NO torch / CUDA / TabFM / TabPFN / TimesFM / torch-geometric.
-#   * The service dispatches prediction work to the protected AWS adapter and
-#     never loads model weights in-process.
+#   * The service dispatches PREDICTION work to the protected AWS adapter and
+#     loads no forecasting/tabular model weights in-process.
+#   * ONE exception: the face-recognition encoder (onnxruntime + the ~15 MB
+#     buffalo_s pack) runs in-process, because 1:N biometric search has no
+#     external adapter and its gallery is pgvector in RDS. Sized to fit the
+#     512 MB instance — see the model-fetch step below.
 #   * Runs as a non-root user, binds Uvicorn to 0.0.0.0 on the AppSail port
 #     (9000 by default, matching `catalyst deploy appsail --port 9000`).
 #   * Provides /health/live (liveness) and /health/ready (readiness).
@@ -36,6 +40,52 @@ RUN pip install --no-cache-dir -r requirements.appsail.txt
 # AppSail environment configuration at runtime.
 COPY app ./app
 COPY sql ./sql
+
+# Face-recognition weights (app/face). Baked at BUILD time, never fetched on the
+# request path or at boot: a first face search must not block on network I/O, and
+# an instance that starts without its weights would silently fall back to the
+# non-biometric photo-descriptor encoder.
+#
+# The pack is buffalo_s (SCRFD-500MF + ArcFace MobileFaceNet, ~15 MB) rather than
+# the buffalo_l used locally (~182 MB). This is a MEASURED constraint, not a
+# preference: inside this instance's 512 MB cap buffalo_l is OOM-killed while
+# loading the ArcFace R50 session (baseline app ~220 MB + R50 graph > 512 MB),
+# where buffalo_s peaks at ~280 MB through a full search. Descriptors from the
+# two packs are NOT comparable, so the enrolled gallery must be built with the
+# same pack — see app/face/store.py and the ModelVersion scoping.
+#
+# DRISHTI_FACE_MODEL_URL can point at an internal mirror for an air-gapped build.
+ENV DRISHTI_FACE_MODEL_DIR=/opt/face-models \
+    DRISHTI_FACE_MODEL_PACK=buffalo_s \
+    DRISHTI_FACE_LOW_MEMORY=true
+
+# Match threshold CALIBRATED against the enrolled gallery, not left at the code
+# default. The 0.36 in app/face/encoders.py is the standard ArcFace shortlist
+# operating point for REAL photographs; this gallery is synthetic portraits from
+# a single generator, so different people are systematically more alike than
+# different people are in life.
+#
+# Measured over 600 random probes against the 15,343-face gallery, taking each
+# probe's nearest DIFFERENT person (scripts/_face_calibrate.py):
+#     impostor median 0.473, p95 0.580, p99 0.641, max 0.667
+#     95% of impostor pairs exceed 0.36 — the default would surface a
+#     confident-looking WRONG dossier on almost every probe
+#     0 impostor pairs reach 0.70
+# A genuine probe of an enrolled portrait scores ~0.9999 end to end (including
+# the browser's downscale-to-1280 + JPEG re-encode), so 0.72 sits in the gap
+# with margin on both sides.
+#
+# This is tuning, not a model property, which is why it lives here as an
+# overridable ENV rather than being hardcoded in the encoder. RE-CALIBRATE if the
+# gallery or the pack changes.
+RUN python -c "from app.face import modelfiles; modelfiles.fetch('buffalo_s')" \
+    && chmod -R a+rX /opt/face-models \
+    && ls -l /opt/face-models/buffalo_s
+
+# Declared AFTER the weight fetch on purpose: retuning a threshold must not
+# invalidate the layer that downloads the model pack.
+ENV DRISHTI_FACE_MATCH_THRESHOLD=0.72 \
+    DRISHTI_FACE_STRONG_THRESHOLD=0.87
 
 # Run as a non-root user.
 RUN useradd --create-home --uid 10001 appuser

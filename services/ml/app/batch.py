@@ -336,8 +336,12 @@ def _cmd_face_enrol(args) -> int:
         print(f"  {path.name} -> person {cpid} "
               f"(quality {resp.quality}, gallery {resp.gallery_face_count})")
 
+    try:
+        prefer = face_service._encoder().name
+    except Exception:  # noqa: BLE001 — a summary line must not fail the command
+        prefer = None
     with _db.ro_conn() as conn:
-        live = store.gallery_model(conn)
+        live = store.gallery_model(conn, prefer_model_name=prefer)
     results["gallery"] = ({"model_version_id": live[0], "model_name": live[1],
                            "face_count": live[2], "person_count": live[3]}
                           if live else None)
@@ -595,7 +599,7 @@ def _cmd_face_enrol_portraits(args) -> int:
 
     face_count, person_count = 0, 0
     with _db.ro_conn() as ro:
-        live = store.gallery_model(ro)
+        live = store.gallery_model(ro, prefer_model_name=encoder.name)
         if live:
             face_count, person_count = live[2], live[3]
 

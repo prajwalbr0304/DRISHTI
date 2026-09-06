@@ -5,9 +5,19 @@
 # torch-geometric, sentence-transformers, xgboost). Those live ONLY in
 # services/gpu-worker and run on external AWS SageMaker / AWS Batch GPU compute.
 #
-# The AppSail service NEVER loads model weights in-process; it validates input,
-# persists FeatureSnapshot/PredictionRequest to Catalyst Data Store, and
-# dispatches to the protected AWS adapter (see app/aws_adapter contract).
+# For PREDICTION work the AppSail service loads no model weights in-process; it
+# validates input, persists FeatureSnapshot/PredictionRequest to Catalyst Data
+# Store, and dispatches to the protected AWS adapter (see app/aws_adapter
+# contract).
+#
+# The ONE deliberate exception is FACE RECOGNITION (app/face). 1:N biometric
+# search has no external adapter to dispatch to, and the gallery it searches is
+# pgvector in RDS, so the encoder has to run here. It is admitted only because it
+# is measured to fit: SCRFD-500MF + ArcFace MobileFaceNet (the buffalo_s pack,
+# ~15 MB of weights baked into the image) peaks at ~280 MB inside the 512 MB
+# AppSail instance. The buffalo_l pack used for local development is ~182 MB of
+# weights and is OOM-killed on this instance size during session load, which is
+# why the deployed pack is pinned to buffalo_s and DRISHTI_FACE_LOW_MEMORY=true.
 #
 # The lighter scientific stack (numpy/scipy/scikit-learn/networkx/shapely) is
 # retained because deterministic CPU analytics (hotspots, near-repeat, graph,
@@ -51,3 +61,12 @@ requests==2.34.2
 # scanned-FIR intake endpoint (POST /intake/scan/ocr), which accepts a photographed
 # or scanned FIR page for Catalyst Zia OCR.
 python-multipart==0.0.20
+
+# Face recognition runtime (app/face). Versions match the workstation that built
+# the enrolled gallery so the deployed encoder produces descriptors in the same
+# numeric space. WITHOUT onnxruntime the encoder silently degrades to the
+# non-biometric photo-descriptor fallback, whose descriptors are NOT comparable
+# to an ArcFace gallery — the API then refuses the search (409) and the UI
+# disables the scan button. WITHOUT Pillow image decode fails outright.
+onnxruntime==1.29.0
+Pillow==12.3.0
