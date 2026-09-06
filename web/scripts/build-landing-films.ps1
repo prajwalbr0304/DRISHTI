@@ -64,14 +64,20 @@ if ([string]::IsNullOrWhiteSpace($FfmpegPath) -or -not (Test-Path -LiteralPath $
 
 # Slug, source sequence, poster frame, and encode budget per film. The hero
 # carries the first impression, so it gets more bits than the scroll panels.
+#   `defocus` bakes a soft-focus pass into the film. The hero and the closing
+#   panel centre their copy, so text sits directly over the busiest part of the
+#   frame; a defocused plate reads as background and holds white type at
+#   contrast without a scrim heavy enough to hide the footage. Side-aligned
+#   panels leave half the frame clear and need no defocus, so their detail — the
+#   maps, the video wall, the case boards — stays sharp.
 $films = @(
-  @{ slug = "vision";    sequence = "sequence-01"; poster = 30; width = 1600; crf = 30 }
-  @{ slug = "reasoning"; sequence = "sequence-02"; poster = 40; width = 1280; crf = 34 }
-  @{ slug = "statewide"; sequence = "sequence-03"; poster = 40; width = 1280; crf = 34 }
-  @{ slug = "hotspots";  sequence = "sequence-04"; poster = 40; width = 1280; crf = 34 }
-  @{ slug = "response";  sequence = "sequence-05"; poster = 40; width = 1280; crf = 34 }
-  @{ slug = "command";   sequence = "sequence-06"; poster = 40; width = 1280; crf = 34 }
-  @{ slug = "ksp";       sequence = "sequence-07"; poster = 40; width = 1440; crf = 32 }
+  @{ slug = "vision";    sequence = "sequence-01"; poster = 30; width = 1600; crf = 30; defocus = 7 }
+  @{ slug = "reasoning"; sequence = "sequence-02"; poster = 40; width = 1280; crf = 34; defocus = 0 }
+  @{ slug = "statewide"; sequence = "sequence-03"; poster = 40; width = 1280; crf = 34; defocus = 0 }
+  @{ slug = "hotspots";  sequence = "sequence-04"; poster = 40; width = 1280; crf = 34; defocus = 0 }
+  @{ slug = "response";  sequence = "sequence-05"; poster = 40; width = 1280; crf = 34; defocus = 0 }
+  @{ slug = "command";   sequence = "sequence-06"; poster = 40; width = 1280; crf = 34; defocus = 0 }
+  @{ slug = "ksp";       sequence = "sequence-07"; poster = 40; width = 1440; crf = 32; defocus = 4 }
 )
 
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
@@ -90,7 +96,15 @@ foreach ($film in $films) {
   $inputPattern = Join-Path $sequenceDirectory "frame-%03d.webp"
   $videoTarget = Join-Path $outputRoot ("{0}.mp4" -f $film.slug)
   $posterTarget = Join-Path $outputRoot ("{0}-poster.webp" -f $film.slug)
-  $videoFilter = "scale={0}:-2:flags=lanczos,minterpolate=fps={1}:mi_mode=blend" -f $film.width, $Fps
+
+  # The poster must come out of the same filter chain as the film, or the
+  # hand-off from poster to first painted frame shows a focus pop.
+  $grade = "scale={0}:-2:flags=lanczos" -f $film.width
+  if ($film.defocus -gt 0) {
+    $grade += ",boxblur={0}:1,eq=brightness=-0.05:saturation=0.88" -f $film.defocus
+  }
+
+  $videoFilter = "{0},minterpolate=fps={1}:mi_mode=blend" -f $grade, $Fps
 
   & $FfmpegPath -hide_banner -loglevel error -y -framerate 12 -i $inputPattern `
     -vf $videoFilter -c:v libx264 -profile:v high -pix_fmt yuv420p `
@@ -104,8 +118,7 @@ foreach ($film in $films) {
   }
 
   & $FfmpegPath -hide_banner -loglevel error -y -i $posterSource `
-    -vf ("scale={0}:-2:flags=lanczos" -f $film.width) -c:v libwebp -q:v 58 `
-    -compression_level 6 -frames:v 1 $posterTarget
+    -vf $grade -c:v libwebp -q:v 58 -compression_level 6 -frames:v 1 $posterTarget
 
   if ($LASTEXITCODE -ne 0) { throw "Poster encode failed for $($film.slug)" }
 

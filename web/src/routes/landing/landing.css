@@ -383,20 +383,21 @@
 
 /* Hero: darkened all round, heaviest at the top so the header stays legible
    and heaviest at the bottom so the scroll cue reads. */
+/* Kept deliberately light. Contrast behind the centred hero copy is carried by
+   the defocus baked into the film itself (scripts/build-landing-films.ps1), so
+   the scrim only has to seat the header and the scroll cue. Darkening further
+   here erases the footage. */
 .lp-backdrop--hero .lp-backdrop-shade {
   background:
-    /* Band across the optical centre. The opening film has a bright subject
-       right where the standfirst sits, and a plain top-to-bottom wash was not
-       enough to hold that copy at readable contrast. */
     linear-gradient(
       to bottom,
-      rgb(5 8 13 / 0.88) 0%,
-      rgb(5 8 13 / 0.6) 22%,
-      rgb(5 8 13 / 0.68) 46%,
-      rgb(5 8 13 / 0.66) 62%,
-      rgb(5 8 13 / 0.92) 100%
+      rgb(5 8 13 / 0.86) 0%,
+      rgb(5 8 13 / 0.5) 24%,
+      rgb(5 8 13 / 0.5) 50%,
+      rgb(5 8 13 / 0.48) 66%,
+      rgb(5 8 13 / 0.9) 100%
     ),
-    radial-gradient(120% 90% at 50% 45%, transparent 12%, rgb(5 8 13 / 0.68) 100%);
+    radial-gradient(120% 90% at 50% 45%, transparent 22%, rgb(5 8 13 / 0.6) 100%);
 }
 
 .lp-backdrop--panel .lp-backdrop-shade {
@@ -408,12 +409,13 @@
   background:
     linear-gradient(
       to bottom,
-      rgb(5 8 13 / 0.8) 0%,
-      rgb(5 8 13 / 0.58) 34%,
-      rgb(5 8 13 / 0.72) 78%,
-      rgb(5 8 13 / 0.95) 100%
+      rgb(5 8 13 / 0.82) 0%,
+      rgb(5 8 13 / 0.6) 32%,
+      rgb(5 8 13 / 0.64) 60%,
+      rgb(5 8 13 / 0.78) 82%,
+      rgb(5 8 13 / 0.96) 100%
     ),
-    radial-gradient(100% 80% at 50% 40%, transparent 10%, rgb(5 8 13 / 0.6) 100%);
+    radial-gradient(100% 80% at 50% 42%, transparent 16%, rgb(5 8 13 / 0.62) 100%);
 }
 
 /* ==========================================================================
@@ -541,11 +543,7 @@
 }
 
 .lp-utility-right {
-  gap: 24px !important;
-}
-
-.lp-utility-right em {
-  font-style: normal;
+  color: var(--on-ink-faint);
 }
 
 .lp-header-inner {
@@ -1291,8 +1289,13 @@
 
 .lp-audience-grid {
   display: grid;
+  /* Four shared rows — index, roles, tier, copy — so a tier name or role list
+     that wraps to two lines does not shunt that card's body copy out of line
+     with its neighbours. Browsers without subgrid fall back to per-card rows,
+     which is the ragged-but-readable behaviour, not a broken layout. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(1px, 0.1vw, 1px);
+  grid-template-rows: auto auto auto auto;
+  gap: 1px;
   border: 1px solid var(--line-dark);
   border-radius: 18px;
   overflow: hidden;
@@ -1301,6 +1304,8 @@
 
 .lp-audience-grid article {
   display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
   align-content: start;
   gap: 10px;
   padding: clamp(26px, 2.6vw, 38px);
@@ -1757,6 +1762,7 @@
 
   .lp-audience-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(8, auto);
   }
 
   .lp-footer-top {
@@ -1774,10 +1780,6 @@
   }
 
   .lp-header-login {
-    display: none;
-  }
-
-  .lp-utility-inner > span:last-child em {
     display: none;
   }
 
@@ -1815,9 +1817,22 @@
 }
 
 @media (width <= 720px) {
+  /* The header keeps only the brand and the menu trigger. Everything else it
+     carried on desktop — the platform CTA, the motion switch — is reachable
+     inside the menu, and crowding four controls into 414px pushed them off the
+     viewport entirely. */
+  .lp-header-actions .lp-btn,
+  .lp-header-actions .lp-motion {
+    display: none;
+  }
+
+  /* Needs to out-specify `.lp-utility-inner > span`, which sets display. */
+  .lp-utility-inner > .lp-utility-right {
+    display: none;
+  }
+
   .lp-hero {
-    min-height: 92svh;
-    padding-block: calc(var(--utility-height) + var(--header-height) + 12vh) 18vh;
+    padding-block: calc(var(--utility-height) + var(--header-height) + clamp(32px, 6vh, 72px));
   }
 
   /* Hold the two headline sentences on one line each down to small phones. */
@@ -1887,6 +1902,7 @@
 
   .lp-audience-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(16, auto);
   }
 
   .lp-stats {

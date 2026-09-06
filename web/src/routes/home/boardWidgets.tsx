@@ -11,16 +11,15 @@ import { StatusPipeline, CASE_STAGES } from "@/components/dashboard/StatusPipeli
 import { EventList, alertToEvent } from "@/components/dashboard/EventList";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { DistrictBars, type BarDatum } from "@/components/dashboard/DistrictBars";
-import { SocioNarrativeCard } from "@/components/dashboard/SocioNarrativeCard";
 import { StationPerformance } from "@/routes/home/StationPerformance";
 import {
-  useAlerts, useCaseload, useForecastMap, useHotspots, useSocio, useTrends,
+  useAlerts, useCaseload, useForecastMap, useHotspots, useTrends,
 } from "@/routes/home/useDashboardData";
 import { useScopeChips } from "@/routes/home/useScopeChips";
 import { useMyScope } from "@/hooks/useMyScope";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { useUIStore } from "@/stores/useUIStore";
-import { STATE_WIDE_NOTE, useScopeStore } from "@/stores/useScopeStore";
+import { useScopeStore } from "@/stores/useScopeStore";
 import { formatNumber } from "@/lib/utils";
 
 /* ============================================================================
@@ -495,31 +494,6 @@ function OfficerLoadWidget({ label }: BoardWidgetProps) {
   );
 }
 
-/* -------------------------------- socio ---------------------------------- */
-function SocioWidget({ label }: BoardWidgetProps) {
-  const socio = useSocio();
-  return (
-    <Widget
-      gridTile
-      title={label}
-      contextChip="state-wide"
-      provenance={socio.data?.result}
-      loading={socio.isLoading}
-      error={socio.error}
-      empty={!socio.isLoading && !socio.error && !socio.data}
-      onRefresh={() => socio.refetch()}
-      info={
-        <p className="text-content-dim">
-          Correlation between district socio-economic indicators and crime rates.
-          Correlation only — none of these is evidence of cause. {STATE_WIDE_NOTE}
-        </p>
-      }
-    >
-      {socio.data && <SocioNarrativeCard data={socio.data} compact />}
-    </Widget>
-  );
-}
-
 /* ----------------------------- admin widgets ----------------------------- */
 function SeatDirectoryWidget({ label }: BoardWidgetProps) {
   const q = useQuery({
@@ -634,11 +608,25 @@ export const BOARD_WIDGETS: Record<string, (p: BoardWidgetProps) => JSX.Element>
   "head-breakdown": HeadBreakdownWidget,
   "station-league": StationLeagueWidget,
   "officer-load": OfficerLoadWidget,
-  "socio": SocioWidget,
   "seat-directory": SeatDirectoryWidget,
   "role-matrix": RoleMatrixWidget,
 };
 
+/** The socio-economic band: a read-out plus ONE TILE PER INDICATOR.
+ *
+ *  It is not in `BOARD_WIDGETS` because it is not one component — it expands to
+ *  1 + N tiles, N being however many indicators the service publishes. Squeezing
+ *  it into a single fixed-footprint widget was what reduced it to a compact
+ *  narrative card and lost the ranked-correlation chart and all ten scatter plots.
+ *  RoleBoard expands it through `socioTiles`, which is also why the whole band
+ *  shares one admin switch and one user dismissal. */
+export const SOCIO_BAND_ID = "socio-band";
+
+/** Widget ids that expand to SEVERAL tiles instead of resolving to one component.
+ *  RoleBoard routes these separately; they are still declared in a board spec, so
+ *  they still appear in the admin console's visibility list. */
+export const COMPOSITE_WIDGETS = new Set<string>([SOCIO_BAND_ID]);
+
 export function hasWidget(id: string): boolean {
-  return id in BOARD_WIDGETS;
+  return id in BOARD_WIDGETS || COMPOSITE_WIDGETS.has(id);
 }

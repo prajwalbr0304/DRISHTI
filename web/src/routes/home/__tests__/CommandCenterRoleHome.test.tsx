@@ -77,9 +77,31 @@ vi.mock("@/routes/home/boardWidgets", async () => {
     <div data-testid={`widget-${id}`}>{label}</div>
   );
   const map: Record<string, unknown> = {};
-  for (const id of ids) map[id] = stub(id);
-  return { BOARD_WIDGETS: map, hasWidget: (id: string) => ids.has(id) };
+  // A composite has no component of its own, so it must not get a stub entry —
+  // otherwise `!COMPOSITE_WIDGETS.has(id)` would be the only thing keeping it out
+  // of the packer and the test would stop exercising that branch.
+  for (const id of ids) if (id !== "socio-band") map[id] = stub(id);
+  return {
+    BOARD_WIDGETS: map,
+    SOCIO_BAND_ID: "socio-band",
+    COMPOSITE_WIDGETS: new Set(["socio-band"]),
+    hasWidget: (id: string) => ids.has(id),
+  };
 });
+
+/* The socio band expands to a read-out plus one scatter per indicator. Stubbed to
+   a single marker tile: this suite asserts the band is PRESENT on the boards that
+   declare it, while the charts themselves pull Recharts and a 32-district panel
+   into jsdom and are covered where they live. */
+vi.mock("@/routes/home/socioTiles", () => ({
+  socioTiles: ({ startY }: { startY: number }) => [{
+    key: "socio-band",
+    handle: "header" as const,
+    x: 0, y: startY, w: 12, h: 8, minW: 4, minH: 4,
+    xl: { x: 0, y: startY, w: 24, h: 8 },
+    el: <div data-testid="widget-socio-band">Socio-economic correlations</div>,
+  }],
+}));
 
 import { CommandCenter } from "@/routes/CommandCenter";
 import { BOARDS } from "@/config/kpi/roleBoards";

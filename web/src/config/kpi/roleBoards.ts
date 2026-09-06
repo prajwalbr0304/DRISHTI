@@ -45,6 +45,25 @@ const HOTSPOT_MAP: WidgetSpec = { id: "hotspot-map", label: "Hotspots", w: 6, h:
 const STATUS_PIPELINE: WidgetSpec = { id: "pipeline", label: "Case pipeline", w: 6, h: 6 };
 const ATTENTION: WidgetSpec = { id: "attention", label: "Attention queue", w: 6, h: 6 };
 
+/* The socio-economic band. COMPOSITE: RoleBoard expands this one entry into a
+   full-width read-out (narrative + the ranked-r bar chart + the shared crime-type
+   selector) plus one scatter tile per indicator, via `socioTiles`.
+
+   The footprint declared here is the READ-OUT's; the indicator tiles size
+   themselves in socioTiles.tsx, since how many there are is only known once the
+   service answers. It carries `socio-band` rather than a component id so the whole
+   band is one admin switch and one dismissal instead of eleven.
+
+   Declared on every board the two deleted hand-written boards had it on — DGP
+   (state) and the policymaker board that served range and district command — plus
+   the wing seat, which the six-role model split out of the same ADGP row. */
+const SOCIO_BAND: WidgetSpec = {
+  id: "socio-band",
+  label: "Socio-economic correlations",
+  w: 12,
+  h: 8,
+};
+
 export const BOARDS: Record<ScopeType, BoardSpec> = {
   /* --- DGP: the whole force, aggregate only ----------------------------- */
   state: {
@@ -71,7 +90,7 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     widgets: [
       TREND, FORECAST,
       { id: "range-league", label: "Range comparison", w: 6, h: 7 },
-      { id: "socio", label: "Socio-economic correlations", w: 6, h: 7 },
+      SOCIO_BAND,
     ],
   },
 
@@ -102,6 +121,7 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
       { id: "head-breakdown", label: "By crime head", w: 4, h: 7 },
       { id: "district-league", label: "District comparison", w: 6, h: 7 },
       HOTSPOT_MAP,
+      SOCIO_BAND,
     ],
   },
 
@@ -122,6 +142,7 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     widgets: [
       { id: "district-league", label: "District comparison", w: 8, h: 7 },
       FORECAST, TREND, HOTSPOT_MAP,
+      SOCIO_BAND,
     ],
   },
 
@@ -146,6 +167,7 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     widgets: [
       { id: "station-league", label: "Station performance", w: 8, h: 7 },
       FORECAST, TREND, HOTSPOT_MAP, ATTENTION,
+      SOCIO_BAND,
     ],
   },
 
@@ -170,6 +192,7 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     widgets: [
       { id: "station-league", label: "Station performance", w: 8, h: 7 },
       FORECAST, TREND, HOTSPOT_MAP, ATTENTION,
+      SOCIO_BAND,
     ],
   },
 

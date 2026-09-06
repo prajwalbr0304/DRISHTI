@@ -1,11 +1,18 @@
+import { useState } from "react";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { DashboardGrid, type DashTile } from "@/components/dashboard/DashboardGrid";
 import { boardFor, boardKpis, type WidgetSpec } from "@/config/kpi/roleBoards";
-import { BOARD_WIDGETS, hasWidget } from "@/routes/home/boardWidgets";
+import {
+  BOARD_WIDGETS, COMPOSITE_WIDGETS, SOCIO_BAND_ID, hasWidget,
+} from "@/routes/home/boardWidgets";
 import type { ScopeType } from "@/config/roles";
 import { hiddenTiles, useDashboardStore } from "@/stores/useDashboardStore";
 import { useUiVisibility } from "@/hooks/useUiVisibility";
 import { useKpiValues } from "@/routes/home/useKpiValues";
+import { useSocio } from "@/routes/home/useDashboardData";
+import { useScopeChips } from "@/routes/home/useScopeChips";
+import { socioTiles } from "@/routes/home/socioTiles";
+import { defaultCrimeCategory } from "@/lib/socio";
 
 /* ============================================================================
    One board, composed from the KPI registry.
@@ -21,6 +28,13 @@ import { useKpiValues } from "@/routes/home/useKpiValues";
    The card set comes from `boardKpis(scope, wing)`, which intersects three things:
    where a metric is meaningful, what the board asks for, and what the board
    explicitly omits. Nothing here decides what to show; it only renders it.
+
+   TWO KINDS OF WIDGET. Most ids resolve to one component through `BOARD_WIDGETS`
+   and are placed by the packer. A COMPOSITE id expands to several tiles that place
+   themselves, because how many there are is only known once the service answers —
+   the socio-economic band is one read-out plus one scatter per indicator. Forcing
+   that into a single fixed footprint is what had reduced it to a compact narrative
+   card, dropping the ranked-correlation chart and every scatter plot with it.
    ========================================================================== */
 
 /** 12-column grid, four cards a row, two rows tall. */
@@ -86,6 +100,22 @@ export function RoleBoard({
 
   const specs = boardKpis(scope, wingCode);
 
+  /* Socio-economic band. One request feeds the whole band — the response carries
+     the district panel and a fit per cell, so each indicator box builds its own
+     series client-side instead of re-querying. `useSocio` shares its react-query
+     key with `useKpiValues` (which reads suppressed_cells / districts_analysed off
+     the same payload), so the band costs no extra request.
+
+     The category chosen in the read-out is the DEFAULT for every indicator box;
+     a box the user sets individually keeps its own selection. Empty means "still
+     following the service's narrative category", so a default arriving after first
+     render still takes effect. */
+  const socio = useSocio();
+  const [socioCategory, setSocioCategory] = useState("");
+  const socioChips = useScopeChips();
+  const socioActiveCategory =
+    socioCategory || (socio.data ? defaultCrimeCategory(socio.data) : "");
+
   /* Two independent ways a card can be absent, and they are not the same thing:
        - `hiddenKeys`  the USER dismissed it from their own board (local, per-grid);
        - `ui.hidden`   an ADMIN turned it off for this role (server, per-role).
@@ -124,14 +154,18 @@ export function RoleBoard({
   const bodyY = Math.ceil(visible.length / KPI_PER_ROW) * KPI_H;
   const xlBodyY = Math.ceil(visible.length / XL_KPI_PER_ROW) * KPI_H;
 
-  /* Only widgets the resolver knows AND the user has not dismissed. An id with no
-     component is dropped rather than rendered as an empty frame — and
+  /* Widgets the user has not dismissed and an admin has not switched off. An id
+     with no component is dropped rather than rendered as an empty frame — and
      `boardWidgets.test` fails on it, so a typo in a board spec is caught at test
      time instead of appearing as a blank panel. */
+  const shown = (id: string) =>
+    !hiddenKeys.includes(id) && !ui.hidden.widget.has(id);
+
+  /* Composites are held back from the packer: they expand to several tiles and
+     place themselves, so packing them as one footprint would leave the rest of the
+     band overlapping them. */
   const widgetSpecs = board.widgets.filter(
-    (w) => hasWidget(w.id)
-      && !hiddenKeys.includes(w.id)
-      && !ui.hidden.widget.has(w.id),
+    (w) => hasWidget(w.id) && !COMPOSITE_WIDGETS.has(w.id) && shown(w.id),
   );
 
   const packed = packRow(widgetSpecs, 12, bodyY);
@@ -150,7 +184,28 @@ export function RoleBoard({
     };
   });
 
-  const tiles = [...kpiTiles, ...widgetTiles];
+  /* The band starts below the tallest widget placed, not below the last one: the
+     packer fills rows left to right, so the last widget is often on a short row
+     while a taller tile beside it still occupies later rows. */
+  const bandY = packed.reduce((y, { spec, y: top }) => Math.max(y, top + spec.h), bodyY);
+  const xlBandY = xlPacked.reduce((y, { spec, y: top }) => Math.max(y, top + spec.h), xlBodyY);
+
+  const socioBandTiles: DashTile[] =
+    board.widgets.some((w) => w.id === SOCIO_BAND_ID) && shown(SOCIO_BAND_ID)
+      ? socioTiles({
+          data: socio.data,
+          loading: socio.isLoading,
+          error: socio.error,
+          onRefresh: () => socio.refetch(),
+          category: socioActiveCategory,
+          onCategoryChange: setSocioCategory,
+          stateWideChip: socioChips.stateWide,
+          startY: bandY,
+          xlStartY: xlBandY,
+        })
+      : [];
+
+  const tiles = [...kpiTiles, ...widgetTiles, ...socioBandTiles];
 
   if (!tiles.length) {
     return (
