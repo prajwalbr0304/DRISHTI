@@ -44,8 +44,11 @@ interface Props {
   /** Omit to render read-only (search + inspect, no linking). */
   onConfirm?: (c: FaceConfirmation) => void | Promise<void>;
   confirmLabel?: string;
-  /** Called when the officer records "not on file". */
-  onNoMatch?: () => void;
+  /** Called when the officer records "not on file". Receives the probe handle so
+   *  the caller can offer to enrol this face against the identity it is about to
+   *  create — the descriptor is already retained server-side against this ref,
+   *  so nothing has to be re-uploaded or held in the browser. */
+  onNoMatch?: (probeRef: string) => void;
   onClose?: () => void;
   className?: string;
 }
@@ -238,7 +241,7 @@ export function FaceScanner({
           entityResolutionCandidateId: res.entity_resolution_candidate_id,
         });
       }
-      if (decision !== "confirmed") onNoMatch?.();
+      if (decision !== "confirmed") onNoMatch?.(result.probe.probe_ref);
     } catch (e) {
       setError(errorMessage(e));
     } finally {

@@ -33,6 +33,14 @@ const blank: IntakePartyInput = {
     already be on file under a different name. */
 const FACE_ROLES = new Set(["accused", "suspect", "victim", "unknown"]);
 
+/** Roles whose photo is worth ADDING to the searchable gallery when the person
+    turns out not to be on file. Keeping this narrower than FACE_ROLES is the
+    point: an accused or an unidentified body is who a later scan needs to find,
+    whereas putting a victim's or a complainant's biometrics into a searchable
+    criminal gallery is a materially different act and is left to an explicit
+    decision on their record instead of being the default here. */
+const FACE_ENROL_DEFAULT_ROLES = new Set(["accused", "suspect", "unknown"]);
+
 /** Step 5 — people & organisations. Every party becomes a canonical identity +
     CasePartyRole on approval (no name-based joins). */
 export function PeopleStep({ editor, workflow }: StepProps) {
@@ -44,6 +52,11 @@ export function PeopleStep({ editor, workflow }: StepProps) {
   /** The face-confirmed identity currently attached to the party being added. */
   const [faceHit, setFaceHit] = useState<FaceConfirmation | null>(null);
   const [faceChecked, setFaceChecked] = useState(false);
+  /** Probe handle from a scan that found nobody. The descriptor is retained
+      server-side against this ref, so the photo can be enrolled onto the identity
+      this party mints on approval without re-uploading anything. */
+  const [unmatchedProbeRef, setUnmatchedProbeRef] = useState<string | null>(null);
+  const [enrolFace, setEnrolFace] = useState(false);
   const faceStatus = useFaceStatus();
 
   const roles = workflow?.kinds.find((k) => k.kind === caseKind)?.allowed_party_roles ?? [];
@@ -60,12 +73,35 @@ export function PeopleStep({ editor, workflow }: StepProps) {
     setForm((f) => ({ ...f, canonical_person_id: null }));
   };
 
+  const resetFaceState = () => {
+    setFaceHit(null);
+    setFaceChecked(false);
+    setUnmatchedProbeRef(null);
+    setEnrolFace(false);
+  };
+
+  /** A scan that matched nobody. Keep the probe so the officer can choose to make
+      this face searchable under the identity about to be created — otherwise the
+      descriptor is discarded and the next scan of the same person reports "not on
+      file" all over again. */
+  const onFaceNoMatch = (probeRef: string) => {
+    setFaceChecked(true);
+    setUnmatchedProbeRef(probeRef);
+    setEnrolFace(FACE_ENROL_DEFAULT_ROLES.has(form.role_type));
+    setScanOpen(false);
+  };
+
   /** A confirmed match pre-fills the party from the EXISTING record, so the case
       links to that canonical identity instead of minting a near-duplicate. */
   const onFaceConfirm = (c: FaceConfirmation) => {
     const p = c.match.person;
     setFaceHit(c);
     setFaceChecked(true);
+    // The party now reuses an existing identity, so there is no new person to
+    // enrol against; the scanner already offers to add a strong pose to that
+    // person's own gallery.
+    setUnmatchedProbeRef(null);
+    setEnrolFace(false);
     setForm((f) => ({
       ...f,
       canonical_person_id: p.canonical_person_id,
@@ -92,14 +128,24 @@ export function PeopleStep({ editor, workflow }: StepProps) {
     setErr(null);
     try {
       const isUnknown = form.party_nature === "unknown";
+      // Carry the capture on the PARTY, not the draft: a draft can hold several
+      // scanned people, and the server must never have to guess which probe
+      // belongs to which person before enrolling biometrics.
+      const enrolAttrs = (unmatchedProbeRef && enrolFace)
+        ? {
+          face_probe_ref: unmatchedProbeRef,
+          face_enrol_on_approval: true,
+          identity_source: "intake_face_capture",
+        }
+        : {};
       await addParty({
         ...form,
         is_unknown: isUnknown,
         display_name: isUnknown ? null : (form.display_name || null),
+        attributes: { ...form.attributes, ...enrolAttrs },
       });
       setForm({ ...blank, role_type: form.role_type });
-      setFaceHit(null);
-      setFaceChecked(false);
+      resetFaceState();
     } catch (e) {
       setErr(errorMessage(e));
     } finally {
@@ -156,12 +202,16 @@ export function PeopleStep({ editor, workflow }: StepProps) {
         <SectionCard title="Add a party">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Role" required>
-              <NativeSelect value={form.role_type} onChange={(v) => setForm((f) => ({ ...f, role_type: v }))}
+              {/* Changing role or nature discards a pending face capture: a probe
+                  taken while recording an accused must not silently follow the
+                  form over to a witness or an organisation. */}
+              <NativeSelect value={form.role_type}
+                onChange={(v) => { resetFaceState(); setForm((f) => ({ ...f, role_type: v, canonical_person_id: null })); }}
                 options={roleOpts} placeholder="Select role" aria-label="Party role" />
             </Field>
             <Field label="Nature">
               <NativeSelect value={form.party_nature}
-                onChange={(v) => setForm((f) => ({ ...f, party_nature: v }))}
+                onChange={(v) => { resetFaceState(); setForm((f) => ({ ...f, party_nature: v, canonical_person_id: null })); }}
                 options={NATURES} placeholder="Person" aria-label="Party nature" />
             </Field>
             {form.party_nature !== "unknown" && (
@@ -245,6 +295,35 @@ export function PeopleStep({ editor, workflow }: StepProps) {
                           new identity.
                         </p>
                       )}
+                      {/* Not on file is the case that matters: without enrolling,
+                          the photo just taken is discarded and the next scan of
+                          this person reports "not on file" again. */}
+                      {unmatchedProbeRef && (
+                        <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-control border border-hairline bg-surface-1 p-2">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-3.5 shrink-0 accent-accent"
+                            checked={enrolFace}
+                            onChange={(e) => setEnrolFace(e.target.checked)}
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-12 font-medium text-content">
+                              Add this photo to the face records for this person
+                            </span>
+                            <span className="mt-0.5 block text-11 leading-4 text-content-dim">
+                              {enrolFace
+                                ? "On approval, this face is enrolled against the new"
+                                  + " identity, so scanning this person later returns"
+                                  + " their name and this case. Only the 512-dim"
+                                  + " descriptor already computed for the search is"
+                                  + " stored — never the photograph."
+                                : "The photo will be discarded when this scan closes,"
+                                  + " so a later scan of this person will report \u201cnot"
+                                  + " on file\u201d again."}
+                            </span>
+                          </span>
+                        </label>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -279,14 +358,12 @@ export function PeopleStep({ editor, workflow }: StepProps) {
         existingCanonicalPersonId={form.canonical_person_id ?? null}
         onConfirm={onFaceConfirm}
         confirmLabel="Use this record"
-        onNoMatch={() => {
-          setFaceChecked(true);
-          setScanOpen(false);
-        }}
+        onNoMatch={onFaceNoMatch}
         title="Check the face against person records"
         description="Photograph or upload the person's face. DRISHTI searches enrolled
           records and shows any existing identity, so the FIR links to it instead of
-          creating a duplicate."
+          creating a duplicate. If nobody matches, you can add this face to the new
+          person's record so a later scan identifies them."
       />
     </div>
   );
