@@ -153,3 +153,9 @@ _migration/
 # stay on the machine that took them and are never committed.
 # ---------------------------------------------------------------------------
 backups/
+
+# Local-only scratch areas used while provisioning face recognition and probing
+# the AppSail image under its real memory cap. Both have held generated docker
+# env-files containing DATABASE_URL, so they must never be committable.
+.docker-temp/
+.face-ingest-logs/
