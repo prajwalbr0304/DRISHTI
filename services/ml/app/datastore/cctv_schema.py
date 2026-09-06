@@ -190,6 +190,11 @@ CCTV_TABLES: tuple[CctvTable, ...] = (
                note="per-camera kill switch for the detector"),
             _c("DetectorProfile", "text",
                note="comma-separated DETECTION_TYPES this camera is watched for"),
+            _c("SceneIsContinuous", "bool",
+               note=("the incident in this camera's feed is present throughout "
+                     "(a looping demo clip of an actual incident), so the detector "
+                     "flags it in every analysis window rather than sampling a "
+                     "probability. Only meaningful for scripted/replayed feeds.")),
             _c("LastHeartbeatAt", "timestamp", note="drives the offline/degraded read-out"),
             _c("LastAnalysedAt", "timestamp"),
             _c("Notes", "bigtext"),

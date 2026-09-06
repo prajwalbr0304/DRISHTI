@@ -225,6 +225,58 @@ def _stream_fields(code: str) -> dict[str, Any]:
     return {"StreamKind": _stream_kind_for(url), "StreamURL": url}
 
 
+def _analytics_enabled_for(code: str, status: str) -> bool:
+    """Only cameras we can actually SHOW are watched.
+
+    An alert the reviewer cannot look at is not reviewable — they would be
+    confirming or dismissing a claim on the strength of a confidence number
+    alone. So analytics is enabled only where there is real footage behind the
+    camera (``CAMERA_DEMO_CLIPS``) or an estate-wide stream is configured, and
+    never on a camera the estate reports as dark.
+
+    The effect on the wall is deliberate: "Cameras watched 2/22" is the honest
+    reading of this demo, rather than 20 cameras raising alerts into blank tiles.
+    Drop another clip into CAMERA_DEMO_CLIPS and that camera joins the watch set.
+    """
+    if status not in ("online", "degraded"):
+        return False
+    if code in CAMERA_DEMO_CLIPS:
+        return True
+    return bool((get_settings().cctv_demo_stream_url or "").strip())
+
+
+def _retire_unwatched_alerts(repo: CctvRepo, actor: str) -> int:
+    """Soft-delete open alerts on cameras that are no longer being watched.
+
+    Re-seeding narrows the watch set, but alerts raised earlier on a now-unwatched
+    camera would linger in the queue pointing at a blank tile. Detections are
+    append-only and stay exactly as recorded; only the reviewable ALERT is
+    withdrawn, and the withdrawal is audited rather than silent.
+    """
+    watched = {int(c["CameraID"]) for c in repo.list("Camera")
+               if c.get("AnalyticsEnabled")}
+    retired = 0
+    for alert in repo.list("CctvAlert"):
+        if int(alert.get("CameraID") or 0) in watched:
+            continue
+        # Leave decided alerts alone — a dismissal or a dispatch is history.
+        if alert.get("Status") not in ("proposed", "confirmed"):
+            continue
+        aid = int(alert["CctvAlertID"])
+        for d in repo.list("CctvDispatch", where={"CctvAlertID": aid}):
+            if d.get("Status") == "proposed":
+                repo.update("CctvDispatch", int(d["CctvDispatchID"]), {
+                    "Status": "cancelled", "CancelledAt": _now(),
+                    "Version": int(d.get("Version") or 1) + 1})
+        repo.soft_delete("CctvAlert", aid)
+        repo.append_activity("alert", aid, actor=actor, action="alert.withdrawn",
+                             diff={"cause": "camera is no longer watched",
+                                   "camera_id": alert.get("CameraID"),
+                                   "alert_type": alert.get("AlertType")})
+        retired += 1
+    return retired
+
+
 def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
                      actor: str = "demo.seed") -> dict[str, int]:
     """Upsert the camera estate + responders. Idempotent by ``Code``.
@@ -248,10 +300,12 @@ def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
             "Lon": lon, "Lat": lat, "BearingDegrees": bearing, "FovDegrees": 72.0,
             "DistrictID": district_id, "UnitID": unit_id,
             "Status": status,
-            # An offline or in-maintenance camera has analytics off, because a
-            # camera that is not producing frames cannot be "being watched".
-            "AnalyticsEnabled": status in ("online", "degraded"),
+            "AnalyticsEnabled": _analytics_enabled_for(code, status),
             "DetectorProfile": profile or None,
+            # A clip-backed camera loops actual incident footage, so the incident
+            # is on screen in every window — flag it every pass rather than making
+            # the operator click until a probability lands.
+            "SceneIsContinuous": clip is not None,
             "LastHeartbeatAt": (_now() if status in ("online", "degraded") else None),
             "Notes": None,
             **_stream_fields(code),
@@ -279,11 +333,15 @@ def seed_demo_estate(*, repo: Optional[CctvRepo] = None,
         counts["PatrolUnit"] += 1
 
     repo.reseed_counters()
+    # Withdraw anything left in the queue for a camera that is no longer watched.
+    retired = _retire_unwatched_alerts(repo, actor)
     repo.append_activity("camera", 0, actor=actor, action="estate.seeded",
                          diff={"cameras": counts["Camera"],
                                "responders": counts["PatrolUnit"],
                                "cameras_with_footage": clipped,
+                               "alerts_withdrawn": retired,
                                "estate_stream_configured":
                                    bool((get_settings().cctv_demo_stream_url or "").strip())})
     counts["CamerasWithFootage"] = clipped
+    counts["AlertsWithdrawn"] = retired
     return counts

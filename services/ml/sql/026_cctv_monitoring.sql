@@ -77,6 +77,10 @@ CREATE TABLE IF NOT EXISTS "Camera" (
     "Status"          VARCHAR NOT NULL DEFAULT 'online',
     "AnalyticsEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
     "DetectorProfile" VARCHAR,                   -- comma-separated class list
+    -- TRUE only for a scripted/replayed feed whose incident is on screen for the
+    -- whole loop, so the detector flags it every window instead of sampling a
+    -- probability. Never set on a genuine live camera.
+    "SceneIsContinuous" BOOLEAN NOT NULL DEFAULT FALSE,
     "LastHeartbeatAt" TIMESTAMPTZ,
     "LastAnalysedAt"  TIMESTAMPTZ,
     "Notes"           TEXT,

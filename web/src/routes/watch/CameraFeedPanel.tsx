@@ -42,6 +42,7 @@ function canPlayHls(): boolean {
 export function CameraFeedPanel({
   camera,
   boxes,
+  detectorKind,
   severity,
   detectionLabel,
   ageSeconds,
@@ -53,6 +54,8 @@ export function CameraFeedPanel({
   camera: CctvCamera;
   /** Normalised detection boxes to overlay, when this tile is showing an alert. */
   boxes?: CctvBox[];
+  /** Which detector produced `boxes`. Gates the overlay — see below. */
+  detectorKind?: string | null;
   severity?: string | null;
   detectionLabel?: string | null;
   ageSeconds?: number | null;
@@ -90,9 +93,19 @@ export function CameraFeedPanel({
   const isSnapshot = camera.stream_kind === "image_snapshot";
   const accent = severity ? severityHex(severity) : undefined;
 
+  // A SYNTHETIC detection's box coordinates are generated, not measured — they
+  // have no relationship to the pixels in a real clip. Drawing them anyway put
+  // "person 88%" rectangles on empty pavement while the actual people stood
+  // elsewhere in frame, which is not a cosmetic glitch: a box over real footage
+  // is a specific claim about a specific person at that spot. So the overlay is
+  // drawn ONLY for detections measured from these frames by real analytics.
+  const boxesAreMeasured = detectorKind === "external_analytics";
   const overlayBoxes = useMemo(
-    () => (showOverlay ? (boxes ?? []).slice(0, 24) : []),
-    [boxes, showOverlay],
+    () => (showOverlay && boxesAreMeasured ? (boxes ?? []).slice(0, 24) : []),
+    [boxes, showOverlay, boxesAreMeasured],
+  );
+  const overlaySuppressed = Boolean(
+    showOverlay && !boxesAreMeasured && (boxes?.length ?? 0) > 0,
   );
 
   return (
@@ -302,8 +315,19 @@ export function CameraFeedPanel({
 
       {/* footer */}
       <div className="flex shrink-0 items-center gap-2 border-t border-hairline px-3 py-1.5">
-        <span className="truncate text-[11px] text-content-dim">
-          {camera.location_label || `${camera.lat.toFixed(4)}, ${camera.lon.toFixed(4)}`}
+        <span
+          className="truncate text-[11px] text-content-dim"
+          title={overlaySuppressed
+            ? "This detection's bounding boxes were generated, not measured from "
+              + "these frames, so drawing them over the video would place a claim on "
+              + "whoever happens to be standing there. The detected class and count "
+              + "are still shown on the review card."
+            : undefined}
+        >
+          {overlaySuppressed
+            ? "Overlay off — boxes not measured from these frames"
+            : camera.location_label
+              || `${camera.lat.toFixed(4)}, ${camera.lon.toFixed(4)}`}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {!camera.analytics_enabled && !dark && (

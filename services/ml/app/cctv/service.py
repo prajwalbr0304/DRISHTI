@@ -595,6 +595,17 @@ def _propose_alert_for(repo: CctvRepo, camera: dict, detection: dict,
         return None
 
     dtype = detection.get("DetectionType")
+    # De-duplicate an ONGOING incident. A fight that lasts three minutes is six
+    # analysis windows, and raising a fresh reviewable alert for each one would
+    # bury the queue in copies of the same event and make the pending count
+    # meaningless. While a camera still has an UNREVIEWED alert of this class,
+    # further detections are recorded (append-only, so the evidence of duration
+    # survives) but do not re-raise. Once a human has confirmed or dismissed it,
+    # the next detection is a genuinely new event and does raise.
+    for open_alert in repo.list("CctvAlert", where={"CameraID": int(camera["CameraID"])}):
+        if open_alert.get("Status") == "proposed" and open_alert.get("AlertType") == dtype:
+            return None
+
     count = _i(detection.get("ObjectCount"))
     row = repo.create("CctvAlert", {
         "CctvDetectionID": int(detection["CctvDetectionID"]),

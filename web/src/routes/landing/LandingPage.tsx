@@ -116,20 +116,35 @@ function FilmBackdrop({
   );
 }
 
-/** The page's single motion control. One switch stops every film at once, which
- *  keeps six pause buttons off the design while still satisfying WCAG 2.2.2. */
-function MotionToggle({ motion, variant = "bar" }: { motion: MotionSwitch; variant?: "bar" | "cue" }) {
+/** The page's single motion control.
+ *
+ *  One switch stops all eight films at once. That keeps eight pause buttons off
+ *  the design while still satisfying WCAG 2.2.2, and it lives in the header so
+ *  it stays reachable from any scroll position — a control that scrolls away is
+ *  not really a mechanism to stop the motion.
+ */
+function MotionToggle({
+  motion,
+  variant = "labelled",
+}: {
+  motion: MotionSwitch;
+  variant?: "labelled" | "icon";
+}) {
+  const label = motion.on ? "Pause background motion" : "Play background motion";
+
   return (
     <button
-      className={variant === "cue" ? "lp-motion lp-motion--cue" : "lp-motion"}
+      className={variant === "icon" ? "lp-motion lp-motion--icon" : "lp-motion"}
       type="button"
       onClick={motion.toggle}
       aria-pressed={!motion.on}
+      aria-label={variant === "icon" ? label : undefined}
+      title={variant === "icon" ? label : undefined}
     >
       <span className="lp-motion-icon" aria-hidden="true">
         {motion.on ? <Pause /> : <Play />}
       </span>
-      <span>{motion.on ? "Pause motion" : "Play motion"}</span>
+      {variant === "labelled" && <span>{motion.on ? "Pause motion" : "Play motion"}</span>}
     </button>
   );
 }
@@ -184,10 +199,7 @@ function TopBar({ motion }: { motion: MotionSwitch }) {
               <ShieldCheck aria-hidden="true" />
               {UTILITY_STRIP.left}
             </span>
-            <span className="lp-utility-right">
-              <MotionToggle motion={motion} />
-              <em>{UTILITY_STRIP.right}</em>
-            </span>
+            <span className="lp-utility-right">{UTILITY_STRIP.right}</span>
           </div>
         </div>
 
@@ -204,6 +216,7 @@ function TopBar({ motion }: { motion: MotionSwitch }) {
             </nav>
 
             <div className="lp-header-actions">
+              <MotionToggle motion={motion} variant="icon" />
               <Link className="lp-header-login" to="/login">
                 Sign in
               </Link>
@@ -264,7 +277,9 @@ function Hero({ motion }: { motion: MotionSwitch }) {
       <div className="lp-shell lp-hero-inner">
         <div className="lp-hero-copy">
           <h1 id="lp-hero-title" data-reveal>
-            {HERO.headline}
+            {HERO.headline.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
           </h1>
           <p className="lp-hero-standfirst" data-reveal data-reveal-delay="1">
             {HERO.standfirst}
@@ -285,7 +300,6 @@ function Hero({ motion }: { motion: MotionSwitch }) {
           <ArrowDown aria-hidden="true" />
           {HERO.scrollCue}
         </a>
-        <MotionToggle motion={motion} variant="cue" />
       </div>
     </section>
   );
@@ -376,7 +390,7 @@ function ShowcasePanel({ panel, motion }: { panel: Showcase; motion: MotionSwitc
           <p data-reveal data-reveal-delay="2">
             {panel.copy}
           </p>
-          <Link className="lp-btn lp-btn--ghost" to="/login" data-reveal data-reveal-delay="3">
+          <Link className="lp-btn lp-btn--light" to="/login" data-reveal data-reveal-delay="3">
             {panel.cta}
           </Link>
         </div>

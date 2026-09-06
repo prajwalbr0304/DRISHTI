@@ -333,16 +333,23 @@ export function LiveWatchWall() {
   }, [isFullscreen]);
 
   // --- interactions -------------------------------------------------------
-  const pinCamera = (cameraId: number) => {
+  /** Show ONE feed: the camera being looked at, replacing whatever was open.
+      Selecting a new alert must not leave the previous clip playing — two feeds
+      side by side with one review card is ambiguous about which is under review. */
+  const focusCamera = (cameraId: number) => setPinnedCameraIds([cameraId]);
+
+  /** Add a feed alongside the current one. Only ever an explicit user action
+      (the "Nearby cameras" corroboration list), never a side effect. */
+  const addCamera = (cameraId: number) => {
     setPinnedCameraIds((ids) => {
       if (ids.includes(cameraId)) return ids;
-      return [cameraId, ...ids].slice(0, MAX_PINNED_FEEDS);
+      return [...ids, cameraId].slice(-MAX_PINNED_FEEDS);
     });
   };
 
   const openAlert = (alert: CctvAlert) => {
     setSelectedAlertId(alert.cctv_alert_id);
-    pinCamera(alert.camera_id);
+    focusCamera(alert.camera_id);
     setSelected(null);
     if (alert.lon != null && alert.lat != null) {
       setViewState((v) => ({
@@ -366,7 +373,7 @@ export function LiveWatchWall() {
     }
     L.push(cameraMarkers(cameras, (c) => {
       setSelected({ type: "camera", camera: c });
-      pinCamera(c.camera_id);
+      focusCamera(c.camera_id);
     }, selected?.type === "camera" ? selected.camera.camera_id : null));
     if (mapAlerts.length) {
       L.push(alertPulse(mapAlerts, pulse));
@@ -573,15 +580,16 @@ export function LiveWatchWall() {
                       && (a.status === "proposed" || a.status === "confirmed"
                         || a.status === "dispatched"),
                   );
-                const boxes = camAlert
-                  && detail?.alert.cctv_alert_id === camAlert.cctv_alert_id
-                  ? detail.detection?.boxes
-                  : undefined;
+                const showingDetail = camAlert
+                  && detail?.alert.cctv_alert_id === camAlert.cctv_alert_id;
                 return (
                   <div key={cam.camera_id} className="pointer-events-auto">
                     <CameraFeedPanel
                       camera={cam}
-                      boxes={boxes}
+                      boxes={showingDetail ? detail?.detection?.boxes : undefined}
+                      // The panel only draws boxes it can trust against these
+                      // pixels; synthetic geometry is suppressed there.
+                      detectorKind={showingDetail ? detail?.detection?.detector_kind : undefined}
                       severity={camAlert?.severity}
                       detectionLabel={camAlert?.title}
                       ageSeconds={camAlert?.age_seconds}
@@ -805,7 +813,7 @@ export function LiveWatchWall() {
                   <li key={c.camera_id}>
                     <button
                       type="button"
-                      onClick={() => pinCamera(c.camera_id)}
+                      onClick={() => addCamera(c.camera_id)}
                       className="flex w-full items-center gap-2 rounded-control border border-hairline px-2.5 py-1.5 text-left text-12 transition-colors hover:bg-surface-2"
                     >
                       <Video className="size-3.5 shrink-0 text-content-dim" />

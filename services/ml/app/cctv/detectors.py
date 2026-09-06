@@ -209,6 +209,18 @@ class SyntheticSceneDetector(VisionDetector):
         """
         return 0.04 + _unit(_digest(self._salt, "rate", code), 0) * 0.30
 
+    @staticmethod
+    def _is_continuous(camera: dict) -> bool:
+        """Whether this camera's incident is present in every window.
+
+        True for a camera backed by a looping clip of an actual incident: the
+        fight or the collision is visible for the whole loop, so a detector
+        watching that feed really would flag it continuously. Sampling a
+        probability there would only mean the operator clicks "run analysis"
+        several times waiting for the thing already on screen to be noticed.
+        """
+        return bool(camera.get("SceneIsContinuous"))
+
     def _allowed_types(self, camera: dict) -> dict[str, int]:
         """Restrict the class weights to the camera's configured profile."""
         profile = (camera.get("DetectorProfile") or "").strip()
@@ -285,7 +297,7 @@ class SyntheticSceneDetector(VisionDetector):
         code = str(camera.get("Code") or camera.get("CameraID"))
         widx = window_index(now, window_seconds)
         dig = _digest(self._salt, code, widx)
-        if _unit(dig, 1) >= self._incident_rate(code):
+        if not self._is_continuous(camera) and _unit(dig, 1) >= self._incident_rate(code):
             return []
 
         weights = self._allowed_types(camera)

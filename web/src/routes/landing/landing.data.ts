@@ -113,7 +113,9 @@ export const BRAND = {
    ----------------------------------------------------------------------- */
 
 export const HERO = {
-  headline: "See the whole picture",
+  /** Rendered as separate block lines, so the break is deliberate rather than
+   *  whatever the viewport width happens to produce. */
+  headline: ["See more clearly.", "Act more accountably."],
   standfirst: "The decision intelligence platform for Karnataka State Police",
   primaryCta: "Enter DRISHTI",
   secondaryCta: "See the platform",
@@ -484,7 +486,9 @@ export const MISSION_META: readonly MetaFact[] = [
 
 export const FINAL_CTA = {
   eyebrow: "The common operating picture is ready",
-  headline: ["See more clearly.", "Act more accountably."],
+  /** Closes on the promise the hero opened with, inverted: the hero states the
+   *  intent, the footer states what the platform puts in front of you. */
+  headline: ["See the whole picture.", "Act on all of it."],
   body: "Enter the synthetic DRISHTI demonstration and explore the platform by operational role.",
   cta: "Enter DRISHTI",
 } as const;
