@@ -139,5 +139,12 @@ export function kpiSources(scope: ScopeType) {
     review: scope === "station" || scope === "platform",
     /** Money-trail and identity-resolution counters. */
     financial: scope === "wing" || scope === "platform",
+    /** The rolling-origin forecast backtest — WAPE, 80% interval coverage and
+     *  abstention. The three most expensive cards on the platform: the endpoint
+     *  scores a held-out evaluation and can exceed the API gateway's upstream
+     *  timeout, so a board that renders none of these must not ask for it. Only
+     *  the state and wing boards declare them (`registry.ts` scopes them to
+     *  `["state","wing"]`), and the platform seat inherits every card. */
+    model: scope === "state" || scope === "wing" || scope === "platform",
   };
 }

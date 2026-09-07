@@ -28,6 +28,16 @@ interface DashboardState {
   showAllTiles: (id: string) => void;
 }
 
+/** Persisted-state migration. Exported so the version-3 arrangement reset is
+ *  covered by a test rather than only by the comment describing it. */
+export function migrateDashboards(persisted: unknown, from: number): DashboardState {
+  const prior = (persisted ?? {}) as Partial<DashboardState>;
+  if (from < 3) {
+    return { ...prior, layouts: {}, hidden: prior.hidden ?? {} } as DashboardState;
+  }
+  return { hidden: {}, ...prior } as DashboardState;
+}
+
 export const useDashboardStore = create<DashboardState>()(
   persist(
     (set) => ({
@@ -55,10 +65,27 @@ export const useDashboardStore = create<DashboardState>()(
     }),
     {
       name: "drishti.dashboards",
-      version: 2,
-      // v1 persisted `layouts` only; `hidden` simply starts empty for everyone
-      // who already has a stored board.
-      migrate: (persisted) => ({ hidden: {}, ...(persisted as object) }) as DashboardState,
+      version: 3,
+      /* v1 persisted `layouts` only; `hidden` simply starts empty for everyone
+         who already has a stored board.
+
+         v3 DROPS every saved ARRANGEMENT once, and keeps `hidden`.
+
+         The boards were recomposed — the platform board alone went from ~9 cards
+         to ~45 — and a saved arrangement only means anything against the card set
+         it was captured from. Merged onto the new set it positions the cards the
+         user had seen and leaves the rest to reflow around them, which collides
+         and cascades into a scrambled board (see `mergeLayouts` above). Complete
+         but obsolete coordinates cannot be told apart from correct ones at merge
+         time, so retiring them has to be an explicit decision, taken here, once.
+
+         The cost is one lost custom arrangement per user. The alternative was a
+         board that stayed scrambled until the user found "Reset to default
+         layout" — a control they had no reason to connect to the problem.
+
+         Dismissals are deliberately preserved: which cards you would rather not
+         watch is a real preference, independent of where they sat. */
+      migrate: migrateDashboards,
     },
   ),
 );
@@ -91,6 +118,18 @@ export function hiddenTiles(state: DashboardState, id: string): string[] {
 
    The defaults are also the source of truth for which breakpoints exist; a
    breakpoint the user never arranged falls through to the declared layout.
+
+   THE LIMIT OF THIS, and why the persisted store carries a version. Merging by
+   key is safe while a board's card SET is stable, but declared KPI positions are
+   index-derived (`RoleBoard` computes each card's x/y from its position in the
+   visible list), so INSERTING cards reflows every card after them. A snapshot
+   taken before a large recomposition then supplies coordinates for a board that
+   no longer exists, the two position sets collide, and react-grid-layout
+   cascades tiles to resolve it — a visibly scrambled board. That is not
+   detectable here (complete-looking coordinates are indistinguishable from
+   correct ones), so it is handled where it is actually known: a recomposition is
+   a code change, and the developer making it bumps the store version to retire
+   the arrangements it invalidates. See `version: 3` below.
    -------------------------------------------------------------------------- */
 export function mergeLayouts(saved: Layouts | undefined, defaults: Layouts): Layouts {
   if (!saved) return defaults;

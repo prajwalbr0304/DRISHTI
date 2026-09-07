@@ -84,6 +84,24 @@ def _cmd_hidden_associations(args) -> int:
     return 0
 
 
+def _cmd_load_curated_case(args) -> int:
+    """Load the curated public-source case record through the real FIR path.
+
+    Writes no biometric material for any real person: see the module docstring in
+    app/cases/curated_public_case.py. Loading this case moves the analytics-policy
+    digest, so the reminder below is printed rather than left to be rediscovered
+    when /geo/hotspots starts failing closed.
+    """
+    from .cases import curated_public_case as curated
+    with db.rw_conn() as conn:
+        result = curated.load(conn, actor=args.actor)
+    print(json.dumps(result, indent=2, default=str))
+    if result.get("status") == "loaded":
+        print("\nNOTE: curated case material changes the analytics-policy digest. "
+              "Re-run: hotspots, emerging-alerts, workload-run", flush=True)
+    return 0 if result.get("status") == "loaded" else 1
+
+
 def _cmd_hotspots(args) -> int:
     from .geo import hotspots
     with db.rw_conn() as conn:
@@ -845,6 +863,13 @@ def build_parser() -> argparse.ArgumentParser:
     ha.set_defaults(func=_cmd_hidden_associations)
 
     # ---- geospatial jobs (Phase 7) ----
+    lc = sub.add_parser("load-curated-case",
+                        help="load the curated public-source case record (real case "
+                             "from published court records) through the FIR intake "
+                             "path; read-only and excluded from derived analytics")
+    lc.add_argument("--actor", default="curated.loader")
+    lc.set_defaults(func=_cmd_load_curated_case)
+
     hs = sub.add_parser("hotspots", help="ST-DBSCAN + KDE hotspots -> CrimeHotspot")
     hs.add_argument("--eps-m", type=float, default=1500.0)
     hs.add_argument("--eps-days", type=float, default=150.0)

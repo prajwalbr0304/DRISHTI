@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Layouts } from "react-grid-layout";
-import { mergeLayouts } from "@/stores/useDashboardStore";
+import { mergeLayouts, migrateDashboards } from "@/stores/useDashboardStore";
 
 /* ============================================================================
    Layout persistence is ADDITIVE (Task 1). A saved arrangement is a snapshot of
@@ -90,5 +90,48 @@ describe("mergeLayouts", () => {
     expect(merged.sm).toEqual(defaults.sm);
     // and every declared breakpoint is present in the result
     expect(Object.keys(merged).sort()).toEqual(Object.keys(defaults).sort());
+  });
+});
+
+/* ============================================================================
+   Version 3 retires saved ARRANGEMENTS once.
+
+   Merging by key (above) is only sound while a board's card set is stable —
+   declared KPI positions are index-derived, so a recomposition invalidates every
+   saved coordinate after the insertion point. Obsolete-but-complete coordinates
+   are indistinguishable from correct ones at merge time, so the reset has to be
+   an explicit version bump. Dismissals survive it: which cards you would rather
+   not watch is a preference, not a position.
+   ========================================================================== */
+describe("migrateDashboards", () => {
+  const stored = {
+    layouts: { "board:platform": { lg: [{ i: "kpi-a", x: 9, y: 6, w: 3, h: 2 }] } },
+    hidden: { "board:platform": ["kpi-conformance"] },
+  };
+
+  it.each([1, 2])("drops arrangements saved under version %i", (from) => {
+    const migrated = migrateDashboards(stored, from);
+
+    expect(migrated.layouts).toEqual({});
+  });
+
+  it.each([1, 2])("keeps dismissals from version %i", (from) => {
+    const migrated = migrateDashboards(stored, from);
+
+    expect(migrated.hidden).toEqual({ "board:platform": ["kpi-conformance"] });
+  });
+
+  it("leaves a version-3 arrangement alone", () => {
+    const migrated = migrateDashboards(stored, 3);
+
+    expect(migrated.layouts).toEqual(stored.layouts);
+    expect(migrated.hidden).toEqual(stored.hidden);
+  });
+
+  it("tolerates a v1 payload that never had a hidden map", () => {
+    const migrated = migrateDashboards({ layouts: stored.layouts }, 1);
+
+    expect(migrated.hidden).toEqual({});
+    expect(migrated.layouts).toEqual({});
   });
 });

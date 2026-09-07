@@ -124,7 +124,10 @@ export function useKpiValues(scope: ScopeType): { resolve: KpiResolver } {
   const perf = useStatePerformance(WINDOW_DAYS);
   const outcomes = useOutcomes();
   const forecast = useForecastMap();
-  const backtest = useForecastBacktest();
+  /* Gated: the backtest is a held-out model evaluation, not a lookup, and only
+     the three Band-D cards read it. Ungated it ran on an SHO's and an IO's board
+     too, neither of which renders one. */
+  const backtest = useForecastBacktest(undefined, 1, 6, want.model);
   const contract = useContractAudit();
   const quality = useDataQualitySummary();
   const jurisdiction = useJurisdictionFreshness();

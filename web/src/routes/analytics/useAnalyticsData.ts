@@ -100,8 +100,22 @@ export function useDistrictForecast(districtId: number | null, headId?: number) 
 }
 
 /** Rolling-origin backtest: model error vs baselines, coverage, geographic
- *  holdout. Read-only (persist=false) so the analytics screen never mutates. */
-export function useForecastBacktest(headId?: number, horizon = 1, nOrigins = 6) {
+ *  holdout. Read-only (persist=false) so the analytics screen never mutates.
+ *
+ *  `enabled` exists because this is the most EXPENSIVE read on the platform: it
+ *  scores a rolling-origin evaluation over held-out district-months, and behind
+ *  the API gateway it can exceed the upstream timeout outright. Only three cards
+ *  consume it (WAPE, 80% interval coverage, abstention) and they appear on three
+ *  boards, but `useKpiValues` runs on EVERY board — so left ungated it fired a
+ *  model job on an SHO's and an IO's dashboard that nothing there would render.
+ *  Defaults to true so the analytics Forecasts mode, which is the screen actually
+ *  about model trust, needs no argument. */
+export function useForecastBacktest(
+  headId?: number,
+  horizon = 1,
+  nOrigins = 6,
+  enabled = true,
+) {
   return useQuery({
     queryKey: ["forecast", "backtest", headId ?? null, horizon, nOrigins],
     queryFn: ({ signal }) =>
@@ -109,6 +123,7 @@ export function useForecastBacktest(headId?: number, horizon = 1, nOrigins = 6) 
         { head_id: headId, horizon, n_origins: nOrigins, per_head: true, persist: false },
         signal,
       ),
+    enabled,
     staleTime: 10 * 60_000,
     retry: false,
   });

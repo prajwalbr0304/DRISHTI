@@ -4,11 +4,29 @@ import { cn, formatCompact, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoHint } from "@/components/common/InfoHint";
 import { useDashTile } from "@/components/dashboard/dashTile";
+import { errorMessage } from "@/api/contracts";
 
 /* ============================================================================
    KPI stat card (doc 03 §2.1): big tabular number + label + signed delta vs.
    prior period + 12-point sparkline. Delta shows an ARROW and a SIGN, never
    colour alone. Supports loading / error / and an honest "awaiting API" state.
+
+   FOUR OUTCOMES, FOUR APPEARANCES. They are different facts and must not render
+   alike:
+
+     loading      a skeleton — the measurement is still in flight;
+     pending      "— awaiting API" — no endpoint serves this card yet;
+     error        "— unavailable" + the server's reason — the source was asked
+                  and it refused or failed;
+     null value   a bare "—" — the source answered and has no number.
+
+   The error case used to draw the same bare em-dash as a null value, which made
+   a 503 indistinguishable from "measured nothing". That is the one confusion
+   this card must never create: an unavailable source is a fault to chase, an
+   empty measurement is not. `docs/production-role-dashboard-plan.md` §3.3 states
+   the rule ("Unavailable: the source or calculation is not ready; never
+   substitute zero") and its acceptance test 16 requires the states stay
+   distinct.
    ========================================================================== */
 
 export interface KpiCardProps {
@@ -60,7 +78,22 @@ export function KpiCard({
       <div className="flex items-center gap-1.5 text-body-s text-content-dim">
         {icon && <span className="[&_svg]:size-4">{icon}</span>}
         <span className="truncate">{label}</span>
-        <InfoHint>{pending ? (pendingNote ?? "Awaiting a Wave-B endpoint.") : hint}</InfoHint>
+        {/* The hint carries the REASON when there is one. A card reading
+            "unavailable" with no way to find out why sends the reader to the
+            network tab; the server already said what was wrong, so repeat it
+            here alongside what the card would have measured. */}
+        <InfoHint>
+          {error ? (
+            <span>
+              <strong>Unavailable.</strong> {errorMessage(error)}
+              {hint ? <> <span className="block pt-1.5">{hint}</span></> : null}
+            </span>
+          ) : pending ? (
+            (pendingNote ?? "Awaiting a Wave-B endpoint.")
+          ) : (
+            hint
+          )}
+        </InfoHint>
         <RemoveTile label={label} />
       </div>
 
@@ -80,7 +113,15 @@ export function KpiCard({
               </span>
             </div>
           ) : error ? (
-            <span className="text-heading-s text-content-dim">—</span>
+            /* Same shape as the pending state so the band stays visually even,
+               but in the warning tone: this source was asked and it failed,
+               which is a fault to chase rather than a card yet to be built. */
+            <div className="flex items-baseline gap-2">
+              <span className="text-28 font-bold leading-none text-content-dim">—</span>
+              <span className="rounded-badge bg-surface-2 px-1.5 py-0.5 text-body-s text-severity-high">
+                unavailable
+              </span>
+            </div>
           ) : (
             <span className="tnum text-28 font-bold leading-none text-content">
               {value == null ? "—" : value >= 100000 ? formatCompact(value) : formatNumber(value)}
