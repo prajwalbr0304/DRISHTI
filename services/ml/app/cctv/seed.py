@@ -184,15 +184,27 @@ _RESPONDERS: tuple[tuple[str, str, str, float, float, int, Optional[int], str, l
 #      profile, so without this the tile could show a car crash while the alert
 #      card says "abandoned object" — the demo would be visibly incoherent, and
 #      worse, it would misrepresent what a detection means.
-#   2. Both hosts were chosen for a high per-window incident rate (the rate is a
+#   2. The hosts were chosen for a high per-window incident rate (the rate is a
 #      deterministic function of the camera code), so a single "Run analysis
 #      pass" is likely to raise an alert on them rather than needing a dozen
-#      clicks. They also sit ~1.1 km apart in Bengaluru Urban, which puts each
-#      inside the other's 1.5 km corroboration radius.
+#      clicks. Each pair also sits well inside the 1.5 km corroboration radius of
+#      the other camera in its district (~1.1 km in Bengaluru, ~0.7 km in
+#      Mangaluru), so the "Nearby cameras" panel has something real to offer.
+#
+# One pair per demo district, because ``_analytics_enabled_for`` below only
+# watches cameras with footage behind them: a district with no clip-backed camera
+# reads an honest but empty "Cameras watched 0/n" and can raise nothing at all.
+# Dakshina Kannada (24) is the district the wall opens on
+# (web/src/stores/useDisasterStore.ts DEFAULT_ASSIGNED_DISTRICT), so it needs a
+# watched pair or the landing view of the demo is a blank queue.
 CAMERA_DEMO_CLIPS: dict[str, tuple[str, str]] = {
     # camera code:  (clip filename, detection classes the footage supports)
+    # --- Bengaluru Urban (5) ---
     "BLR-MGR-04": ("streetfight.mp4", "fight"),
     "BLR-TRC-01": ("accident.mp4", "vehicle_accident"),
+    # --- Dakshina Kannada (24) — the district the wall opens on ---
+    "MNG-HMP-01": ("streetfight.mp4", "fight"),
+    "MNG-CLK-02": ("accident.mp4", "vehicle_accident"),
 }
 
 

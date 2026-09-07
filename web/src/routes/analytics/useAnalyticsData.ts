@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import type { PatternType } from "@/api/types";
+import { useSeatKey } from "@/hooks/useSeatKey";
 
 /* ============================================================================
    Shared data hooks for the Analytics & Forecasting destination (doc 01 §4.6).
@@ -21,10 +22,17 @@ export interface TrendScope {
   decompose?: boolean;
 }
 
-/** Reference lookups for the scope selectors (districts / crime heads / sub-heads). */
+/** Reference lookups for the scope selectors (districts / crime heads / sub-heads).
+ *
+ *  Confined server-side to the caller's seat, so the SEAT is part of the cache
+ *  identity — two SPs share a role and are entitled to different districts, and
+ *  keying by role alone served the first one's list to the second. Shares its key
+ *  with `useDistricts`, so the region selector and the Analytics scope pickers are
+ *  guaranteed to offer the same districts from one request. */
 export function useFilterOptions() {
+  const seatKey = useSeatKey();
   return useQuery({
-    queryKey: ["cases", "filters"],
+    queryKey: ["cases", "filters", seatKey],
     queryFn: ({ signal }) => api.cases.filters(signal),
     staleTime: 30 * 60_000,
   });

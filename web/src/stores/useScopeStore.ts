@@ -29,22 +29,61 @@ interface ScopeState {
   /** Display label for the drilled-into station, so the trail can name it without
    *  a second lookup. Presentation only. */
   unitLabel: string | null;
-  /** true once the USER has picked a district. Guards the seat default below:
-   *  an explicit choice must never be silently overwritten, including an explicit
-   *  choice of "All districts" — which is indistinguishable from the initial
-   *  state by `districtId` alone, hence this flag. */
+  /** true once the USER has picked a district FOR THE CURRENT SEAT. Guards the
+   *  seat default below: an explicit choice must never be silently overwritten,
+   *  including an explicit choice of "All districts" — which is indistinguishable
+   *  from the initial state by `districtId` alone, hence this flag.
+   *
+   *  Scoped to `seatKey` rather than global. A single global flag meant that the
+   *  first district anyone ever picked latched forever: an SP opening the workspace
+   *  afterwards kept "All districts" because the flag said a choice had been made,
+   *  even though it was made by a different seat. */
   chosen: boolean;
+  /** Which seat `districtId` and `chosen` belong to. A selection is only ever
+   *  honoured for the seat that made it; opening a different seat re-anchors. */
+  seatKey: string | null;
   setDistrictId: (id: number | null) => void;
   /** Drill into a station. Sets the district too, so the trail is never a station
    *  with no district above it. */
   drillToUnit: (unitId: number, districtId: number, label?: string) => void;
   /** Step back up to district grain, keeping the district. */
   clearUnit: () => void;
-  /** Adopt the seat's own district as the starting scope (see useSeatScopeAnchor).
-   *  A no-op once the user has chosen, so it can be called freely on every
-   *  render/route. Re-applies when the seat changes, so switching from an SHO view
-   *  to a DGP view moves the scope back to state-wide on its own. */
-  seedFromSeat: (id: number | null) => void;
+  /** Point the scope at a seat (see useSeatScopeAnchor).
+   *
+   *  Three jobs, and the last two are the ones a plain "seed if unset" could not do:
+   *    adopt the seat's own district as the opening scope;
+   *    RE-anchor when the seat changes, because the previous selection belonged to
+   *    somebody else's jurisdiction;
+   *    REJECT a selection the seat is not entitled to, so a district left in
+   *    localStorage by another seat cannot 403 every widget on the page.
+   *
+   *  Idempotent, so it can run on every render and every route. */
+  anchorToSeat: (anchor: SeatAnchor) => void;
+}
+
+/** What a seat is allowed to look at, as the scope store needs it. */
+export interface SeatAnchor {
+  /** Stable identity of the seat — its username. A change means re-anchor. */
+  seatKey: string;
+  /** The district this seat opens on, or null when it is not district-pinned. */
+  districtId: number | null;
+  /** Districts the seat may read. `null` = every district (a state, wing or
+   *  platform seat); `[]` = an unposted seat, entitled to nothing. */
+  entitled: number[] | null;
+}
+
+/** Is `id` a selection this seat may actually hold?
+ *
+ *  `null` ("All districts") is the interesting case. It is legitimate for a seat
+ *  that genuinely spans several districts — a DGP, or a DIG whose range covers
+ *  seven — because the server serves exactly that. It is NOT legitimate for a seat
+ *  pinned to ONE district: the label would read "All districts" while every
+ *  endpoint confined the answer to one, which is the mismatch this whole change
+ *  exists to remove. */
+function permitted(id: number | null, entitled: number[] | null): boolean {
+  if (entitled == null) return true;
+  if (id == null) return entitled.length !== 1;
+  return entitled.includes(id);
 }
 
 export const useScopeStore = create<ScopeState>()(
@@ -54,6 +93,7 @@ export const useScopeStore = create<ScopeState>()(
       unitId: null,
       unitLabel: null,
       chosen: false,
+      seatKey: null,
       // Changing district drops any station: station 112 is not in district 9, so
       // carrying it across would produce a filter that matches nothing.
       setDistrictId: (districtId) =>
@@ -61,15 +101,31 @@ export const useScopeStore = create<ScopeState>()(
       drillToUnit: (unitId, districtId, label) =>
         set({ unitId, districtId, unitLabel: label ?? null, chosen: true }),
       clearUnit: () => set({ unitId: null, unitLabel: null }),
-      seedFromSeat: (districtId) =>
-        set((s) => (s.chosen || s.districtId === districtId ? s : { districtId })),
+      anchorToSeat: ({ seatKey, districtId, entitled }) =>
+        set((s) => {
+          // A different seat. Whatever was selected was another officer's
+          // jurisdiction, so it is discarded rather than carried across — including
+          // the station, which certainly is not in the new seat's district.
+          if (s.seatKey !== seatKey) {
+            return { seatKey, districtId, unitId: null, unitLabel: null, chosen: false };
+          }
+          // Same seat, and the user has made a choice this seat is entitled to.
+          // Honour it — that is the whole point of `chosen`.
+          if (s.chosen && permitted(s.districtId, entitled)) return s;
+          // Either no choice yet, or one that is out of scope. Both resolve to the
+          // seat's own district. Out-of-scope is not a no-op: leaving it would send
+          // a district_id the server refuses, and every widget on the page would
+          // render a 403 instead of the officer's own numbers.
+          if (s.districtId === districtId && !s.chosen) return s;
+          return { districtId, unitId: null, unitLabel: null, chosen: false };
+        }),
     }),
     {
       name: "drishti.scope",
-      version: 3,
+      version: 4,
       partialize: (s) => ({
         districtId: s.districtId, unitId: s.unitId, unitLabel: s.unitLabel,
-        chosen: s.chosen,
+        chosen: s.chosen, seatKey: s.seatKey,
       }),
       // v1 had no `chosen` flag. Anyone carrying a real district plainly picked
       // it, so treat that as chosen and leave it alone; anyone sitting on "All
@@ -78,11 +134,19 @@ export const useScopeStore = create<ScopeState>()(
       // v1 had no `chosen`; v2 had no station level. A persisted v2 state carries
       // no unitId, and `undefined` there would read as "not yet loaded" rather
       // than "no station", so it is normalised to null.
+      //
+      // v3 had no `seatKey`, so its `chosen` flag cannot be attributed to a seat.
+      // It is therefore dropped rather than trusted: a v3 state that says "the user
+      // chose All districts" may well have been an SP inheriting a DGP's choice,
+      // which is the bug. `seatKey: null` matches no seat, so the first anchor
+      // re-derives the scope from the seat record — costing at most one deliberate
+      // re-pick, and never showing an officer the wrong jurisdiction.
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<ScopeState>;
         return {
           ...p,
-          chosen: p.chosen ?? p.districtId != null,
+          chosen: false,
+          seatKey: null,
           unitId: p.unitId ?? null,
           unitLabel: p.unitLabel ?? null,
         } as ScopeState;

@@ -54,9 +54,11 @@ const ATTENTION: WidgetSpec = { id: "attention", label: "Attention queue", w: 6,
    service answers. It carries `socio-band` rather than a component id so the whole
    band is one admin switch and one dismissal instead of eleven.
 
-   Declared on every board the two deleted hand-written boards had it on — DGP
-   (state) and the policymaker board that served range and district command — plus
-   the wing seat, which the six-role model split out of the same ADGP row. */
+   ON EVERY BOARD EXCEPT THE IO'S. Socio-economic and population data exist only at
+   DISTRICT grain, so this is always a district-level correlation no matter which
+   seat is reading it — which is why it can sit on a station board (a station's
+   figures against its district's economic context) as readily as a state one. The
+   assigned-case board is the single exclusion, and the reason is recorded there. */
 const SOCIO_BAND: WidgetSpec = {
   id: "socio-band",
   label: "Socio-economic correlations",
@@ -64,32 +66,63 @@ const SOCIO_BAND: WidgetSpec = {
   h: 8,
 };
 
+/* An SP of a district and a CP of a Commissionerate do the same job over a
+   different kind of jurisdiction, so their boards are the same board. Shared
+   rather than duplicated because the two copies had to be edited in lockstep and
+   silently diverging was the only possible outcome of forgetting one.
+
+   `kpi-anomalies` is no longer omitted here. It was held back on the grounds that
+   the rolling band needs volume, but a district's monthly series carries thousands
+   of cases — the registry already withholds the card at STATION grain, which is
+   where the sparseness argument actually bites. */
+const DISTRICT_ORDER: string[] = [
+  "kpi-incidents", "kpi-mom", "kpi-anomalies", "kpi-new-firs", "kpi-open-cases",
+  "kpi-workload",
+  "kpi-critical-alerts", "kpi-open-alerts", "kpi-hotspots",
+  "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal",
+  "kpi-conviction", "kpi-prosecution-rate",
+  "kpi-overdue", "kpi-ageing-180", "kpi-imbalance",
+  "kpi-stations", "kpi-officers", "kpi-officer-p90", "kpi-heavy-load",
+  "kpi-predicted",
+  "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction", "kpi-suppressed",
+  "kpi-patterns", "kpi-groups", "kpi-poi", "kpi-tasks",
+];
+
+const DISTRICT_WIDGETS: WidgetSpec[] = [
+  { id: "station-league", label: "Station performance", w: 8, h: 7 },
+  FORECAST, TREND, HOTSPOT_MAP, STATUS_PIPELINE, ATTENTION,
+  SOCIO_BAND,
+];
+
 export const BOARDS: Record<ScopeType, BoardSpec> = {
-  /* --- DGP: the whole force, aggregate only ----------------------------- */
+  /* --- DGP: the whole force, aggregate only -----------------------------
+     Carries every card and chart that is DEFINED state-wide. The two former
+     omissions are gone: total open-alert volume is a queue depth a state seat
+     should see beside the critical count, and the persons-of-interest card is now
+     excluded by the registry itself (it is the one Band F card that names people,
+     and this seat is aggregate-only) rather than by a board rule restating it. */
   state: {
     scope: "state",
     title: "State Command",
     subtitle: "State-wide priorities, outcomes and readiness. Aggregate only.",
     order: [
-      "kpi-incidents", "kpi-mom", "kpi-critical-alerts", "kpi-anomalies",
-      "kpi-hotspots", "kpi-open-cases", "kpi-workload", "kpi-new-firs",
+      "kpi-incidents", "kpi-mom", "kpi-anomalies", "kpi-new-firs",
+      "kpi-open-cases", "kpi-workload",
+      "kpi-critical-alerts", "kpi-open-alerts", "kpi-hotspots",
       "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal",
       "kpi-conviction", "kpi-prosecution-rate",
-      "kpi-overdue", "kpi-imbalance", "kpi-stations", "kpi-officers",
+      "kpi-overdue", "kpi-ageing-180", "kpi-imbalance",
+      "kpi-stations", "kpi-officers", "kpi-officer-p90", "kpi-heavy-load",
       "kpi-predicted", "kpi-wape", "kpi-coverage", "kpi-abstention",
       "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction", "kpi-suppressed",
       "kpi-districts", "kpi-conformance",
       "kpi-patterns", "kpi-groups", "kpi-tasks",
     ],
-    omit: {
-      "kpi-open-alerts":
-        "The state board carries the critical queue only. Total alert volume is a range and district supervision measure.",
-      "kpi-poi":
-        "Names people. A state seat is aggregate-only, so persons of interest belong to the seats that can act on them.",
-    },
     widgets: [
       TREND, FORECAST,
       { id: "range-league", label: "Range comparison", w: 6, h: 7 },
+      { id: "district-league", label: "District comparison", w: 6, h: 7 },
+      HOTSPOT_MAP, STATUS_PIPELINE, ATTENTION,
       SOCIO_BAND,
     ],
   },
@@ -103,24 +136,24 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
       "kpi-incidents", "kpi-mom", "kpi-critical-alerts", "kpi-open-alerts",
       "kpi-anomalies", "kpi-hotspots", "kpi-open-cases", "kpi-workload",
       "kpi-new-firs", "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal",
-      "kpi-conviction", "kpi-overdue", "kpi-ageing-180", "kpi-imbalance",
-      "kpi-stations", "kpi-officers", "kpi-predicted",
-      "kpi-wape", "kpi-coverage", "kpi-abstention",
+      "kpi-conviction", "kpi-prosecution-rate",
+      "kpi-overdue", "kpi-ageing-180", "kpi-imbalance",
+      "kpi-stations", "kpi-officers", "kpi-officer-p90", "kpi-heavy-load",
+      "kpi-predicted", "kpi-wape", "kpi-coverage", "kpi-abstention",
       "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction",
       "kpi-suppressed", "kpi-districts",
       "kpi-patterns", "kpi-groups", "kpi-tasks",
       "kpi-flagged-txn", "kpi-money-trails", "kpi-linked-accounts",
       "kpi-traffic-incidents", "kpi-accident-hotspots",
     ],
-    omit: {
-      "kpi-poi":
-        "Names people, and a wing seat is aggregate-only. Wing analysis hands off to a district or station seat to act.",
-    },
+    /* kpi-poi needs no omission here: the registry excludes it from every
+       aggregate-only scope, so stating it again on this board would be the same
+       rule written twice, drifting the moment one of the two changed. */
     widgets: [
       TREND,
       { id: "head-breakdown", label: "By crime head", w: 4, h: 7 },
       { id: "district-league", label: "District comparison", w: 6, h: 7 },
-      HOTSPOT_MAP,
+      HOTSPOT_MAP, FORECAST, STATUS_PIPELINE, ATTENTION,
       SOCIO_BAND,
     ],
   },
@@ -136,12 +169,14 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
       "kpi-new-firs", "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal",
       "kpi-conviction", "kpi-overdue", "kpi-ageing-180", "kpi-imbalance",
       "kpi-stations", "kpi-officers", "kpi-officer-p90", "kpi-heavy-load",
+      "kpi-prosecution-rate",
       "kpi-predicted", "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction",
-      "kpi-districts", "kpi-patterns", "kpi-groups", "kpi-poi", "kpi-tasks",
+      "kpi-suppressed", "kpi-districts",
+      "kpi-patterns", "kpi-groups", "kpi-poi", "kpi-tasks",
     ],
     widgets: [
       { id: "district-league", label: "District comparison", w: 8, h: 7 },
-      FORECAST, TREND, HOTSPOT_MAP,
+      FORECAST, TREND, HOTSPOT_MAP, STATUS_PIPELINE, ATTENTION,
       SOCIO_BAND,
     ],
   },
@@ -151,24 +186,8 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     scope: "district",
     title: "District Command",
     subtitle: "District workload, station performance and approvals.",
-    order: [
-      "kpi-incidents", "kpi-mom", "kpi-new-firs", "kpi-open-cases",
-      "kpi-workload", "kpi-critical-alerts", "kpi-open-alerts", "kpi-hotspots",
-      "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal", "kpi-conviction",
-      "kpi-overdue", "kpi-ageing-180", "kpi-imbalance", "kpi-stations",
-      "kpi-officers", "kpi-officer-p90", "kpi-heavy-load", "kpi-predicted",
-      "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction",
-      "kpi-patterns", "kpi-groups", "kpi-poi", "kpi-tasks",
-    ],
-    omit: {
-      "kpi-anomalies":
-        "Kept for range and above, where the series has the volume to make a rolling band informative.",
-    },
-    widgets: [
-      { id: "station-league", label: "Station performance", w: 8, h: 7 },
-      FORECAST, TREND, HOTSPOT_MAP, ATTENTION,
-      SOCIO_BAND,
-    ],
+    order: DISTRICT_ORDER,
+    widgets: DISTRICT_WIDGETS,
   },
 
   /* --- CP: same job, city command -------------------------------------- */
@@ -176,24 +195,8 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     scope: "commissionerate",
     title: "City Commissionerate",
     subtitle: "City workload, station performance and approvals.",
-    order: [
-      "kpi-incidents", "kpi-mom", "kpi-new-firs", "kpi-open-cases",
-      "kpi-workload", "kpi-critical-alerts", "kpi-open-alerts", "kpi-hotspots",
-      "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal", "kpi-conviction",
-      "kpi-overdue", "kpi-ageing-180", "kpi-imbalance", "kpi-stations",
-      "kpi-officers", "kpi-officer-p90", "kpi-heavy-load", "kpi-predicted",
-      "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction",
-      "kpi-patterns", "kpi-groups", "kpi-poi", "kpi-tasks",
-    ],
-    omit: {
-      "kpi-anomalies":
-        "Kept for range and above, where the series has the volume to make a rolling band informative.",
-    },
-    widgets: [
-      { id: "station-league", label: "Station performance", w: 8, h: 7 },
-      FORECAST, TREND, HOTSPOT_MAP, ATTENTION,
-      SOCIO_BAND,
-    ],
+    order: DISTRICT_ORDER,
+    widgets: DISTRICT_WIDGETS,
   },
 
   /* --- SHO: one station ------------------------------------------------ */
@@ -214,47 +217,107 @@ export const BOARDS: Record<ScopeType, BoardSpec> = {
     omit: {
       "kpi-conviction":
         "Court outcomes at a single station are too few per window to read as a rate; the district board carries it.",
+      "kpi-prosecution-rate":
+        "Same small-denominator problem as the conviction rate, and only meaningful beside it. Both live on the district board.",
     },
+    /* The trend chart is new here, and it is new because it can now be TRUE here:
+       /geo/trends took only a district, so a station board would have plotted its
+       whole district's series beside station-confined KPI cards — one board
+       reporting two jurisdictions. The endpoint now accepts the seat's unit, so the
+       series is the station's own.
+
+       The socio-economic band is included with its grain stated rather than left
+       off. There is no socio-economic or population data below district grain, so
+       these are the DISTRICT's correlations; an SHO reading their station's numbers
+       against the district's economic context is the point, and the band's own
+       read-out says which geography it is computed over. */
     widgets: [
-      STATUS_PIPELINE,
+      STATUS_PIPELINE, TREND,
       { id: "officer-load", label: "Officer load", w: 6, h: 6 },
       { id: "station-jurisdiction", label: "Station jurisdiction", w: 6, h: 7 },
       ATTENTION,
+      SOCIO_BAND,
     ],
   },
 
-  /* --- IO: my cases ---------------------------------------------------- */
+  /* --- IO: my cases ----------------------------------------------------
+     An IO's board is the one board that is scoped to a PERSON rather than to a
+     geography, which is exactly why it has to name the geography it sits inside.
+     `my-posting` leads the board for that reason: the seat's district and station,
+     stated, so the officer can see which jurisdiction every other figure on the
+     board is confined to instead of inferring it from a map.
+
+     The socio-economic band is deliberately absent, and this is the one board it is
+     absent from. It expands to eleven tiles of district-grain correlation across
+     the state — context for whoever sets district priorities, and eleven tiles of
+     noise above an officer's own caseload. The station board above carries it. */
   assigned_case: {
     scope: "assigned_case",
     title: "My Case Work",
-    subtitle: "Your assigned cases, evidence and leads.",
+    subtitle: "Your assigned cases, evidence and leads — within your posted station.",
     order: [
       "kpi-my-open", "kpi-my-new", "kpi-my-alerts", "kpi-overdue",
       "kpi-days-to-chargesheet", "kpi-ageing-180",
       "kpi-next-hearing", "kpi-evidence-pending", "kpi-hotspots",
-      "kpi-poi", "kpi-tasks",
+      "kpi-poi", "kpi-tasks", "kpi-data-age",
     ],
     widgets: [
-      { id: "my-caseload", label: "My caseload", w: 6, h: 6 },
+      { id: "my-posting", label: "My posting", w: 4, h: 6 },
+      { id: "my-caseload", label: "My caseload", w: 4, h: 6 },
       ATTENTION,
+      TREND,
       { id: "case-timeline", label: "Recent activity", w: 6, h: 6 },
       { id: "my-jurisdiction", label: "My jurisdiction", w: 6, h: 7 },
     ],
   },
 
-  /* --- Admin ----------------------------------------------------------- */
+  /* --- Admin -----------------------------------------------------------
+     EVERY board's cards and every panel, because a platform seat is the one seat
+     for which all of them are both defined and readable: `derive_scope` gives it no
+     geographic narrowing (like state) and it is not aggregate-only (unlike state
+     and wing). See the platform rule in registry.ts `kpiApplies`.
+
+     Previously four platform counters and two admin panels. That left an
+     administrator able to configure the visibility of every card in the console
+     while never being able to see what any of them rendered — which is also the
+     only way to notice that one of them is broken.
+
+     The platform tier leads, then the operational bands, so the board opens on what
+     is uniquely this seat's job before it becomes a state-wide read-out. */
   platform: {
     scope: "platform",
     title: "Platform Administration",
-    subtitle: "Seats, roles, UI visibility, models and data integrity.",
+    subtitle:
+      "Seats, roles, UI visibility, models and data integrity — over the whole force, with every board's own figures.",
     order: [
       "kpi-active-seats", "kpi-imports", "kpi-models", "kpi-ui-overrides",
       "kpi-conformance", "kpi-data-age", "kpi-data-quality", "kpi-jurisdiction",
-      "kpi-tasks",
+      "kpi-incidents", "kpi-mom", "kpi-anomalies", "kpi-new-firs",
+      "kpi-open-cases", "kpi-workload",
+      "kpi-critical-alerts", "kpi-open-alerts", "kpi-hotspots",
+      "kpi-chargesheet", "kpi-days-to-chargesheet", "kpi-disposal",
+      "kpi-conviction", "kpi-prosecution-rate",
+      "kpi-overdue", "kpi-ageing-180", "kpi-imbalance",
+      "kpi-stations", "kpi-officers", "kpi-officer-p90", "kpi-heavy-load",
+      "kpi-predicted", "kpi-wape", "kpi-coverage", "kpi-abstention",
+      "kpi-suppressed", "kpi-districts",
+      "kpi-patterns", "kpi-groups", "kpi-poi", "kpi-tasks",
+      "kpi-flagged-txn", "kpi-money-trails", "kpi-linked-accounts",
+      "kpi-traffic-incidents", "kpi-accident-hotspots",
+      // Last on purpose. Both are STATION_DOWN cards that a platform seat reads
+      // force-wide, and `kpi-evidence-pending` is declared pending in the registry —
+      // an admin board is the right place for an unserved card to be visible rather
+      // than quietly dropped, but not the top of it.
+      "kpi-next-hearing", "kpi-evidence-pending",
     ],
     widgets: [
       { id: "seat-directory", label: "Seat directory", w: 8, h: 7 },
       { id: "role-matrix", label: "Role and UI visibility", w: 4, h: 7 },
+      TREND, FORECAST,
+      { id: "range-league", label: "Range comparison", w: 6, h: 7 },
+      { id: "district-league", label: "District comparison", w: 6, h: 7 },
+      HOTSPOT_MAP, STATUS_PIPELINE, ATTENTION,
+      SOCIO_BAND,
     ],
   },
 

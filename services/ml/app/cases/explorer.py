@@ -196,18 +196,68 @@ def list_cases(filters: dict, page: int = 1, page_size: int = 25) -> dict:
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
-def filter_options() -> dict:
-    """Reference values for the Explorer's filter rail (real lookups)."""
-    def rows(cur, sql):
-        cur.execute(sql)
+def filter_options(district_ids: Optional[list] = None,
+                   unit_id: Optional[int] = None,
+                   crime_head_ids: Optional[list] = None) -> dict:
+    """Reference values for the Explorer's filter rail (real lookups).
+
+    CONFINED to the caller's seat. A filter option is a promise that selecting it
+    returns something, and for a geographically-scoped seat that promise was false:
+    this returned all 38 districts to every seat, so an SP posted to one district
+    was offered 37 others, and `enforce_geo_request` answers 403 for every one of
+    them. The dropdown was offering 37 ways to break the workspace.
+
+    So the lookup is narrowed the same way the data is:
+
+      ``district_ids``    the seat's districts. An EMPTY list means a seat entitled
+                          to nothing and yields no districts, never all of them.
+      ``unit_id``         a station seat, which sees its own station only.
+      ``crime_head_ids``  a wing seat, narrowed by crime head rather than geography.
+
+    ``None`` in any position means "no narrowing by remit" — a state, wing or
+    platform seat — which is the only case that still gets the whole list.
+    """
+    def rows(cur, sql, params=None):
+        cur.execute(sql, params or [])
         return [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+
+    dwhere, dparams = "", []
+    if district_ids is not None:
+        if district_ids:
+            dwhere, dparams = ' WHERE "DistrictID" = ANY(%s)', [[int(d) for d in district_ids]]
+        else:
+            dwhere = " WHERE FALSE"
+
+    # Stations follow the tighter of the two: a station seat is pinned to one unit,
+    # a district seat sees the units inside its districts.
+    swhere, sparams = "", []
+    if unit_id is not None:
+        swhere, sparams = ' WHERE "UnitID" = %s', [int(unit_id)]
+    elif district_ids is not None:
+        if district_ids:
+            swhere, sparams = ' WHERE "DistrictID" = ANY(%s)', [[int(d) for d in district_ids]]
+        else:
+            swhere = " WHERE FALSE"
+
+    hwhere, hparams = "", []
+    if crime_head_ids:
+        hwhere, hparams = ' WHERE "CrimeHeadID" = ANY(%s)', [[int(h) for h in crime_head_ids]]
 
     with db.ro_conn() as conn:
         with conn.cursor() as cur:
             return {
-                "districts": rows(cur, 'SELECT "DistrictID","DistrictName" FROM "District" ORDER BY "DistrictName"'),
-                "stations": rows(cur, 'SELECT "UnitID","UnitName" FROM "Unit" ORDER BY "UnitName" LIMIT 1000'),
-                "crime_heads": rows(cur, 'SELECT "CrimeHeadID","CrimeGroupName" FROM "CrimeHead" ORDER BY "CrimeGroupName"'),
+                "districts": rows(
+                    cur,
+                    'SELECT "DistrictID","DistrictName" FROM "District"'
+                    + dwhere + ' ORDER BY "DistrictName"', dparams),
+                "stations": rows(
+                    cur,
+                    'SELECT "UnitID","UnitName" FROM "Unit"'
+                    + swhere + ' ORDER BY "UnitName" LIMIT 1000', sparams),
+                "crime_heads": rows(
+                    cur,
+                    'SELECT "CrimeHeadID","CrimeGroupName" FROM "CrimeHead"'
+                    + hwhere + ' ORDER BY "CrimeGroupName"', hparams),
                 "sub_heads": rows(cur, 'SELECT "CrimeSubHeadID","CrimeHeadName" FROM "CrimeSubHead" ORDER BY "CrimeHeadName"'),
                 "statuses": rows(cur, 'SELECT "CaseStatusID","CaseStatusName" FROM "CaseStatusMaster" ORDER BY "CaseStatusID"'),
                 "gravities": rows(cur, 'SELECT "GravityOffenceID","LookupValue" FROM "GravityOffence" ORDER BY "GravityOffenceID"'),

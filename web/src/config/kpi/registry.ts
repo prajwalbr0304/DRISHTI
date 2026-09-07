@@ -119,9 +119,12 @@ export const KPI_REGISTRY: KpiSpec[] = [
   },
   {
     id: "kpi-open-alerts", label: "Open alerts", band: "alerts",
-    scopes: ["wing", "range", "district", "commissionerate", "station"],
+    // Now includes state. Total unresolved alert volume beside the critical count
+    // is what tells a state seat whether the critical queue is the whole problem or
+    // the tip of it, and it is a queue depth rather than a case-level disclosure.
+    scopes: ["state", "wing", "range", "district", "commissionerate", "station"],
     source: "/geo/alerts", reach: "client",
-    hint: "All unresolved alerts at every severity.",
+    hint: "All unresolved alerts at every severity. Read beside the critical count: the gap between them is the queue that is waiting rather than escalating.",
   },
   {
     id: "kpi-my-alerts", label: "My alerts", band: "alerts",
@@ -172,7 +175,11 @@ export const KPI_REGISTRY: KpiSpec[] = [
   },
   {
     id: "kpi-ageing-180", label: "Open over 180 days", band: "outcomes",
-    scopes: ["wing", "range", "district", "commissionerate", "station", "assigned_case"],
+    // Now includes state. The oldest ageing bucket is a backlog measure and it
+    // sums cleanly across the force, so a state seat both can and should carry it;
+    // its absence was an oversight rather than a statement about the metric.
+    scopes: ["state", "wing", "range", "district", "commissionerate", "station",
+             "assigned_case"],
     source: "/performance/overview", reach: "server",
     hint: "Open cases older than 180 days - the oldest ageing bucket.",
   },
@@ -195,13 +202,20 @@ export const KPI_REGISTRY: KpiSpec[] = [
   },
   {
     id: "kpi-officer-p90", label: "P90 open cases per officer", band: "outcomes",
-    scopes: ["range", "district", "commissionerate", "station"],
+    // Now includes state and wing. A percentile is a property of a DISTRIBUTION, so
+    // it is better defined the more officers it is taken over, not worse — the
+    // state-wide p90 is the most robust reading of it on any board. It is also an
+    // aggregate over officers rather than a per-officer figure, so it carries no
+    // case-level disclosure and is safe for the two aggregate-only seats.
+    scopes: ["state", "wing", "range", "district", "commissionerate", "station"],
     source: "/performance/overview", reach: "server",
     hint: "The 90th-percentile officer's open caseload. An aggregate distribution, never an individual ranking.",
   },
   {
     id: "kpi-heavy-load", label: "Heavy-load officers", band: "outcomes",
-    scopes: ["range", "district", "commissionerate", "station"],
+    // Same reasoning as the p90: a COUNT of officers over a threshold names none
+    // of them, so it is an aggregate the state and wing boards can carry.
+    scopes: ["state", "wing", "range", "district", "commissionerate", "station"],
     source: "/performance/overview", reach: "server",
     hint: "Officers holding more open cases than the heavy-load threshold.",
   },
@@ -253,7 +267,12 @@ export const KPI_REGISTRY: KpiSpec[] = [
   },
   {
     id: "kpi-suppressed", label: "Cells suppressed", band: "integrity",
-    scopes: ["state", "wing"], source: "/analytics/socioeconomic", reach: "none",
+    // Wherever the socio-economic band renders, this card explains the gaps in it.
+    // It was declared at state and wing only while the band itself was on the range,
+    // district and commissionerate boards too, so those three carried the charts
+    // without the one card that says why a district is missing from them.
+    scopes: ["state", "wing", "range", "district", "commissionerate"],
+    source: "/analytics/socioeconomic", reach: "none",
     hint: "Small-count cells hidden for k-anonymity - privacy by design, not missing data.",
   },
   {
@@ -287,7 +306,12 @@ export const KPI_REGISTRY: KpiSpec[] = [
     // so it stays off the aggregate-only boards.
     scopes: ["range", "district", "commissionerate", "station", "assigned_case"],
     wings: ["INT", "ISC", "CID"], source: "/graph/centrality", reach: "none",
-    hint: "Entities ranked by graph centrality within scope. Decision support for prioritising enquiry, never an accusation.",
+    /* The hint states the cap because the number IS the cap. /graph/centrality
+       answers with a `LIMIT top` ranked list and carries no population total, so
+       this card reports the size of the shortlist it asked for and not how many
+       persons of interest exist. Said out loud rather than left to look like a
+       measurement that happens never to move. */
+    hint: "Size of the ranked shortlist this board requests from graph centrality — a FIXED shortlist depth, not a count of how many persons of interest exist, because the service returns a top-N ranking with no population total. Decision support for prioritising enquiry, never an accusation.",
   },
   {
     id: "kpi-tasks", label: "Open tasks", band: "patterns",
@@ -346,6 +370,16 @@ export const KPI_REGISTRY: KpiSpec[] = [
     id: "kpi-evidence-pending", label: "Evidence pending", band: "casework",
     scopes: STATION_DOWN, source: "/casework", reach: "server",
     hint: "Evidence items awaiting collection, lab submission or result.",
+    /* Explicitly pending. The casework service exposes seizures and lab results
+       PER CASE (/casework/cases/{id}/seizures, /casework/cases/{id}/lab-results)
+       and has no scope-wide aggregate, so counting this would mean fanning out one
+       request per open case from the browser. Declared here so the card carries a
+       reason a reader can act on, instead of falling through to the resolver's
+       generic "no data binding" note, which is written for whoever maintains the
+       registry rather than for the officer looking at the board. */
+    pending: true,
+    pendingNote:
+      "Needs a scope-wide aggregate. The casework service reports seizures and lab results per case, with no station or caseload total, so this card is left explicitly pending rather than fanning out one request per open case.",
   },
 
   /* ===== Band J - platform ============================================== */
@@ -377,15 +411,44 @@ export const KPI_BY_ID: Record<string, KpiSpec> = Object.fromEntries(
   KPI_REGISTRY.map((k) => [k.id, k]),
 );
 
+/* --------------------------------------------------------------------------
+   The platform seat.
+
+   A platform administrator reaches every card, and that is a property of the
+   seat rather than a convenience: `derive_scope` in services/ml/app/org/scope.py
+   gives a platform seat NO geographic narrowing (identically to state), and
+   `isAggregateOnly` covers state and wing only — so a platform seat is the one
+   seat for which every measure here is both defined and readable.
+
+   Expressed as a rule instead of by adding "platform" to all ~50 entries, which
+   would say the same thing fifty times and drift the moment someone adds the
+   fifty-first. Without it the admin board carried four platform counters and
+   nothing else: an administrator could configure every board in the console and
+   never see what any of them actually rendered.
+
+   SEAT-RELATIVE CARDS ARE THE EXCEPTION. "My open cases", "My new assignments",
+   "My alerts" and the station review queue are defined relative to a personal
+   caseload or an approval inbox that a platform seat does not have. For those the
+   honest answer is absence, not a structural zero — an admin board reporting "0
+   open cases assigned to you" is reporting on nothing.
+   -------------------------------------------------------------------------- */
+const SEAT_RELATIVE = new Set<string>([
+  "kpi-my-open", "kpi-my-new", "kpi-my-alerts", "kpi-review-queue",
+]);
+
 /** True when a card is meaningful for this seat.
  *
- *  Two independent gates: the scope type must be one the metric is defined at,
- *  and — for a wing seat — the card must not be restricted to other wings. */
+ *  Three independent gates: the scope type must be one the metric is defined at
+ *  (or the seat must be the platform seat, which reaches all of them), and — for a
+ *  wing seat — the card must not be restricted to other wings. */
 export function kpiApplies(
   spec: KpiSpec,
   scope: ScopeType,
   wingCode?: string | null,
 ): boolean {
+  if (scope === "platform") {
+    return spec.scopes.includes("platform") || !SEAT_RELATIVE.has(spec.id);
+  }
   if (!spec.scopes.includes(scope)) return false;
   if (spec.wings && spec.wings.length > 0) {
     // A wing restriction only bites on a wing seat. A DGP still sees the

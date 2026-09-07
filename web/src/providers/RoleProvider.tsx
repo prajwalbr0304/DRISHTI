@@ -134,3 +134,15 @@ export function useRole(): RoleContextValue {
   if (!ctx) throw new Error("useRole must be used within <RoleProvider>");
   return ctx;
 }
+
+/** The role context if there is one, else null.
+ *
+ *  For LEAF utilities that only want the role as an input to something else — a
+ *  cache key, a default — rather than because they are role-aware UI. `useRole`
+ *  throwing is right for a screen that cannot render without knowing the seat, and
+ *  wrong for a shared data hook: it turns a missing provider anywhere in the tree
+ *  into a crash in every consumer of that hook. See useSeatKey. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useRoleOptional(): RoleContextValue | null {
+  return useContext(RoleContext) ?? null;
+}

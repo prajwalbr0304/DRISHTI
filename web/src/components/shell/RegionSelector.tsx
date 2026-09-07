@@ -1,6 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useDistrictLabel, useDistricts } from "@/hooks/useDistricts";
+import { useDistrictLabel, useScopedDistricts } from "@/hooks/useDistricts";
 import { useScopeStore } from "@/stores/useScopeStore";
 import { useLanguage } from "@/providers/LanguageProvider";
 import {
@@ -26,9 +26,15 @@ import {
 export function RegionSelector({ className }: { className?: string }) {
   const districtId = useScopeStore((s) => s.districtId);
   const setDistrictId = useScopeStore((s) => s.setDistrictId);
-  const { districts, usingFallback } = useDistricts();
+  const { districts, allowAll, pinnedTo, unposted, note, allLabel } = useScopedDistricts();
   const label = useDistrictLabel();
   const { t } = useLanguage();
+
+  /* A seat posted to ONE district has nothing to choose. The menu still opens,
+     because hiding the control entirely would leave an officer with no way to see
+     which jurisdiction the workspace is scoped to — but it states the posting
+     rather than offering 37 districts that every endpoint answers 403 for. */
+  const single = pinnedTo != null;
 
   return (
     <DropdownMenu>
@@ -45,7 +51,11 @@ export function RegionSelector({ className }: { className?: string }) {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel>{t("Scope this workspace to a district")}</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          {single
+            ? t("Your posted district")
+            : t("Scope this workspace to a district")}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         <div className="max-h-[60vh] overflow-y-auto">
@@ -53,22 +63,33 @@ export function RegionSelector({ className }: { className?: string }) {
             value={districtId == null ? "" : String(districtId)}
             onValueChange={(v) => setDistrictId(v === "" ? null : Number(v))}
           >
-            <DropdownMenuRadioItem value="">{t("All districts")}</DropdownMenuRadioItem>
-            <DropdownMenuSeparator />
+            {/* Offered only when it is TRUE. For a range seat it means "all seven
+                districts in my range", which is what the server serves; for a seat
+                posted to one district it would be a label describing somewhere
+                other than the data underneath it. */}
+            {allowAll && (
+              <>
+                <DropdownMenuRadioItem value="">{t(allLabel)}</DropdownMenuRadioItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {districts.map((d) => (
               <DropdownMenuRadioItem key={d.id} value={String(d.id)}>
                 <span className="truncate">{d.name}</span>
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
+          {unposted && (
+            <p className="px-2 py-3 text-body-s text-content-dim">
+              {t("No district is in scope for this seat.")}
+            </p>
+          )}
         </div>
 
         <DropdownMenuSeparator />
-        <p className="px-2 py-1.5 text-body-s text-content-dim">
-          {usingFallback
-            ? t("Showing the districts available to this seat. A view filter only — it cannot widen what your role may read.")
-            : t("A view filter only — it cannot widen what your role may read.")}
-        </p>
+        {/* The note comes from the seat, so it says which bound is in force rather
+            than repeating one generic caveat to every role. */}
+        <p className="px-2 py-1.5 text-body-s text-content-dim">{t(note)}</p>
       </DropdownMenuContent>
     </DropdownMenu>
   );

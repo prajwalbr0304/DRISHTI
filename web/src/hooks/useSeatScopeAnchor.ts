@@ -28,13 +28,28 @@ import { useScopeStore } from "@/stores/useScopeStore";
 
 export function useSeatScopeAnchor() {
   const seat = useMyScope();
-  const seedFromSeat = useScopeStore((s) => s.seedFromSeat);
+  const anchorToSeat = useScopeStore((s) => s.anchorToSeat);
+
+  /* The seat's own identity, so a change in seat is detectable. Username first —
+     it is what the server resolved the posting from, and two SPs of different
+     districts are two seats. Falls back to the scope shape when there is no
+     username (the offline path), which still separates a district seat from a
+     state one. */
+  const seatKey = seat.username ?? `${seat.scopeType}:${seat.districtId ?? "all"}`;
+
+  /* Serialised so the effect's dependency is a value, not a fresh array identity on
+     every render. */
+  const entitledKey = seat.districtIds == null ? "" : seat.districtIds.join(",");
 
   useEffect(() => {
     // Wait for the real answer. Mid-flight, useMyScope falls back to a
-    // role-shaped guess; seeding from that would set the scope, then correct it,
+    // role-shaped guess; anchoring to that would set the scope, then correct it,
     // and any widget that fetched in between would have queried the wrong scope.
     if (seat.loading) return;
-    seedFromSeat(seat.districtId);
-  }, [seat.loading, seat.districtId, seedFromSeat]);
+    anchorToSeat({
+      seatKey,
+      districtId: seat.districtId,
+      entitled: entitledKey === "" ? null : entitledKey.split(",").map(Number),
+    });
+  }, [seat.loading, seat.districtId, seatKey, entitledKey, anchorToSeat]);
 }
