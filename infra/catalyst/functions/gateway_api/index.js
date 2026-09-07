@@ -44,6 +44,35 @@ const STRIPPED_INBOUND_HEADERS = [
   'x-user-id', 'x-user-email', 'x-forwarded-user', 'authorization', 'cookie',
 ];
 
+/* A seat USERNAME the demo client asks to operate as.
+ *
+ * DEMO MODE ONLY, and it names a seat rather than describing one. Demo auth mints
+ * one full-access system_admin context for every caller, so the whole ~11,800-seat
+ * establishment collapsed to a single platform-scoped identity: the seat picked in
+ * the UI never reached AppSail, and an SP of Bagalkot saw all 38 districts.
+ *
+ * Carrying the name inside the SIGNED context fixes that without weakening the
+ * boundary, for three reasons:
+ *   - the browser supplies a name, never a role, district or unit;
+ *   - AppSail resolves that name against its own `users` table, so the scope is
+ *     still derived server-side from trusted data;
+ *   - in demo mode the baseline is full platform access, so resolving a named seat
+ *     can only ever NARROW what is served.
+ * In the AUTHENTICATED path this is ignored entirely — the Catalyst identity is
+ * authoritative there and a client-named seat must not override it.
+ *
+ * Conservative charset: a username, an email local part, or a demo actor like
+ * `demo.sho`. Anything else is dropped rather than sanitised into something else. */
+const SEAT_ACTOR_MAX_LEN = 120;
+const SEAT_ACTOR_PATTERN = /^[A-Za-z0-9._@+-]+$/;
+
+function requestedSeatActor(req) {
+  const raw = req.headers['x-demo-actor'];
+  const value = (Array.isArray(raw) ? raw[0] : raw || '').trim();
+  if (!value || value.length > SEAT_ACTOR_MAX_LEN) return null;
+  return SEAT_ACTOR_PATTERN.test(value) ? value : null;
+}
+
 function localhostCors(req, res) {
   const origin = req.headers.origin || '';
   if (/^http:\/\/localhost(:\d+)?$/.test(origin) || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
@@ -327,7 +356,13 @@ module.exports = async (req, res) => {
     // synthetic and every write stays behind the AppSail synthetic-DB guard. The
     // role card selects the presentation workspace CLIENT-SIDE; the server serves
     // the full demo dataset. Never enable outside the synthetic demo.
-    identity = { role: 'system_admin', scope_level: 'state', district_id: null, unit_id: null };
+    //
+    // The seat the client asks to operate as rides along so AppSail can resolve
+    // its REAL scope from the users table (see requestedSeatActor). Without it
+    // every seat resolved to this platform-wide identity and the district
+    // selector offered all 38 districts to an SP posted to one.
+    identity = { role: 'system_admin', scope_level: 'state', district_id: null, unit_id: null,
+                 actor: requestedSeatActor(req) };
     user = { user_id: 'demo-system-admin', email_id: 'demo.system_admin@drishti.local' };
   } else {
     return sendJson(res, 401, { error: 'authentication_required', request_id: requestId });
@@ -344,6 +379,9 @@ module.exports = async (req, res) => {
     scope_level: identity.scope_level,
     district_id: identity.district_id,
     unit_id: identity.unit_id,
+    // Demo-mode seat request only; absent (null) on the authenticated path, where
+    // resolveIdentity() has already produced the trusted role + scope.
+    actor: identity.actor || null,
     scope: 'gateway',
     aud: 'drishti-appsail',
     ts: now,
