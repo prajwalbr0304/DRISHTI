@@ -1794,3 +1794,404 @@ DRISHTI is a synthetic hackathon demonstration of governed decision-support infr
   <strong>DRISHTI</strong><br />
   Observe · Understand · Review · Act · Audit
 </p>
+
+
+---
+
+<a id="refined-prototype"></a>
+
+# Refined prototype — September 2026
+
+## Refined prototype demo video
+
+**[Watch the refined prototype demo — Google Drive](https://drive.google.com/drive/folders/1oMSqotqN_BgQuFgE4RjRORn34GmbzdEh)**
+
+This is the new demo video folder for the refined prototype. The submission links above are retained with the previous prototype.
+
+## Previous prototype baseline
+
+**Everything above this section is the preserved previous-prototype README.** Its submission links, ten presentation seats, database inventory, screenshots, benchmarks and infrastructure statements describe the earlier submission snapshot, last updated in commit `7139722` on 26 July 2026. They remain here so the development of DRISHTI can be reviewed without losing the original submission.
+
+This appendix describes the refinement against that baseline. Code was inspected at `3667382`, with existing local dashboard/scope changes also present, on **7 September 2026**. Local screenshots show that working checkout; hosted screenshots show the separately deployed Slate application. A local feature does not establish deployment parity.
+
+The twelve diagrams below are reused unchanged from the requested commit **`01c2b25bd5d1c50cf96c6d80eb31d10aca0a3c38`**. They describe architecture and interaction design, not live service-health evidence.
+
+## Refined prototype contents
+
+- [Executive summary and solution](#refined-summary)
+- [Previous prototype → refined prototype](#refined-changes)
+- [Users, roles, KPI cards and analytics](#refined-roles)
+- [Process flows and use cases](#refined-flows)
+- [Architecture, data and request lifecycle](#refined-architecture)
+- [Zoho Catalyst additions and integrations](#refined-zoho)
+- [AWS additions and integrations](#refined-aws)
+- [Wireframes and interaction design](#refined-wireframes)
+- [Actual browser screenshots](#refined-screenshots)
+- [Validation, deployment and remaining work](#refined-validation)
+
+<a id="refined-summary"></a>
+
+## Executive summary and brief about the refined solution
+
+DRISHTI has evolved from a broad crime-intelligence and emergency-response demonstration into a more explicit operational workspace. The refinement connects a user's posting to their dashboard, adds administration of role surfaces and visibility, extends intake with reviewed form scanning and face enrolment, and adds a CCTV review workspace and continuous conversational assistance.
+
+The underlying problem remains fragmented information: a supervisor needs jurisdiction-level workload and outcomes, while an investigating officer needs assigned cases and the next review action. The refined design makes that distinction visible through scoped seats, role-specific cards, provenance, capability indicators and separate human approval steps.
+
+**Refined USP:** one connected case and entity model, several operational views, and visible review boundaries between a machine suggestion and an officer's decision. Photos, similarity scores, forecasts and correlations are supporting information; none establishes guilt or authorizes enforcement.
+
+### Opportunities and expected impact
+
+| Opportunity | Refinement | Intended benefit |
+|---|---|---|
+| Reduce navigation between disconnected tools | Case, people, face search, board, map, intake and assistant destinations share the shell | Preserve investigation context |
+| Make command reporting relevant | Posting-aware dashboards and comparison widgets | Review the correct jurisdiction and workload |
+| Reduce repetitive form entry | Zia OCR proposal → field review → intake draft | Faster entry while preserving corrections and provenance |
+| Improve situational review | Camera map, feed panel and alert-review queue | Separate scene detection, confirmation and response |
+| Improve explainability | Metric help, data-age labels, model/capability state and correlation context | Make uncertainty and data limitations visible |
+| Make operations maintainable | Roles, seat profiles, UI visibility and platform administration | Manage access intent and presentation centrally |
+
+These are intended benefits. No new field-study outcome, accuracy claim or productivity percentage is asserted by this documentation update.
+
+<a id="refined-changes"></a>
+
+## What changed from the previous prototype
+
+| Topic | Previous prototype baseline | Refined implementation / current evidence |
+|---|---|---|
+| Entry experience | Role-oriented submission login and earlier landing design | Reworked landing page and searchable operational seat picker, grouped by posting type |
+| Role model | Ten presentation seats described above | **Six canonical application roles**; role surface is separate from geographic or functional scope |
+| Command Center | Earlier generic role home components | Registry-driven KPI cards and boards for state, wing, range, district, commissionerate, station, assigned cases and platform |
+| Scope | Earlier role and district controls | Server-resolved posting, scope trail and jurisdiction-aware data hooks; local scope/cache refinements are in progress |
+| KPI meaning | Broad dashboard metrics | Explicit workload, ageing, time-to-chargesheet, prosecution/conviction, data freshness, suppression and model-quality concepts |
+| Contextual analytics | Earlier socioeconomic presentation | Ranked correlation bars, indicator scatter plots, selected-district context, crime-type selectors and non-causal interpretation |
+| Administration | Earlier administration/governance panels | Roles & permissions, seat profiles and UI visibility panels; custom roles reuse a base application surface |
+| Written FIR intake | Structured manual draft and approval workflow | Scanned-form route, printable form, proposed-field review and OCR provenance; capability remains flag-gated |
+| Face workflow | No equivalent dedicated end-to-end face workflow in the preserved gallery | Camera/upload search, detector/encoder telemetry, ranked candidates, search history and enrolment UI |
+| Intake-to-person linkage | Earlier people entry | Captured intake face can be enrolled against the canonical person created by the intake approval path |
+| Bulk gallery | No documented bulk enrolment command in the earlier README | `face-enrol-portraits` batch command for indexed reference-photo ingestion |
+| CCTV | Earlier map and emergency snapshots | Live Watch Wall with camera estate, clips/feed panels, scene detections, human alert review and responder context |
+| Ask DRISHTI | Earlier cited text and browser voice experience | AWS Bedrock text planner integration plus continuous voice UI; Nova 2 Sonic / AgentCore transport implemented separately |
+| Shared interface | Earlier shell | Refined navigation, command bar, language controls, profile and support views |
+| Documentation | Earlier embedded diagrams and snapshots | Twelve code-oriented diagrams from the requested commit plus a dated browser-evidence gallery |
+
+### Changes after the diagram commit
+
+| Commit | Relevant addition |
+|---|---|
+| `876d897` | AppSail deployment support for the real face-recognition runtime |
+| `80e3adf` | Ignore local face-provisioning scratch directories that can contain database configuration |
+| `3667382` | Make an intake face capture searchable for the person created by that intake |
+
+The production dashboard document in [docs/production-role-dashboard-plan.md](docs/production-role-dashboard-plan.md) remains a **design plan**. Its complete KPI selection, layout limits and acceptance criteria must not be read as already delivered merely because the plan exists.
+
+<a id="refined-roles"></a>
+
+## Users, roles, KPI cards and analytics
+
+There are **six core application roles**, defined in [frontend roles](web/src/config/roles.ts) and [backend roles](services/ml/app/roles.py). ADGP/DIG and SP/CP are posting variants, not additional core roles. Administrator-created custom roles are an extension mechanism and are not included in this core count.
+
+| Core role | Seat scope | KPI and analytics emphasis |
+|---|---|---|
+| DGP / State Command — `dgp_state_command` | State | Incidents and change, open workload, alerts, outcome throughput, ageing, resource balance, forecast quality and data quality; range/district comparisons, trend, forecast and case pipeline |
+| Senior Command — `senior_command` | Functional wing or range | Wing crime-head mix or range district comparison; trends, open workload, chargesheet throughput, overdue work, hotspots and forecast; wing-specific financial/traffic cards when applicable |
+| District Command — `district_command` | District or commissionerate | Station performance, new FIRs, open cases, overdue reviews, median days to chargesheet, disposal/outcome rates, officer load and forecast |
+| SHO — `sho` | Station | Registration/review queue, station workload, ageing, pending evidence, hearings, officer load, station trend and jurisdiction map |
+| Investigating Officer — `investigating_officer` | Assigned cases within posting | Own cases, tasks, review deadlines, evidence and leads, with posting context; district socioeconomic comparisons are excluded from this board |
+| System Admin — `system_admin` | Platform | Platform status, usage, queues, identity/roles, seat profiles, UI visibility, audit, model review and operational administration |
+
+**Eight valid scope-board types:** state, wing, range, district, commissionerate, station, assigned_case and platform. An unresolved posting is a no-data state, not permission to show the whole state.
+
+Card applicability and ordering are maintained in [KPI registry](web/src/config/kpi/registry.ts) and [role boards](web/src/config/kpi/roleBoards.ts). The table above summarizes their emphasis; it is not a promise that every card is populated in every environment.
+
+### Metric and graph interpretation
+
+- Use the visible date window and data-as-of labels. The synthetic corpus includes historical dates; a dashboard opened today is not automatically a live incident feed.
+- “Time to chargesheet” measures a filing milestone. It is distinct from final court disposal.
+- Court-outcome rates need explicit denominators and enough observations. The station board intentionally omits conviction and prosecution rates.
+- Socioeconomic indicators are district-grain context, even when viewed from a narrower posting. Correlation bars and scatter plots do not support causal or individual-level accusations.
+- Missing, unavailable or policy-incompatible artifacts must stay visibly unavailable. An em dash is not a zero.
+- State and wing surfaces are designed for aggregate review. Frontend visibility is not an authorization boundary; permission and jurisdiction checks belong on the server.
+
+<a id="refined-flows"></a>
+
+## Process flows and use-case diagrams
+
+The refinement keeps an explicit chain from observation to review and audit.
+
+### Operational process
+
+![Refined operational process](docs/assets/diagrams/png/flow-01-operational-process.png)
+
+Signals and records enter the workspace, are connected to the case/entity model, and support reviewed action. The diagram represents the intended controlled process, not unattended police operations.
+
+### Role and use-case relationships
+
+![Refined use-case diagram](docs/assets/diagrams/png/flow-02-use-case.png)
+
+### Send to Investigation Board
+
+![Send to Board flow](docs/assets/diagrams/png/flow-03-send-to-board.png)
+
+Case and entity references become an investigation workspace with source-backed links and annotations. A link is not proof of wrongdoing.
+
+### Model governance
+
+![Model governance flow](docs/assets/diagrams/png/flow-04-model-governance.png)
+
+### Newly added workflow details
+
+| Workflow | Sequence | Human checkpoint |
+|---|---|---|
+| Scanned FIR | Form image → Zia text extraction → derived field proposals → reviewed values → draft | Officer confirms fields; normal approval creates the case |
+| Face search | Reference enrolment → image acquisition → face detection/alignment → descriptor → candidate search | Similarity result remains a lead requiring confirmation |
+| Intake face linkage | Capture in people step → approved canonical person → enrolment | Preserve association to the created record and enrolment result |
+| CCTV review | Enabled camera/clip → analysis pass → scene detection → review queue → response context | A machine detection must be reviewed before consequential action |
+| Voice Ask | Voice/text query → existing guarded Ask service → cited result cards → spoken response | Read-only grounded answers support the user's review |
+
+<a id="refined-architecture"></a>
+
+## Detailed architecture, tech stack and data boundaries
+
+### System architecture
+
+![Refined system architecture](docs/assets/diagrams/png/arch-01-system.png)
+
+### Request lifecycle
+
+![Refined request lifecycle](docs/assets/diagrams/png/arch-02-request-lifecycle.png)
+
+### Data architecture
+
+![Refined data architecture](docs/assets/diagrams/png/arch-03-data.png)
+
+The diagrams illustrate the **target service allocation**. The synthetic deployment also has an explicitly documented server-to-server AppSail → RDS bridge for domains still awaiting Catalyst Data Store migration. Consequently, the diagrams must not be used to claim that every operational route is Data Store-native or every analytical request already traverses the AWS adapter.
+
+The current boundary inventory is [deployment_boundary.py](services/ml/app/deployment_boundary.py). It records operational migration gaps, analytical dependencies and local-only tooling. Database credentials remain server-side; the browser does not connect directly to RDS.
+
+| Layer | Refinement-relevant technology |
+|---|---|
+| Interface | React, TypeScript, Vite, role/seat stores, reusable KPI and chart widgets |
+| Application runtime | FastAPI on Zoho Catalyst AppSail; Catalyst API Gateway and gateway function context |
+| Operational storage | Catalyst Data Store / Stratus repositories, with documented RDS migration gaps |
+| Spatial and relational analytics | PostgreSQL/PostGIS/pgRouting on the AWS data plane |
+| Face search | SCRFD/ArcFace ONNX encoder family and model-version-compatible pgvector descriptors |
+| Grounded language | Bedrock text planner through the configured guarded Ask path |
+| Continuous audio | Nova 2 Sonic and a separate AgentCore relay when enabled; browser speech fallback |
+| Intake OCR | Catalyst Zia OCR for reviewed intake forms |
+| Governance | Audit records, provenance, capability flags and model-policy checks |
+
+Face recognition here is the application's ONNX/ArcFace runtime. It is not an AWS Rekognition or Zoho Zia face-recognition integration. Encoder/model availability is checked independently from the existence of reference images.
+
+<a id="refined-zoho"></a>
+
+## Zoho Catalyst services used in the refinement
+
+Many Zoho services were already part of the previous architecture. The refinement extends the workflows on that foundation; it does not introduce every service in this table for the first time.
+
+| Zoho component | Role in the refined prototype | Evidence and status |
+|---|---|---|
+| Slate | Hosts the refined web interface | Hosted pages captured below; deployment can lag the local checkout |
+| Authentication, API Gateway and gateway function | Resolve application context and forward signed server context to AppSail | [Gateway implementation](infra/catalyst/functions/gateway_api/index.js); demo seat selection is not proof of production identity provisioning |
+| AppSail | Hosts API services, face runtime integration and voice ticket/tool endpoints | [AppSail build](services/ml/Dockerfile.appsail), [voice deployment notes](docs/nova-sonic-voice.md) |
+| Data Store | Operational repositories including CCTV records and board canvas, with domain-specific migration status | [Boundary inventory](services/ml/app/deployment_boundary.py); complete migration is not claimed |
+| Stratus | Deployed object-storage path for supported evidence/export/media operations | [Stratus client](services/ml/app/stratus.py); retain per-domain storage configuration |
+| **Zia OCR** | New reviewed written-FIR form-reading lane | [OCR client](services/ml/app/zia_ocr.py), [scan UI](web/src/routes/intake/scan/ScanFir.tsx); **disabled on the local server at capture time** |
+| Cache / NoSQL | Existing reusable client integrations for caching and supported persistence | Runtime flag and repository dependent |
+| SmartBrowz | Existing report/rendering integration | Presence of client code is not evidence of a successful current export |
+| QuickML | Existing alternative planner/RAG integration | Do not describe it as the active planner when the UI reports `aws-bedrock` |
+| Jobs, Signals, Mail/Push, Connections and Pipelines | Existing supporting integration/configuration | Enablement and console-managed configuration require separate verification |
+
+Zia OCR supplies document text and a document-level confidence score. DRISHTI derives field proposals and field-level confidence; it must not attribute those derived scores directly to Zia. Scanning a form does not autonomously register an FIR.
+
+The [Catalyst component index](infra/catalyst/COMPONENTS.md) contains earlier phase notes. Its older “primary QuickML” and browser-only voice wording is historical where superseded by the newer Bedrock and Sonic implementation.
+
+<a id="refined-aws"></a>
+
+## AWS services and features added or extended
+
+| AWS capability | Refinement | Verification boundary |
+|---|---|---|
+| **Amazon Bedrock text planning** | Configured GLM 4.7 Flash planner for grounded Ask; guarded read-only query path remains in place | Local Ask reported `aws-bedrock`; this capture did not submit a new query |
+| **Amazon Nova 2 Sonic** | Continuous speech input/output with grounded Ask tool calls and separate structured result cards | Implemented and previously tested in the voice deployment notes; not demonstrated by the browser-speech screenshot below |
+| **Bedrock AgentCore runtime** | Separate WebSocket audio relay because the recorded AppSail public WebSocket upgrade failed | Server issues short-lived voice tickets and presigned connection details; relay has a separate deployment lifecycle |
+| API Gateway / signed adapter | Bounded server-to-server entry to retained AWS analytical/model capabilities | HMAC timestamp, nonce and result verification in the adapter; this is not a general browser SQL proxy |
+| RDS with PostGIS/pgRouting | Retained relational, graph and spatial processing; current synthetic operational bridge | Operational migration gaps remain explicit |
+| S3 / custom model infrastructure | Configured staging and retained custom-model workloads where needed | Do not infer that all SageMaker/Batch jobs or GPU endpoints are deployed from configuration alone |
+| IAM / ECR / runtime logging | Scoped relay role, container publishing and service diagnostics | Configuration and prior deployment evidence, not a fresh cloud audit |
+
+### Voice request lifecycle
+
+1. The authenticated gateway/AppSail path issues a short-lived voice ticket.
+2. The browser connects to the configured AgentCore relay; signing secrets remain server-side.
+3. Nova invokes the existing `ask_drishti` tool through an owner/role-bound token.
+4. The existing Ask service performs guarded retrieval/querying and returns grounded results.
+5. The UI receives structured answer cards and the speech layer presents a spoken response.
+
+The repository's [Nova voice notes](docs/nova-sonic-voice.md), dated 31 August 2026, record successful continuous hosted probes and the use of `us-east-1` for audio. They also distinguish English Nova voices from Kannada browser speech. Those are **previously recorded tests**, not tests rerun during this README update.
+
+### Cost and operations
+
+No new rupee estimate is attached to this refinement: usage volume and a current bill were not measured. Bedrock text/audio, AgentCore runtime, RDS, object storage and optional model workers have separate cost drivers. Track tokens/audio duration, runtime sessions, storage and worker hours; configure budgets and quotas before a larger rollout. The earlier cost section remains a historical estimate.
+
+<a id="refined-wireframes"></a>
+
+## Wireframes and mock diagrams
+
+These are design diagrams from `01c2b25`, separate from the actual screenshots that follow. [Editable SVGs and diagram provenance](docs/assets/diagrams/README.md) are retained.
+
+<details>
+<summary>Login and operational seat selection</summary>
+
+![Login wireframe](docs/assets/diagrams/png/wire-01-login.png)
+
+</details>
+
+<details>
+<summary>Application shell and scoped navigation</summary>
+
+![Application shell wireframe](docs/assets/diagrams/png/wire-02-app-shell.png)
+
+</details>
+
+<details>
+<summary>Map and hotspot investigation</summary>
+
+![Map wireframe](docs/assets/diagrams/png/wire-03-map-hotspots.png)
+
+</details>
+
+<details>
+<summary>Investigation Board</summary>
+
+![Investigation Board wireframe](docs/assets/diagrams/png/wire-04-investigation-board.png)
+
+</details>
+
+<details>
+<summary>Case file and Ask DRISHTI</summary>
+
+![Case file and Ask wireframe](docs/assets/diagrams/png/wire-05-case-file-and-ask.png)
+
+</details>
+
+<a id="refined-screenshots"></a>
+
+## Refined prototype snapshots — actual browser captures
+
+Captured on **7 September 2026**, using the actual local and hosted application. These are unaltered browser screenshots, not generated mockups. Local captures include existing uncommitted work. Values are synthetic snapshot observations and will change as background enrolment and data updates continue.
+
+### 1. Searchable operational seat selection — local
+
+![Refined seat selection](docs/assets/screenshots/refined/01-seat-selection.png)
+
+Posting categories and named seats replace the earlier presentation-only role catalogue. Screenshot source: `http://localhost:5173/login`.
+
+### 2. District command KPI board — local
+
+![Refined district command](docs/assets/screenshots/refined/05-district-command.png)
+
+The Mysuru district seat loaded workload, new FIR, ageing, outcome and resource metrics. Some downstream hotspot/attention widgets rejected artifacts generated under an older analytics policy; this capture is not evidence that every widget passed. Source: `http://localhost:5173/command`.
+
+### 3. Active face engine and reference gallery — local
+
+![Active face recognition runtime](docs/assets/screenshots/refined/07-local-face-engine.png)
+
+The resolved capability reported **ArcFace buffalo_s**, CPU execution and **15,343 enrolled people/reference photos** at observation time. This is a gallery snapshot, not an accused-person total or an accuracy benchmark. No new photo was uploaded or searched for this documentation. Source: `http://localhost:5173/people/face`.
+
+### 4. Intake review inbox — local
+
+![Intake review inbox](docs/assets/screenshots/refined/06-intake-review.png)
+
+Draft/review states remain separate from approved registration. Source: `http://localhost:5173/intake`.
+
+### 5. Zoho Zia scan capability gate — local
+
+![Zia scanned FIR capability state](docs/assets/screenshots/refined/08-zia-scan-capability.png)
+
+The new scanned-FIR screen explicitly reports that OCR is not switched on in this server configuration. It preserves manual entry. This is evidence of the implemented capability gate, not a successful OCR extraction. Source: `http://localhost:5173/intake/scan`.
+
+### 6. Continuous voice interface with Bedrock text planner — local
+
+![Voice conversation controls](docs/assets/screenshots/refined/09-voice-conversation.png)
+
+The dialog exposes continuous conversation, speaking voice and speed. It reports **browser speech with aws-bedrock**, so this screenshot must not be captioned as a successful Nova Sonic audio session. No answer was generated during the capture; the capture tab was closed afterward. Source: `http://localhost:5173/ask`.
+
+<details>
+<summary>Hosted deployment observations — capability and readiness evidence</summary>
+
+#### Live Watch Wall
+
+![Hosted watch wall readiness state](docs/assets/screenshots/refined/02-live-watch-wall.png)
+
+The hosted watch route displayed its map/review interface with **internal server errors**. No analysis pass, seed operation or dispatch was run. Source: `https://drishti-frvfpunc.onslate.in/watch`.
+
+#### Face search resolved capability state
+
+![Hosted face search capability state](docs/assets/screenshots/refined/03-face-search.png)
+
+The initial page load briefly displayed unavailable capability information; the saved screenshot shows the resolved **ArcFace buffalo_s** engine, **15,343** enrolled reference photos and a **72%** configured match threshold. Both local and hosted views therefore reported an active engine. This verifies capability display, not recognition accuracy or a new search. Source: `https://drishti-frvfpunc.onslate.in/people/face`.
+
+#### Ask voice fallback
+
+![Hosted Ask voice fallback](docs/assets/screenshots/refined/04-ask-voice.png)
+
+The captured hosted Ask view exposed browser voice. A current successful Nova session was not verified. Source: `https://drishti-frvfpunc.onslate.in/ask`.
+
+</details>
+
+<a id="refined-validation"></a>
+
+## Performance, validation and release readiness
+
+This update verifies documentation and captures browser states. It does not replace a release test run.
+
+| Check | Result / interpretation |
+|---|---|
+| Previous README preservation | Original content retained above this appendix |
+| Requested diagram provenance | All twelve PNG diagrams reused from `01c2b25`; SVG sources retained |
+| Local seat picker | Named district seats loaded |
+| Local district dashboard | Populated metrics observed; some analytical artifacts were incompatible with the current policy |
+| Local face capability | Active ArcFace runtime and enrolled gallery observed |
+| Local OCR | Explicitly disabled; successful form extraction not tested |
+| Local Ask | Bedrock planner label and browser-speech continuous UI observed; no fresh answer/audio probe |
+| Hosted watch wall | Server errors observed; requires backend investigation before presentation as working |
+| Hosted admin | New roles/profile/visibility navigation observed; role list did not resolve during inspection |
+| Build, load, security and full regression tests | Not rerun for this documentation-only change |
+| Previously recorded voice tests | See dated [voice notes](docs/nova-sonic-voice.md); do not treat as current deployment certification |
+
+### Security, privacy and AI governance
+
+The prototype still uses synthetic demonstration data. Random or synthetic portraits are reference assets for the demo; they do not represent the real identity of a named person. A face candidate is an investigative lead, and a similarity percentage is not the probability that a person committed an offence.
+
+The current boundary inventory explicitly records **RLS disabled for the hackathon** and operational RDS migration gaps. A production-looking interface does not establish production security. Before handling real records, validate server permissions across every endpoint, identity provisioning, jurisdiction denial, audit coverage, retention and model behaviour.
+
+### Repository and local-run pointers
+
+| Area | Current location |
+|---|---|
+| Role and scope definitions | `web/src/config/roles.ts`, `services/ml/app/roles.py` |
+| Command boards | `web/src/config/kpi/`, `web/src/routes/home/` |
+| Role administration | `web/src/routes/admin/`, `services/ml/app/admin_console/` |
+| Reviewed scanned intake | `web/src/routes/intake/scan/`, `services/ml/app/intake/` |
+| Face UI and service | `web/src/routes/face/`, `web/src/components/face/`, `services/ml/app/face/` |
+| CCTV UI and service | `web/src/routes/watch/`, `services/ml/app/cctv/` |
+| AWS adapter and voice relay | `services/aws-adapter/`, `services/voice-relay/` |
+| New screenshots | `docs/assets/screenshots/refined/` |
+
+Use the earlier local setup instructions with the current environment templates and [AppSail deployment guide](infra/catalyst/appsail/README.md). Frontend `npm run build` includes TypeScript validation, Slate post-build handling and bundle secret checking. Use the voice guide for the separate relay deployment; deploying only AppSail does not update AgentCore's image. Do not copy credentials into the README or frontend.
+
+### Future development and submission checklist
+
+- [ ] Align the hosted frontend, AppSail API and voice relay versions.
+- [ ] Resolve hosted CCTV errors and verify camera → detection → human review behaviour.
+- [ ] Regenerate or migrate analytical artifacts rejected by the current policy.
+- [ ] Enable and test Zia OCR in the intended environment with reviewed sample forms.
+- [ ] Verify fresh Nova two-turn audio, fallback behaviour and language support in the intended browser.
+- [ ] Complete and validate gallery enrolment, model compatibility and intake-to-person linkage.
+- [ ] Exercise all six roles and eight scopes, including unresolved and forbidden-jurisdiction cases.
+- [ ] Complete the remaining Data Store migration and production authorization work.
+- [ ] Apply and validate the separate production dashboard plan before describing it as shipped.
+- [x] Add the user-provided refined prototype demo video link above.
+- [ ] Record updated benchmarks and deployment evidence once the above checks pass.
+
+The earlier prototype remains available above for comparison; this appendix is the dated record of the refined implementation, its diagrams and the browser states actually observed.
