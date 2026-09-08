@@ -26,6 +26,24 @@
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-PostGIS_%2B_pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white" />
   <img alt="Demo data" src="https://img.shields.io/badge/Data-Synthetic_Demo_Only-7C3AED?style=flat-square" />
 </p>
+<p align="center">
+  <img alt="TimesFM" src="https://img.shields.io/badge/Google_TimesFM-2.5--200M_on_CUDA-4285F4?style=flat-square&logo=google&logoColor=white" />
+  <img alt="TabFM" src="https://img.shields.io/badge/Google_TabFM-v1.0.0_on_CUDA-EA4335?style=flat-square&logo=google&logoColor=white" />
+  <img alt="GPU" src="https://img.shields.io/badge/NVIDIA_Tesla_T4-verified-76B900?style=flat-square&logo=nvidia&logoColor=white" />
+  <img alt="SageMaker" src="https://img.shields.io/badge/SageMaker-scale--to--zero-FF9900?style=flat-square&logo=amazonwebservices&logoColor=white" />
+</p>
+
+<div align="center">
+
+**Two Google foundation models. One real GPU. Zero fabricated numbers.**
+
+| Forecast skill vs seasonal naive | Held-out district-months | Geographic holdout | GPU inference |
+|:---:|:---:|:---:|:---:|
+| **+15.71% MAE** | **222** | no overfit — holdout MAE **5.893** vs train **5.954** | **113 ms** TimesFM · **505 ms** TabFM on Tesla T4 |
+
+[**→ How prediction works, the architecture, and the full benchmark**](#foundation-models-and-how-prediction-works)
+
+</div>
 
 ---
 
@@ -65,16 +83,17 @@
 16. [Data, AI and model-governance approach](#data-ai-and-model-governance-approach)
 17. [Security, privacy and responsible use](#security-privacy-and-responsible-use)
 18. [Prototype snapshots](#prototype-snapshots)
-19. [Prototype performance report and benchmarking](#prototype-performance-report-and-benchmarking)
-20. [Proposed impact and use cases](#proposed-impact-and-use-cases)
-21. [Estimated implementation cost](#estimated-implementation-cost)
-22. [Repository structure](#repository-structure)
-23. [How to run the project locally](#how-to-run-the-project-locally)
-24. [Testing and release validation](#testing-and-release-validation)
-25. [Catalyst deployment model](#catalyst-deployment-model)
-26. [Future development](#future-development)
-27. [Known constraints](#known-constraints)
-28. [Final submission checklist](#final-submission-checklist)
+19. [Foundation models and how prediction works](#foundation-models-and-how-prediction-works)
+20. [Prototype performance report and benchmarking](#prototype-performance-report-and-benchmarking)
+21. [Proposed impact and use cases](#proposed-impact-and-use-cases)
+22. [Estimated implementation cost](#estimated-implementation-cost)
+23. [Repository structure](#repository-structure)
+24. [How to run the project locally](#how-to-run-the-project-locally)
+25. [Testing and release validation](#testing-and-release-validation)
+26. [Catalyst deployment model](#catalyst-deployment-model)
+27. [Future development](#future-development)
+28. [Known constraints](#known-constraints)
+29. [Final submission checklist](#final-submission-checklist)
 
 ---
 
@@ -1137,6 +1156,340 @@ The assistant provides scoped, evidence-backed operational analysis with determi
 The emergency workspace presents multi-hazard situation awareness, forecast risk, resources and response planning.
 
 ![DRISHTI Emergency Response](docs/assets/screenshots/11-emergency-response.png)
+
+---
+
+## Foundation models and how prediction works
+
+<p align="center">
+  <img alt="TimesFM" src="https://img.shields.io/badge/Google_TimesFM-2.5--200M-4285F4?style=for-the-badge&logo=google&logoColor=white" />
+  <img alt="TabFM" src="https://img.shields.io/badge/Google_TabFM-v1.0.0-EA4335?style=for-the-badge&logo=google&logoColor=white" />
+  <img alt="GPU" src="https://img.shields.io/badge/NVIDIA_Tesla_T4-CUDA_verified-76B900?style=for-the-badge&logo=nvidia&logoColor=white" />
+  <img alt="SageMaker" src="https://img.shields.io/badge/AWS_SageMaker-async_scale--to--zero-FF9900?style=for-the-badge&logo=amazonwebservices&logoColor=white" />
+</p>
+
+<p align="center">
+  <em>Two Google foundation models run on a real GPU behind a signed boundary.<br/>
+  Neither is trained on our data &mdash; both are zero-shot, and both fail closed rather than quietly degrade.</em>
+</p>
+
+### The one-paragraph version
+
+DRISHTI forecasts **which district will see more crime next month, and how confident it is** &mdash; then shows that with the uncertainty visible so a commander can decide where to place patrols. Five independent layers each answer a different question; a transparent fusion step combines them and records exactly which model contributed what. Every prediction is **area-and-period only, never person-level**.
+
+### The two foundation models in plain terms
+
+Both are pre-trained by Google on large public corpora. We never fine-tune them. We hand them examples at inference time and they answer &mdash; the property called *zero-shot in-context learning*.
+
+|  | **TabFM v1.0.0** | **TimesFM 2.5-200M** |
+|---|---|---|
+| **Reads** | a table of numbers | a timeline of numbers |
+| **Analogy** | a doctor reading a health chart and saying "high-risk band" | a weather forecaster drawing the next 6 months with a widening cone |
+| **Input** | 11 district features | up to 512 months of counts |
+| **Answers** | a risk **class** (Low → Severe) | actual **numbers** + calibrated bands |
+| **Parameters** | ~1.6 B | 200 M |
+| **Licence** | ⚠️ TabFM Non-Commercial v1.0 | ✅ Apache-2.0 |
+| **Measured VRAM** | 6,633 MB | 946 MB |
+
+```text
+  TabFM  ─ reads a TABLE ──────────────────────────────────────────────
+     ┌──────────────────────────┐
+     │ recent_mean      198.4   │
+     │ trend_slope       +1.3   │        ┌──────────────────────────┐
+     │ yoy_pct           +8.2   │  ───►  │ "Elevated"               │
+     │ unemployment       8.2   │        │ P(Low..Severe) per class │
+     │ literacy          76.4   │        └──────────────────────────┘
+     │ …11 features total       │
+     └──────────────────────────┘
+
+  TimesFM ─ reads a TIMELINE ──────────────────────────────────────────
+     ┌──────────────────────────┐        ┌──────────────────────────┐
+     │ 198 210 225 219 231 …    │  ───►  │ Feb  237  (217 ─── 259)  │
+     │ up to 512 monthly counts │        │ Mar  243  (212 ─── 264)  │
+     └──────────────────────────┘        │ …6 steps, band widens    │
+                                         └──────────────────────────┘
+```
+
+<sub>The TimesFM output above is the <b>actual</b> Bengaluru City forecast written on 8 September 2026 (237.42, p10 216.72 / p90 258.61). The TabFM feature values are illustrative of the input shape.</sub>
+
+### The prediction pipeline
+
+Five layers, run in order, each independently auditable. The reason this is not one model: each layer answers a question the others structurally cannot.
+
+```mermaid
+flowchart TD
+    subgraph SRC["① Source of truth — PostgreSQL 17 + PostGIS"]
+        A1["CaseMaster<br/><i>every FIR: when · where · crime head</i>"]
+        A2["SocialIndicator<br/><i>unemployment · literacy · density</i>"]
+        A3["EconomicIndicator<br/><i>per-capita income</i>"]
+    end
+
+    SRC --> FB
+
+    subgraph FB["② Feature builder — features.py"]
+        B1["Monthly incident series per district<br/>valid-geography filter ON"]
+        B2["11 features: recent_mean · recent_std · trend_slope<br/>mom_pct · yoy_pct · seasonal_index · last_value<br/>+ 4 socio-economic"]
+        B3["Label by count percentile 20/40/60/80<br/>→ Low · Guarded · Elevated · High · Severe"]
+    end
+
+    FB --> L1 & L2 & L3 & L4
+
+    L1["<b>TabFM</b> · GPU<br/>district risk class<br/>30 days"]
+    L2["<b>TimesFM</b> · GPU<br/>count trajectory + bands<br/>6 months"]
+    L3["<b>Near-repeat</b> · CPU<br/>Hawkes self-excitation<br/>~275 m grid · 14 days"]
+    L4["<b>ST-GNN</b> · CPU<br/>GRU + GCN neighbour spillover<br/>MC-dropout uncertainty"]
+
+    L1 & L2 & L3 & L4 --> FUSE
+
+    FUSE["③ Fusion — <b>not</b> a black box<br/>TabFM 0.40 · TimesFM 0.30 · ST-GNN 0.30<br/>near-repeat adds a spike flag<br/><i>every cell records contributing_models + ModelVersion</i>"]
+
+    FUSE --> W1["④ CrimePrediction<br/><i>one row per district per layer</i>"]
+    FUSE --> W2["④ Early warning<br/><i>High/Severe or P(elevated) &gt; 0.6</i><br/>→ red-zone pulse + bell feed"]
+
+    W1 --> UI["⑤ /analytics?mode=forecasts<br/>fan chart · layer table · backtest"]
+    W2 --> UI
+
+    style L1 fill:#EA4335,color:#fff,stroke:#991B1B
+    style L2 fill:#4285F4,color:#fff,stroke:#1E3A8A
+    style L3 fill:#6B7280,color:#fff,stroke:#374151
+    style L4 fill:#6B7280,color:#fff,stroke:#374151
+    style FUSE fill:#7C3AED,color:#fff,stroke:#4C1D95
+    style UI fill:#059669,color:#fff,stroke:#064E3B
+```
+
+#### Why four models and not one
+
+| Layer | Question it answers | Scale | Device |
+|---|---|---|:---:|
+| **TabFM** | How bad is next month overall? | district · 30 days | 🟢 GPU |
+| **TimesFM** | What is the count each month, and how sure? | district · 6 months | 🟢 GPU |
+| **Near-repeat** | Which *streets*, in the next few days? | ~275 m cell · 14 days | CPU |
+| **ST-GNN** | Will a neighbour's spike spill into mine? | district + 4 neighbours | CPU |
+| **Fusion** | What is the single defensible number? | district · 30 days | CPU |
+
+**Near-repeat** is the "echo" effect: a burglary raises the odds of another nearby, soon. Each recent incident contributes a bump that decays in space and time:
+
+$$\lambda(\text{cell}) = \mu_{\text{background}} + \sum_{\text{events}} \theta \, e^{-\Delta t/\tau} \, e^{-d^{2}/2\sigma^{2}}$$
+
+**ST-GNN** adds geography: a GRU encodes each district's recent months, a graph convolution mixes in its 4 nearest neighbours, and dropout stays active across N stochastic passes so the confidence band is earned rather than asserted.
+
+### How one prediction actually happens, end to end
+
+The browser never touches the GPU, never holds AWS credentials, and never sees the database. Every hop is authenticated.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Officer (browser)
+    participant GW as Catalyst API Gateway<br/>+ gateway_api fn
+    participant API as AppSail · drishti-api<br/>FastAPI (no torch, no CUDA)
+    participant DB as RDS PostgreSQL<br/>PostGIS
+    participant AD as AWS adapter<br/>API GW + Lambda
+    participant SM as SageMaker async<br/>ml.g4dn.xlarge · Tesla T4
+    participant S3 as S3 model plane<br/>KMS-encrypted
+
+    U->>GW: GET /api/forecast/district/1
+    GW->>API: signed X-DRISHTI-Context (HMAC)
+    Note over API: verify signature → audience → scope<br/>→ expiry → replay, THEN strip client headers
+    API->>DB: read monthly series + socio overlay
+    DB-->>API: 24+ months per district
+
+    rect rgb(240, 245, 255)
+    Note over API,SM: GPU inference — only if DRISHTI_TIMESFM_SAGEMAKER=true
+    API->>AD: POST /predict + HMAC(ts·nonce·body)<br/>idempotency = sha256(period, horizon, series)
+    AD->>S3: PUT envelope (SSE-KMS)
+    AD->>SM: invoke_endpoint_async
+    Note over SM: scale-from-zero if idle (~4 min)<br/>load real Google weights, verify SHA-256 + licence
+    SM->>S3: PUT signed result envelope
+    AD-->>API: actual_backend · actual_device · gpu_name · digest
+    end
+
+    Note over API: FAIL CLOSED — if actual_backend ≠ timesfm<br/>or device ≠ cuda, RAISE. A CPU result can never<br/>be written as the real foundation-model layer.
+
+    API->>DB: revalidate policy attestation, then INSERT<br/>CrimePrediction + ModelVersion + inference audit
+    API-->>GW: layers[] with features.gpu_name
+    GW-->>U: fan chart + "Tesla T4 (CUDA)" provenance badge
+```
+
+#### The fail-closed guarantee
+
+This is the part that matters for a police deployment: **a CPU fallback can never be presented as a foundation-model result.**
+
+| Scenario | What the system does | Verified |
+|---|---|:---:|
+| CUDA absent on the worker | raises `BackendUnavailable`; job state `failed` | ✅ |
+| Weight SHA-256 mismatch | refuses to load; `error_code=CUDA_UNAVAILABLE`, `actual_backend=null` | ✅ |
+| Unexpected artifact licence | refuses to load | ✅ |
+| Model returns NaN/Inf | output finiteness guard raises rather than shipping NaN | ✅ |
+| Fallback explicitly requested | returns `actual_backend=incontext`, `actual_device=cpu`, digest `cpu-fallback-no-weights` | ✅ |
+| Result is not `timesfm`+`cuda` | the forecaster raises; **no rows written** | ✅ |
+
+### The GPU plane
+
+Model compute is deliberately outside Catalyst AppSail. The AppSail image carries **no torch, no CUDA, no model weights** — it is a 913 MB API, not a 5.4 GB inference container.
+
+```mermaid
+flowchart LR
+    subgraph CAT["Zoho Catalyst · India DC"]
+        SLATE["Slate<br/>React 18 SPA"]
+        APIGW["API Gateway"]
+        FN["gateway_api function<br/><i>mints signed context</i>"]
+        AS["AppSail · drishti-api<br/>913 MB · 512 MB RAM · 1 instance<br/><b>no GPU stack</b>"]
+    end
+
+    subgraph AWS["AWS · ap-south-1"]
+        ADP["Adapter<br/>HTTP API + Lambda<br/><i>HMAC verify · idempotency<br/>circuit breaker</i>"]
+        EP["SageMaker async endpoint<br/><b>drishti-gpu-async</b><br/>ml.g4dn.xlarge · 1× Tesla T4<br/>min=0 → max=1"]
+        ECR["ECR · IMMUTABLE tags<br/>drishti-gpu-worker 0.2.6<br/>by @sha256 digest only"]
+        S3B["S3 model plane<br/>KMS CMK · versioned<br/>async-io expires 7d"]
+        RDS["RDS PostgreSQL 17<br/>PostGIS · pgvector<br/><b>never browser-reachable</b>"]
+    end
+
+    HF["Hugging Face<br/>google/timesfm-2.5-200m-pytorch<br/>google/tabfm-1.0.0-pytorch"]
+
+    SLATE -->|https| APIGW --> FN -->|signed context| AS
+    AS -->|signed HTTPS| ADP --> EP
+    ECR -.->|immutable digest| EP
+    EP <-->|SSE-KMS| S3B
+    HF -.->|weights at cold start<br/>SHA-256 + licence verified| EP
+    AS -->|server-to-server| RDS
+
+    style AS fill:#0B6CFB,color:#fff
+    style EP fill:#76B900,color:#111
+    style RDS fill:#4169E1,color:#fff
+    style ADP fill:#FF9900,color:#111
+```
+
+Cost control is structural, not a promise: the endpoint autoscales to **zero instances** when idle, so GPU spend is incurred only during a run. Two policies are required for that to work — target-tracking to scale in, and a `HasBacklogWithoutCapacity` step policy to scale back out from zero.
+
+### Measured GPU performance
+
+Captured **8 September 2026** from the live `drishti-gpu-async` endpoint. Every figure below is read back from the signed result envelope in S3, not estimated.
+
+| Metric | TimesFM 2.5-200M | TabFM v1.0.0 |
+|---|---:|---:|
+| `actual_backend` | `timesfm` | `tabfm` |
+| `actual_device` | **`cuda`** | **`cuda`** |
+| `gpu_name` | **Tesla T4** | **Tesla T4** |
+| Cold start (weights + compile) | 13.4 s | 90.1 s |
+| Warm inference | **113 – 223 ms** | **505 ms** |
+| Peak VRAM | 946 MB | 6,633 MB |
+| Parameter dtype | fp32 + fp16 AMP autocast | fp32 + fp16 AMP autocast |
+| Weight digest (SHA-256) | `2f776efe6245…` | `928cb350becd…` |
+| Licence reported at load | `apache-2.0` | `tabfm-non-commercial-1.0` |
+
+**Full district run:** 37 of 37 Karnataka districts forecast on the T4 in **165.6 s**, producing 37 distinct GPU inferences (confirmed by 37 distinct idempotency keys) and 37 `CrimePrediction` rows stamped `actual_device=cuda`, `gpu_name=Tesla T4`, `served_via=aws_sagemaker_async`.
+
+<details>
+<summary><b>Engineering notes — what it took to fit a 1.6 B-parameter model on a 16 GB T4</b></summary>
+
+<br/>
+
+The granted quota was exactly **one** `ml.g4dn.xlarge` (16 GB host RAM, 16 GB VRAM). Every larger instance type remained at zero, so the worker had to be made to fit rather than the instance upgraded. Four measured problems and their fixes:
+
+| Problem | Symptom | Fix |
+|---|---|---|
+| Loader held two full copies of the checkpoint (~13 GB peak) | `Worker was sent SIGKILL! Perhaps out of memory?` | stream weights per-tensor from safetensors straight into pre-allocated params |
+| fp16 parameters | every band probability returned `NaN` — activations exceed the fp16 range (65,504) | keep fp32 master weights; let AMP autocast matmuls to fp16 for tensor-core speed |
+| TimesFM rebuilt on every request and never freed | ~14 GiB accumulated → `CUDA out of memory. Tried to allocate 20.00 MiB` | cache the compiled model per process; also cut latency from 5.2 s to 0.2 s |
+| Autoscaling had no scale-**from**-zero policy | requests accepted, parked in backlog, never served | add the `HasBacklogWithoutCapacity` step policy |
+
+A fifth defect was subtler and worth calling out because the output *looked* correct: the idempotency key was `timesfm:{period}:{horizon}:{len(series)}` with no district or series content, so all 37 districts collided on one key and the adapter replayed the first district's forecast into all 37 rows. Real GPU output, attributed to the wrong districts. Now keyed on a SHA-256 of the actual series.
+
+</details>
+
+### Benchmarks — measured against transparent baselines
+
+Rolling-origin backtest re-run **8 September 2026**. Walk-forward: the forecaster sees only pre-cutoff months, predicts the next horizon, and is scored on held-out actuals. Lower is better for error metrics.
+
+**Scope:** 37 districts · 6 origins (2025-06 → 2025-11) · **222 held-out district-months** · valid-geography filter active · abstention rate 0.0%
+
+| Forecaster | MAE ↓ | RMSE ↓ | WAPE ↓ | sMAPE ↓ | 80% coverage |
+|---|---:|---:|---:|---:|---:|
+| **DRISHTI trajectory layer** | **5.938** | **7.958** | **0.1228** | **16.89%** | 0.5991 |
+| Moving average (3) | 6.364 | 8.911 | 0.1316 | 17.21% | 0.8063 |
+| Seasonal naive | 7.045 | 9.355 | 0.1457 | 19.28% | 0.7928 |
+
+**Skill (positive = better than the baseline):**
+
+| Versus | MAE skill | RMSE skill | WAPE skill |
+|---|---:|---:|---:|
+| Seasonal naive | **+15.71%** | **+14.93%** | **+15.72%** |
+| Moving average (3) | **+6.69%** | **+10.69%** | **+6.69%** |
+
+`beats_all_baselines = true` on every point-error metric.
+
+> [!IMPORTANT]
+> **What this benchmark does and does not prove.** These figures were produced by `drishti-timesfm-seasonal`, the always-available statistical forecaster that satisfies the same `TrajectoryForecaster` interface. They are **not** a benchmark of Google TimesFM 2.5. The real GPU layer is deployed and verified (table above) but has not yet been scored on this identical rolling-origin split, so no comparative accuracy claim is made for it. Publishing the fallback's score as the foundation model's score would be exactly the kind of quiet substitution the fail-closed design exists to prevent.
+
+#### Generalisation — geographic holdout
+
+25% of districts (10 of 37) were withheld entirely. If the model were memorising district-specific levels, holdout error would jump:
+
+| Split | Districts | MAE | WAPE | 80% coverage | n |
+|---|---:|---:|---:|---:|---:|
+| Train | 27 | 5.954 | 0.1360 | 0.5926 | 162 |
+| **Holdout** | 10 | **5.893** | **0.0970** | 0.6167 | 60 |
+
+Holdout error is **marginally lower** than train error — no geographic overfitting.
+
+#### Error structure — where the model is strong and weak
+
+| Season | MAE | sMAPE | n |
+|---|---:|---:|---:|
+| Monsoon | **5.167** | 15.69% | 111 |
+| Winter | 6.455 | 16.44% | 37 |
+| Post-monsoon | 6.836 | 18.92% | 74 |
+
+Absolute error tracks district volume, so MAE alone is misleading. Bengaluru City has the **worst MAE and the best WAPE** in the state:
+
+| District | MAE | WAPE | Reading |
+|---|---:|---:|---|
+| Bengaluru City | 14.640 | **0.0541** | largest volume → biggest absolute miss, smallest *relative* miss |
+| Bengaluru Urban | 11.415 | 0.0810 | same pattern |
+| Ballari | **1.720** | 0.0276 | best on both measures |
+| Mangaluru City | 3.637 | 0.4364 | low volume → small absolute error, poor relative accuracy |
+| Belagavi City | 2.775 | 0.3543 | same caution applies |
+
+This is why the UI shows a confidence value per district rather than a single state-wide accuracy number: **relative** error in the small city districts is where a commander should be most sceptical.
+
+> [!WARNING]
+> **Interval coverage is the honest weak spot.** The 80% band achieves only **0.5991** empirical coverage — the intervals are too narrow, and both baselines calibrate better (0.81 and 0.79). The point forecast beats every baseline; the *uncertainty* does not yet. Quantile calibration is tracked work, and until it lands the bands should be read as indicative rather than as a 4-in-5 guarantee.
+
+### Honest limitations
+
+| Limitation | Status |
+|---|---|
+| Interval coverage 0.599 vs 0.80 nominal | ⚠️ open — point accuracy leads, calibration lags |
+| TabFM has no accuracy score on the identical split | ⚠️ explicit acceptance gate before registry promotion |
+| TabFM *forecast layer* still runs in-process on CPU | ⚠️ GPU TabFM is reachable only via the predict runtime |
+| TabFM weights are non-commercial | 🚫 must be cleared before any production police use |
+| Day-ahead (1-day) crime forecast | ⛔ deliberately **not advertised** — no held-out day-ahead evaluation exists; the validated near-repeat trigger is the honest near-term alternative |
+| 7- and 14-day map views | ℹ️ transparent linear scaling of the validated 30-day base, labelled as such |
+| All data is synthetic | ℹ️ no operational-effectiveness claim is made |
+
+### Reproduce every number above
+
+```powershell
+# 1. Backtest vs baselines + geo holdout + per-district error (read-only)
+$h = @{ "X-Role"="dgp_state_command"; "X-Demo-Actor"="dgp.state" }
+Invoke-RestMethod "http://127.0.0.1:8000/forecast/backtest?horizon=1&n_origins=6&per_head=false&persist=false" -Headers $h
+
+# 2. The advertised-horizon contract (what is validated vs future work)
+Invoke-RestMethod "http://127.0.0.1:8000/forecast/horizons"
+
+# 3. GPU provenance straight from the database
+cd services/ml; python verify_gpu_rows.py
+
+# 4. Real GPU inference on the live endpoint (spends GPU credits)
+$env:AWS_PROFILE='prajwal-sso'
+python infra/aws/gpu-worker/sagemaker_ops.py invoke --task timesfm
+python infra/aws/gpu-worker/sagemaker_ops.py invoke --task tabfm
+python infra/aws/gpu-worker/sagemaker_ops.py invoke --task badtabfm   # must FAIL CLOSED
+
+# 5. Full 37-district GPU forecast, persisted with cuda provenance
+python services/ml/run_gpu_timesfm.py
+```
 
 ---
 
