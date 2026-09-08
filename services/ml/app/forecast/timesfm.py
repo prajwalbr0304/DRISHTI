@@ -141,10 +141,18 @@ class SageMakerTimesFMForecaster(TrajectoryForecaster):
     _MAX_HORIZON = 12
     _MAX_CONTEXT = 512
 
-    def __init__(self, poll_timeout_s: int = 300, poll_interval_s: int = 5):
+    def __init__(self, poll_timeout_s: Optional[int] = None, poll_interval_s: int = 5):
+        import os
+
         from ..predict.adapter import SignedHttpsAdapter
         self._adapter = SignedHttpsAdapter()
-        self._poll_timeout_s = poll_timeout_s
+        # The async endpoint autoscales to zero when idle, so the FIRST request
+        # after an idle period must wait for a GPU instance to be provisioned and
+        # the ~5 GB image pulled. That routinely exceeds 300 s, which surfaced as a
+        # spurious "dispatch did not complete: state=RUNNING". Default generously
+        # and let the operator tune it.
+        self._poll_timeout_s = int(
+            poll_timeout_s or os.getenv("DRISHTI_TIMESFM_POLL_TIMEOUT_S", "1200"))
         self._poll_interval_s = poll_interval_s
         self.actual_device: Optional[str] = None
         self.gpu_name: Optional[str] = None
@@ -159,19 +167,29 @@ class SageMakerTimesFMForecaster(TrajectoryForecaster):
 
         import calendar
 
+        import hashlib
+
         h = int(min(max(horizon, 1), self._MAX_HORIZON))
         series = [float(c) for c in counts[-self._MAX_CONTEXT:]]
         _y, _m = map(int, months[-1].split("-"))
         cutoff_iso = dt.datetime(_y, _m, calendar.monthrange(_y, _m)[1], 23, 59, 59,
                                  tzinfo=dt.timezone.utc).isoformat()
+        # The idempotency key MUST discriminate the actual input series. Keying on
+        # only (last_period, horizon, series_length) collided across every district
+        # with the same history length, and the adapter dedups by this key — so one
+        # district's forecast was returned for all of them and written to every row.
+        # A content digest keeps real idempotency (an identical re-run still dedups
+        # and does not burn a second GPU job) while keeping distinct inputs distinct.
+        series_digest = hashlib.sha256(
+            repr((months[-1], h, series)).encode("utf-8")).hexdigest()[:32]
         env = PredictionRequestEnvelope(
             request_id=uuid.uuid4().hex,
-            idempotency_key=f"timesfm:{months[-1]}:{h}:{len(series)}",
+            idempotency_key=f"timesfm:{months[-1]}:{h}:{series_digest}",
             task=ModelTask.TIMESFM_COUNT_FORECAST, requested_backend=BackendKind.TIMESFM,
             feature_schema_version="forecast-timesfm-1", model_version="timesfm-2.5-200m",
             feature_schema_digest="ts-series", subject_kind="district", subject_ids=[],
             observation_cutoff=cutoff_iso,
-            source_version_hash=f"ts-{months[-1]}-{len(series)}",
+            source_version_hash=f"ts-{months[-1]}-{series_digest}",
             columns=[ColumnDef(name="count")], query_rows=[[v] for v in series],
             output_schema={"horizon": h, "freq": "M"}, dispatch_mode=DispatchMode.SAGEMAKER_ASYNC)
         env.validate_shapes()
@@ -185,9 +203,13 @@ class SageMakerTimesFMForecaster(TrajectoryForecaster):
                 break
             time.sleep(self._poll_interval_s)
         if res is None or res.state != JobState.COMPLETED:
+            # Surface error_detail: without it a CUDA OOM or a licence/digest
+            # rejection all look identical ("error=INFERENCE_ERROR") and the real
+            # cause has to be dug out of the S3 result object by hand.
             raise RuntimeError(f"TimesFM SageMaker dispatch did not complete: "
                                f"state={getattr(res, 'state', None)} "
-                               f"error={getattr(res, 'error_code', None)}")
+                               f"error={getattr(res, 'error_code', None)} "
+                               f"detail={getattr(res, 'error_detail', None)}")
         dev = res.actual_device.value if res.actual_device else None
         if res.actual_backend != BackendKind.TIMESFM or dev != "cuda":
             raise RuntimeError(f"TimesFM returned {res.actual_backend}/{dev} — not real "

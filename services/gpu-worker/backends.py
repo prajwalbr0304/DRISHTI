@@ -24,9 +24,11 @@ Hard rules enforced here:
 """
 from __future__ import annotations
 
+import math
 import os
 import time
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Optional
 
 import _tabfm_loader
@@ -157,6 +159,18 @@ def run_tabfm(columns, context_x, context_y, query_rows, *, n_bands: int,
         raise BackendUnavailable(f"TabFM package not available: {exc}") from exc
     peak_mb = torch.cuda.max_memory_allocated(device) / 1e6
 
+    # A numerically broken forward pass (e.g. an fp16 overflow) yields NaN/Inf
+    # probabilities. Returning those as a COMPLETED result would violate the
+    # fail-closed contract, so reject them here rather than shipping NaN bands.
+    if not preds:
+        raise BackendUnavailable("TabFM returned no predictions (fail closed).")
+    for pred in preds:
+        if not all(math.isfinite(x) for x in pred["band_probabilities"]):
+            raise BackendUnavailable(
+                "TabFM produced non-finite (NaN/Inf) band probabilities — fail "
+                "closed. The parameter dtype most likely cannot represent this "
+                "model's activations; see _tabfm_loader._resolve_dtype.")
+
     top = [max(p["band_probabilities"]) for p in preds] if preds else []
     confidence = float(sum(top) / len(top)) if top else None
     abstained = bool(confidence is not None and confidence < _ABSTAIN_BELOW)
@@ -188,32 +202,50 @@ def _extract_series(query_rows) -> list[float]:
     return series
 
 
-def _timesfm_infer_core(device_hint: str, series, *, horizon: int):
-    """Device-aware REAL TimesFM inference. The 2.5 torch model auto-selects
-    cuda:0 when available. Returns ``(preds, digest, device_str, timings)``."""
-    import numpy as np
+@lru_cache(maxsize=2)
+def _load_timesfm(repo: str, max_context: int, max_horizon: int):
+    """Load + compile TimesFM ONCE per worker process and cache it.
+
+    Without this cache every request built a fresh ``TimesFM_2p5_200M_torch`` and
+    left it resident on the device. Serving 37 district forecasts accumulated
+    ~14 GiB of PyTorch allocations next to the pinned TabFM model and the endpoint
+    died with "CUDA out of memory. Tried to allocate 20.00 MiB". It also made each
+    request pay a ~5 s model load instead of ~0.2 s of actual inference.
+
+    Returns ``(model, weight_digest)``. The digest is best-effort observability and
+    is computed once here rather than re-hashing the weight file per request.
+    """
     from timesfm import ForecastConfig, TimesFM_2p5_200M_torch
 
-    horizon = int(min(max(horizon, 1), _TIMESFM_MAX_HORIZON))
-
-    t_load = time.time()
-    model = TimesFM_2p5_200M_torch.from_pretrained(TIMESFM_HF_REPO)
+    model = TimesFM_2p5_200M_torch.from_pretrained(repo)
     model.compile(ForecastConfig(
-        max_context=_TIMESFM_MAX_CONTEXT, max_horizon=_TIMESFM_MAX_HORIZON,
+        max_context=max_context, max_horizon=max_horizon,
         normalize_inputs=True, use_continuous_quantile_head=True,
         fix_quantile_crossing=True, infer_is_positive=True))
-    load_s = time.time() - t_load
 
-    # digest of the real published weights
     digest = ""
     try:
         from huggingface_hub import snapshot_download
 
-        wpath = os.path.join(snapshot_download(repo_id=TIMESFM_HF_REPO), "model.safetensors")
+        wpath = os.path.join(snapshot_download(repo_id=repo), "model.safetensors")
         if os.path.exists(wpath):
             digest = _tabfm_loader.sha256_file(wpath)
     except Exception:  # noqa: BLE001 — digest is best-effort observability
         digest = ""
+    return model, digest
+
+
+def _timesfm_infer_core(device_hint: str, series, *, horizon: int):
+    """Device-aware REAL TimesFM inference. The 2.5 torch model auto-selects
+    cuda:0 when available. Returns ``(preds, digest, device_str, timings)``."""
+    import numpy as np
+
+    horizon = int(min(max(horizon, 1), _TIMESFM_MAX_HORIZON))
+
+    t_load = time.time()
+    model, digest = _load_timesfm(TIMESFM_HF_REPO, _TIMESFM_MAX_CONTEXT,
+                                 _TIMESFM_MAX_HORIZON)
+    load_s = time.time() - t_load
 
     device_str = str(getattr(getattr(model, "model", None), "device", device_hint))
 
@@ -227,6 +259,9 @@ def _timesfm_infer_core(device_hint: str, series, *, horizon: int):
 
     point = np.asarray(point)[0]        # (horizon,)
     quant = np.asarray(quant)[0]        # (horizon, 10): [mean, q0.1..q0.9]
+    if not (np.isfinite(point).all() and np.isfinite(quant).all()):
+        raise BackendUnavailable(
+            "TimesFM produced non-finite (NaN/Inf) forecast values — fail closed.")
     preds = []
     for k in range(horizon):
         q = quant[k]

@@ -134,6 +134,68 @@ def _envelope(task: str, idem: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Deploy
 # --------------------------------------------------------------------------- #
+def cmd_redeploy(args) -> int:
+    """Point the EXISTING endpoint at a new image digest.
+
+    ``deploy`` is create-only: its ``_safe`` wrapper reports ``[exists]`` and
+    silently keeps the old image, so a rebuilt worker would never actually ship.
+    Model + endpoint-config names are immutable in SageMaker, so this versions
+    both by image digest and calls update_endpoint (no downtime, no name clash).
+    """
+    digest = args.image_digest
+    if not digest.startswith("sha256:"):
+        digest = "sha256:" + digest
+    image = f"{REPO_URI}@{digest}"
+    short = digest.split(":")[1][:12]
+    model_name = f"{MODEL}-{short}"
+    cfg_name = f"{CFG_NAME}-{short}"
+    sm = _sess().client("sagemaker")
+
+    print(f"[redeploy] model {model_name} <- {image}")
+    _safe(lambda: sm.create_model(
+        ModelName=model_name,
+        PrimaryContainer={
+            "Image": image,
+            "Environment": {
+                "GPU_WORKER_VERSION": os.getenv("GPU_WORKER_VERSION", "0.2.4"),
+                "DRISHTI_TABFM_ESTIMATORS": os.getenv("DRISHTI_TABFM_ESTIMATORS", "8"),
+            },
+        },
+        ExecutionRoleArn=ROLE), "create_model")
+
+    print(f"[redeploy] endpoint-config {cfg_name}")
+    _safe(lambda: sm.create_endpoint_config(
+        EndpointConfigName=cfg_name,
+        ProductionVariants=[{
+            "VariantName": "main", "ModelName": model_name,
+            "InstanceType": INSTANCE, "InitialInstanceCount": 1,
+        }],
+        AsyncInferenceConfig={
+            "OutputConfig": {
+                "S3OutputPath": f"s3://{BUCKET}/{OUT_PREFIX}",
+                "S3FailurePath": f"s3://{BUCKET}/{FAIL_PREFIX}",
+                "KmsKeyId": KMS_ARN,
+            },
+            "ClientConfig": {"MaxConcurrentInvocationsPerInstance": 2},
+        }), "create_endpoint_config")
+
+    try:
+        sm.describe_endpoint(EndpointName=ENDPOINT)
+        print(f"[redeploy] updating endpoint {ENDPOINT} -> {cfg_name}")
+        sm.update_endpoint(EndpointName=ENDPOINT, EndpointConfigName=cfg_name)
+    except sm.exceptions.ClientError:
+        print(f"[redeploy] creating endpoint {ENDPOINT}")
+        sm.create_endpoint(EndpointName=ENDPOINT, EndpointConfigName=cfg_name)
+
+    print("[redeploy] waiting for InService ...")
+    t0 = time.time()
+    sm.get_waiter("endpoint_in_service").wait(
+        EndpointName=ENDPOINT, WaiterConfig={"Delay": 30, "MaxAttempts": 60})
+    print(f"[redeploy] InService after {int(time.time() - t0)}s")
+    print(json.dumps(_describe(sm), indent=2, default=str))
+    return 0
+
+
 def cmd_deploy(args) -> int:
     digest = args.image_digest
     if not digest.startswith("sha256:"):
@@ -187,7 +249,21 @@ def cmd_deploy(args) -> int:
 
 
 def _register_autoscaling() -> None:
+    """Register scale-to-zero AND scale-from-zero autoscaling.
+
+    Two policies are required, not one:
+
+    * TargetTracking on ``ApproximateBacklogSizePerInstance`` scales 1..max and
+      lets the variant scale IN to zero when idle.
+    * StepScaling driven by a ``HasBacklogWithoutCapacity`` alarm is the ONLY
+      thing that can scale OUT from zero. The per-instance backlog metric is
+      undefined while there are no instances, so with min=0 and target-tracking
+      alone the endpoint accepts invocations, parks them in the backlog and never
+      provisions a GPU to serve them — requests just sit until the caller times
+      out. That is exactly what happened after the variant idled to 0 overnight.
+    """
     aas = _sess().client("application-autoscaling")
+    cw = _sess().client("cloudwatch")
     rid = f"endpoint/{ENDPOINT}/variant/main"
     print("[deploy] registering scale-to-zero autoscaling (min=0, max=1)")
     aas.register_scalable_target(
@@ -207,6 +283,40 @@ def _register_autoscaling() -> None:
             },
             "ScaleInCooldown": 300, "ScaleOutCooldown": 60,
         })
+
+    print("[deploy] registering scale-FROM-zero step policy + backlog alarm")
+    step = aas.put_scaling_policy(
+        PolicyName="drishti-async-scale-from-zero", ServiceNamespace="sagemaker",
+        ResourceId=rid, ScalableDimension="sagemaker:variant:DesiredInstanceCount",
+        PolicyType="StepScaling",
+        StepScalingPolicyConfiguration={
+            "AdjustmentType": "ChangeInCapacity",
+            "MetricAggregationType": "Maximum",
+            "Cooldown": 60,
+            "StepAdjustments": [{"MetricIntervalLowerBound": 0, "ScalingAdjustment": 1}],
+        })
+    cw.put_metric_alarm(
+        AlarmName=f"{ENDPOINT}-has-backlog-without-capacity",
+        AlarmDescription=("Async backlog exists while the variant has 0 instances; "
+                          "triggers the scale-from-zero step policy."),
+        MetricName="HasBacklogWithoutCapacity", Namespace="AWS/SageMaker",
+        Statistic="Maximum", Dimensions=[{"Name": "EndpointName", "Value": ENDPOINT}],
+        Period=60, EvaluationPeriods=1, DatapointsToAlarm=1,
+        Threshold=1, ComparisonOperator="GreaterThanOrEqualToThreshold",
+        TreatMissingData="missing",
+        AlarmActions=[step["PolicyARN"]])
+
+
+def cmd_autoscale(args) -> int:
+    """(Re)apply autoscaling to an existing endpoint without redeploying it."""
+    _register_autoscaling()
+    aas = _sess().client("application-autoscaling")
+    pol = aas.describe_scaling_policies(
+        ServiceNamespace="sagemaker",
+        ResourceId=f"endpoint/{ENDPOINT}/variant/main")["ScalingPolicies"]
+    print(json.dumps([{"name": p["PolicyName"], "type": p["PolicyType"]} for p in pol],
+                     indent=2))
+    return 0
 
 
 def _describe(sm) -> dict:
@@ -260,19 +370,37 @@ def cmd_invoke(args) -> int:
 
 
 def _poll(s3, out_loc: str, fail_loc: str, *, timeout_s: int) -> dict:
+    """Poll the async output key AND the failure key.
+
+    SageMaker writes container/platform failures to
+    ``<failure-prefix>/<inference-id>-error.out`` and never writes the output key,
+    so polling the output alone burns the whole timeout on a fast failure.
+    """
     ob, ok = _split(out_loc)
-    fb, fk = _split(fail_loc)
+    fb, _ = _split(fail_loc)
+    inference_id = os.path.basename(ok)
+    if inference_id.endswith(".out"):
+        inference_id = inference_id[: -len(".out")]
+    fail_key = f"{FAIL_PREFIX}{inference_id}-error.out"
+
+    def _get(bucket: str, key: str):
+        try:
+            return s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+        except Exception as exc:  # noqa: BLE001 — absent key is the normal case
+            if "NoSuchKey" in str(exc) or "Not Found" in str(exc) or "404" in str(exc):
+                return None
+            raise
+
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        try:
-            obj = s3.get_object(Bucket=ob, Key=ok)
-            return json.loads(obj["Body"].read())
-        except s3.exceptions.NoSuchKey:
-            pass
-        except Exception as exc:  # noqa: BLE001
-            if "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
-                pass
-        # check failure path (best effort; failure key mirrors the request id)
+        body = _get(ob, ok)
+        if body is not None:
+            return json.loads(body)
+        err = _get(fb, fail_key)
+        if err is not None:
+            return {"state": "failed", "error_code": "SAGEMAKER_FAILURE",
+                    "error_detail": err.decode("utf-8", "replace")[:2000],
+                    "_failure_location": f"s3://{fb}/{fail_key}"}
         time.sleep(5)
     return {"state": "timed_out", "error_code": "POLL_TIMEOUT",
             "error_detail": f"no output at {out_loc} within {timeout_s}s"}
@@ -320,6 +448,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("deploy"); d.add_argument("--image-digest", required=True)
+    rd = sub.add_parser("redeploy"); rd.add_argument("--image-digest", required=True)
+    sub.add_parser("autoscale")
     sub.add_parser("status")
     iv = sub.add_parser("invoke")
     iv.add_argument("--task", choices=["tabfm", "timesfm", "fallback", "badtabfm"], required=True)
@@ -327,8 +457,9 @@ def main() -> int:
     iv.add_argument("--timeout", type=int, default=600)
     sub.add_parser("teardown")
     args = ap.parse_args()
-    return {"deploy": cmd_deploy, "status": cmd_status,
-            "invoke": cmd_invoke, "teardown": cmd_teardown}[args.cmd](args)
+    return {"deploy": cmd_deploy, "redeploy": cmd_redeploy, "status": cmd_status,
+            "autoscale": cmd_autoscale, "invoke": cmd_invoke,
+            "teardown": cmd_teardown}[args.cmd](args)
 
 
 if __name__ == "__main__":
