@@ -51,9 +51,10 @@
 
 | Required item | Link | Submission status |
 |---|---|---|
-| **Deployed Solution Link—Zoho Catalyst** | **[https://drishti-frvfpunc.onslate.in/](https://drishti-frvfpunc.onslate.in/)** | ✅ Official evaluation deployment; HTTP 200 verified on 26 July 2026 |
+| **Deployed Solution Link—Zoho Catalyst** | **[https://drishti-frvfpunc.onslate.in/](https://drishti-frvfpunc.onslate.in/)** | ✅ Official evaluation deployment; HTTP 200 re-verified on 9 September 2026 |
 | **GitHub Public Repository** | [https://github.com/prajwalbr0304/DRISHTI](https://github.com/prajwalbr0304/DRISHTI) | ✅ Public repository |
 | **Demo Video** | [https://youtu.be/cp27iqfYYyA](https://youtu.be/cp27iqfYYyA) | ✅ Public demo video |
+| **Refined Prototype Demo Video** | **[Watch on Google Drive](https://drive.google.com/drive/folders/1oMSqotqN_BgQuFgE4RjRORn34GmbzdEh)** | ✅ Refined prototype — September 2026 |
 
 > [!IMPORTANT]
 > The evaluation link above is the Zoho Catalyst Slate deployment. DRISHTI must be evaluated using that link. Do not substitute a deployment on another hosting platform.
@@ -2042,7 +2043,7 @@ These endpoints are operational diagnostics, not substitutes for the official Sl
 - API Gateway: `https://dhristi-60075362708.development.catalystserverless.in/api`
 - AppSail: `https://drishti-api-50044118953.development.catalystappsail.in`
 
-Both health paths returned HTTP 200 during repository verification.
+Both health paths returned HTTP 200 on **9 September 2026**, after the AppSail backend was redeployed with the GPU-plane changes. `/health/ready` reported all eight readiness checks green: `config`, `environment=synthetic_hackathon`, `hackathon_mode`, `operational_datastore`, `gateway_auth`, `object_store`, `semantic_planner`, `analytics_db`.
 
 ### Deployment commands
 
@@ -2159,11 +2160,11 @@ DRISHTI is a synthetic hackathon demonstration of governed decision-support infr
 
 **[Watch the refined prototype demo — Google Drive](https://drive.google.com/drive/folders/1oMSqotqN_BgQuFgE4RjRORn34GmbzdEh)**
 
-This is the new demo video folder for the refined prototype. The submission links above are retained with the previous prototype.
+This is the new demo video folder for the refined prototype, also listed in [Submission links](#submission-links) at the top. The other submission links there are retained from the previous prototype.
 
 ## Previous prototype baseline
 
-**Everything above this section is the preserved previous-prototype README.** Its submission links, ten presentation seats, database inventory, screenshots, benchmarks and infrastructure statements describe the earlier submission snapshot, last updated in commit `7139722` on 26 July 2026. They remain here so the development of DRISHTI can be reviewed without losing the original submission.
+**Everything above this section is the preserved previous-prototype README**, with two deliberate exceptions kept current: the [Submission links](#submission-links) table at the top, and the [Foundation models and how prediction works](#foundation-models-and-how-prediction-works) section, whose GPU measurements and rolling-origin benchmark were captured on **8 September 2026**. Aside from those, the ten presentation seats, database inventory, screenshots, benchmarks and infrastructure statements describe the earlier submission snapshot, last updated in commit `7139722` on 26 July 2026. They remain here so the development of DRISHTI can be reviewed without losing the original submission.
 
 This appendix describes the refinement against that baseline. Code was inspected at `3667382`, with existing local dashboard/scope changes also present, on **7 September 2026**. Local screenshots show that working checkout; hosted screenshots show the separately deployed Slate application. A local feature does not establish deployment parity.
 
