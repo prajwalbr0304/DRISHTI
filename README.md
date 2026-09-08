@@ -13,6 +13,8 @@
 <p align="center">
   <a href="https://drishti-frvfpunc.onslate.in/"><strong>Open the Catalyst deployment</strong></a>
   ·
+  <a href="#refined-prototype"><strong>Refined prototype — September 2026</strong></a>
+  ·
   <a href="https://github.com/prajwalbr0304/DRISHTI">View the repository</a>
   ·
   <a href="#prototype-snapshots">See the prototype</a>
