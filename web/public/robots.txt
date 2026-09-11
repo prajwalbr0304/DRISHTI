@@ -1,0 +1,122 @@
+# DRISHTI — crawler policy
+#
+# Vite copies public/ verbatim into dist/, so this file ships to Catalyst Slate
+# and is served at /robots.txt (it previously returned 404).
+#
+# Only two routes are publicly reachable: "/" (the landing page) and "/login".
+# Everything else in web/src/App.tsx sits behind <RequireAuth>. Because the
+# Slate SPA catch-all rewrites every path to /index.html with HTTP 200, those
+# app routes would otherwise be crawled as endless duplicates of the landing
+# page — hence the explicit Disallow list below. index.html also carries
+# <link rel="canonical"> back to "/" as a second line of defence.
+
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /drishti.svg
+Allow: /product/
+Allow: /landing/
+
+# Authenticated application surface — no public content behind these.
+Disallow: /command
+Disallow: /cases
+Disallow: /intake
+Disallow: /imports
+Disallow: /review
+Disallow: /people
+Disallow: /network
+Disallow: /board
+Disallow: /map
+Disallow: /watch
+Disallow: /analytics
+Disallow: /governance
+Disallow: /ask
+Disallow: /support
+Disallow: /profile
+Disallow: /er
+Disallow: /money
+Disallow: /forecast
+Disallow: /admin
+Disallow: /app
+Disallow: /assets/
+
+# ---------------------------------------------------------------------------
+# AI crawlers and assistant retrieval agents.
+#
+# Explicitly permitted so the public overview of DRISHTI can be read and
+# summarised accurately. These agents generally do not execute JavaScript,
+# which is why index.html ships a static summary inside #root rather than an
+# empty mount point.
+# ---------------------------------------------------------------------------
+
+User-agent: GPTBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: OAI-SearchBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: ChatGPT-User
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: ClaudeBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: Claude-SearchBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: Claude-User
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: PerplexityBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: Perplexity-User
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: Google-Extended
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: Applebot-Extended
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: Amazonbot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: meta-externalagent
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: DuckAssistBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+User-agent: CCBot
+Allow: /$
+Allow: /login
+Disallow: /assets/
+
+Sitemap: https://drishti-frvfpunc.onslate.in/sitemap.xml

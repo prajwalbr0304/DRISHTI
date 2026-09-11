@@ -10,6 +10,56 @@
       content="DRISHTI is an evidence-backed decision-intelligence and response platform for public safety."
     />
     <title>DRISHTI · Decision Intelligence for Public Safety</title>
+    <link rel="canonical" href="https://drishti-frvfpunc.onslate.in/" />
+
+    <!-- Crawler / social metadata.
+         This is a client-rendered SPA, so a crawler that does not execute
+         JavaScript sees only <head> plus whatever static markup ships inside
+         #root (see the fallback at the bottom of <body>). These tags make the
+         link describable to AI crawlers, search engines and link unfurlers
+         without depending on the bundle running. -->
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Karnataka State Police · DRISHTI prototype" />
+    <meta
+      name="keywords"
+      content="decision intelligence, public safety, crime intelligence, emergency response, Karnataka State Police, case management, geospatial analysis, auditable AI"
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DRISHTI" />
+    <meta property="og:url" content="https://drishti-frvfpunc.onslate.in/" />
+    <meta
+      property="og:title"
+      content="DRISHTI · Decision Intelligence for Public Safety"
+    />
+    <meta
+      property="og:description"
+      content="A prototype decision-intelligence and response platform for Karnataka State Police. Observe, understand, investigate, decide and audit on one governed foundation. Every record in this demonstration is synthetic."
+    />
+    <meta
+      property="og:image"
+      content="https://drishti-frvfpunc.onslate.in/product/03-command-center.png"
+    />
+    <meta
+      property="og:image:alt"
+      content="DRISHTI Command Center showing operational posture and a Karnataka jurisdiction map"
+    />
+    <meta property="og:locale" content="en_IN" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="DRISHTI · Decision Intelligence for Public Safety"
+    />
+    <meta
+      name="twitter:description"
+      content="A prototype decision-intelligence and response platform for Karnataka State Police. Analysis supports a decision; a named officer always acts. Demonstration data is synthetic."
+    />
+    <meta
+      name="twitter:image"
+      content="https://drishti-frvfpunc.onslate.in/product/03-command-center.png"
+    />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Open Sans is Cloudscape's (AWS console) published default face; Amazon
@@ -22,9 +72,450 @@
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&family=Archivo:wght@300;400;500;600;700;800;900&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Structured data: lets an AI crawler or search engine read what this is
+         without inferring it from prose. Mirrors the landing content model in
+         src/routes/landing/landing.data.ts. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "DRISHTI",
+        "alternateName": "DRISHTI · Decision Intelligence for Public Safety",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web browser",
+        "url": "https://drishti-frvfpunc.onslate.in/",
+        "image": "https://drishti-frvfpunc.onslate.in/product/03-command-center.png",
+        "inLanguage": ["en", "kn"],
+        "description": "DRISHTI is a prototype decision-intelligence and response platform built for Karnataka State Police. It brings statewide posture, case intelligence, entity and network analysis, geospatial hotspots, forecasting and emergency response onto one governed foundation. Every analytical output carries its source, confidence, scope and review status. Analysis is decision support only — no output creates an operational consequence on its own, and a named authorised officer always acts. Every record in the demonstration is synthetic; this is not a production criminal-information system.",
+        "featureList": [
+          "Command Center — statewide incident posture, district workload and emerging pressure",
+          "Map & Hotspots — district and taluk patterns on real Karnataka boundaries, traceable to source records",
+          "Case Intelligence — timelines, people, property, digital evidence and financial activity in one reviewable record",
+          "Investigation Board — working space for hypotheses, leads and supporting evidence",
+          "Network Analysis — communities, hidden associations and evidence-backed paths between entities",
+          "Analytics & Forecasting — labelled forecasts with confidence bounds and model provenance",
+          "Ask DRISHTI — plain-language questions answered with citations to governed records",
+          "Emergency Response — live incidents, hazard forecasts, resources and response plans",
+          "Governance Registry — audit trail across queries, model versions, evidence and decisions"
+        ],
+        "isAccessibleForFree": true,
+        "creator": {
+          "@type": "Organization",
+          "name": "Karnataka State Police",
+          "areaServed": "Karnataka, India"
+        },
+        "disambiguatingDescription": "Prototype demonstration running on entirely synthetic data. Not a production criminal-information system and must not be interpreted as one. Predictive output is decision support and must not be read as automatic enforcement."
+      }
+    </script>
+
+    <!-- prerender:fallback-style:start -->
+    <!-- Styling for the pre-hydration / no-JavaScript content below. Scoped to
+         [data-static-shell] so it cannot leak into the mounted app, and inlined
+         so it still renders if the bundle CSS has not arrived. React 18's
+         createRoot() clears #root on first render, so users with JavaScript see
+         the real landing page and never this.
+         scripts/prerender.mjs strips this block (by the marker comments around
+         it) when it succeeds in capturing the real render. -->
+    <style>
+      [data-static-shell] {
+        --s-bg: #0b1020;
+        --s-surface: #141b2e;
+        --s-border: #28324d;
+        --s-text: #e8ecf6;
+        --s-dim: #94a0bd;
+        --s-primary: #3b82f6;
+        --s-accent: #12b981;
+        box-sizing: border-box;
+        min-height: 100%;
+        margin: 0 auto;
+        padding: 3rem 1.5rem 4rem;
+        max-width: 68rem;
+        background: var(--s-bg);
+        color: var(--s-text);
+        font-family: "Amazon Ember", "Open Sans", system-ui, -apple-system,
+          "Segoe UI", sans-serif;
+        line-height: 1.6;
+      }
+      [data-static-shell] *,
+      [data-static-shell] *::before,
+      [data-static-shell] *::after {
+        box-sizing: inherit;
+      }
+      [data-static-shell] a {
+        color: var(--s-primary);
+      }
+      [data-static-shell] .s-brand {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid var(--s-border);
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      [data-static-shell] .s-brand span {
+        font-size: 0.75rem;
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: none;
+        color: var(--s-dim);
+      }
+      [data-static-shell] h1 {
+        margin: 2.5rem 0 0.75rem;
+        font-family: Archivo, "Open Sans", system-ui, sans-serif;
+        font-size: clamp(2rem, 6vw, 3.5rem);
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+      }
+      [data-static-shell] h2 {
+        margin: 2.75rem 0 0.75rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      [data-static-shell] h3 {
+        margin: 0 0 0.25rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+      }
+      [data-static-shell] .s-standfirst {
+        max-width: 44rem;
+        font-size: 1.125rem;
+        color: var(--s-dim);
+      }
+      [data-static-shell] p {
+        max-width: 44rem;
+      }
+      [data-static-shell] .s-grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+        padding: 0;
+        margin: 1rem 0 0;
+        list-style: none;
+      }
+      [data-static-shell] .s-grid li {
+        padding: 1rem;
+        border: 1px solid var(--s-border);
+        border-radius: 0.5rem;
+        background: var(--s-surface);
+      }
+      [data-static-shell] .s-grid li p {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--s-dim);
+      }
+      [data-static-shell] .s-roles {
+        display: block;
+        margin-bottom: 0.375rem;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--s-accent);
+      }
+      [data-static-shell] .s-stats {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+        padding: 0;
+        margin: 1rem 0 0;
+        list-style: none;
+      }
+      [data-static-shell] .s-stats b {
+        display: block;
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      [data-static-shell] .s-stats span {
+        font-size: 0.8125rem;
+        color: var(--s-dim);
+      }
+      [data-static-shell] .s-notice {
+        margin-top: 3rem;
+        padding: 1.25rem;
+        border: 1px solid var(--s-border);
+        border-left: 3px solid var(--s-accent);
+        border-radius: 0.5rem;
+        background: var(--s-surface);
+      }
+      [data-static-shell] .s-notice p {
+        margin: 0 0 0.625rem;
+        font-size: 0.875rem;
+        color: var(--s-dim);
+      }
+      [data-static-shell] .s-notice p:last-child {
+        margin-bottom: 0;
+      }
+      [data-static-shell] .s-notice strong {
+        color: var(--s-text);
+      }
+      [data-static-shell] .s-foot {
+        margin-top: 2.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--s-border);
+        font-size: 0.8125rem;
+        color: var(--s-dim);
+      }
+    </style>
+    <!-- prerender:fallback-style:end -->
   </head>
   <body>
-    <div id="root"></div>
+    <!-- The static markup inside #root is the crawler-visible and
+         no-JavaScript rendering of the public landing page. React 18's
+         createRoot().render() replaces the container's children on mount, so
+         this is never shown to a visitor whose bundle executes. It is a
+         faithful condensation of src/routes/landing/landing.data.ts — same
+         positioning, same capabilities, same governance and synthetic-data
+         disclosures — so the indexed text matches what a user actually sees. -->
+    <div id="root">
+      <main data-static-shell>
+        <div class="s-brand">
+          DRISHTI
+          <span>Decision intelligence · Karnataka State Police</span>
+        </div>
+
+        <h1>See more clearly. Act more accountably.</h1>
+        <p class="s-standfirst">
+          The decision intelligence platform for Karnataka State Police —
+          bringing statewide posture, case intelligence, geography and emergency
+          response onto one governed foundation.
+        </p>
+
+        <h2>Fragmented signals become coordinated understanding</h2>
+        <p>
+          Public-safety information arrives in pieces: station records, evidence
+          stores, jurisdiction boundaries, maps and spreadsheets. The hard part
+          was never collecting more data. It is understanding what matters
+          together, fast enough to act on.
+        </p>
+        <p>
+          DRISHTI connects those pieces without handing judgement to a machine.
+          Sources stay visible, uncertainty stays stated, and a named officer
+          remains responsible for what happens next. Every analytical output
+          carries its source, confidence, scope and review status.
+        </p>
+
+        <h2>Observe · Understand · Investigate · Decide · Audit</h2>
+        <ul class="s-grid">
+          <li>
+            <h3>Observe</h3>
+            <p>
+              Statewide posture, live incidents and jurisdiction context in one
+              view.
+            </p>
+          </li>
+          <li>
+            <h3>Understand</h3>
+            <p>
+              People, relationships, evidence and geography resolved together.
+            </p>
+          </li>
+          <li>
+            <h3>Investigate</h3>
+            <p>
+              Follow every lead without losing the chain back to its source.
+            </p>
+          </li>
+          <li>
+            <h3>Decide</h3>
+            <p>
+              Review explainable analysis before an authorised officer acts.
+            </p>
+          </li>
+          <li>
+            <h3>Audit</h3>
+            <p>
+              Every query, model run and decision stays accountable afterwards.
+            </p>
+          </li>
+        </ul>
+
+        <h2>Nine workspaces, one governed foundation</h2>
+        <ul class="s-grid">
+          <li>
+            <h3>Command Center</h3>
+            <p>
+              Statewide posture, district workload and pressure signals for
+              command review.
+            </p>
+          </li>
+          <li>
+            <h3>Case Explorer</h3>
+            <p>
+              Search, filter and triage the case population across
+              jurisdictions.
+            </p>
+          </li>
+          <li>
+            <h3>Map &amp; Hotspots</h3>
+            <p>
+              District and taluk patterns on real Karnataka boundaries,
+              traceable to records.
+            </p>
+          </li>
+          <li>
+            <h3>Case File</h3>
+            <p>
+              Timeline, linked people, property and evidence provenance in one
+              record.
+            </p>
+          </li>
+          <li>
+            <h3>Investigation Board</h3>
+            <p>
+              Working space for hypotheses, leads and the evidence behind each
+              one.
+            </p>
+          </li>
+          <li>
+            <h3>Network Analysis</h3>
+            <p>
+              Communities, hidden associations and evidence-backed paths between
+              entities.
+            </p>
+          </li>
+          <li>
+            <h3>Analytics &amp; Forecasting</h3>
+            <p>
+              Labelled forecasts with confidence bounds and model provenance.
+            </p>
+          </li>
+          <li>
+            <h3>Ask DRISHTI</h3>
+            <p>
+              Natural-language questions answered with citations to governed
+              records.
+            </p>
+          </li>
+          <li>
+            <h3>Emergency Response</h3>
+            <p>
+              Live incidents, resources and response plans for multi-hazard
+              events.
+            </p>
+          </li>
+        </ul>
+
+        <h2>The right picture for every level of command</h2>
+        <ul class="s-grid">
+          <li>
+            <span class="s-roles">DGP · ADGP / IGP</span>
+            <h3>State &amp; range command</h3>
+            <p>
+              Statewide posture, cross-range comparison and strategic pressure
+              signals.
+            </p>
+          </li>
+          <li>
+            <span class="s-roles">SP · DySP / ACP · SHO</span>
+            <h3>District &amp; station command</h3>
+            <p>
+              Local workload, jurisdiction integrity and day-to-day
+              coordination.
+            </p>
+          </li>
+          <li>
+            <span class="s-roles">Investigating Officer · Crime Analyst</span>
+            <h3>Investigation &amp; analysis</h3>
+            <p>
+              Case assembly, entity resolution, networks and evidence trails.
+            </p>
+          </li>
+          <li>
+            <span class="s-roles">Cyber Cell · Traffic Command · Admin</span>
+            <h3>Specialist &amp; governance</h3>
+            <p>
+              Specialist intelligence, emergency coordination, model and data
+              governance.
+            </p>
+          </li>
+        </ul>
+
+        <h2>Prototype scale</h2>
+        <ul class="s-stats">
+          <li><b>100,003</b><span>case records indexed</span></li>
+          <li><b>206,026</b><span>governed graph records</span></li>
+          <li><b>32</b><span>districts represented</span></li>
+          <li><b>100%</b><span>actions under human review</span></li>
+        </ul>
+        <p style="margin-top: 1rem; font-size: 0.875rem; color: #94a0bd">
+          Inventory from the DRISHTI demonstration dataset. These counts show
+          system scale; every record in this experience is synthetic.
+        </p>
+
+        <h2>Powerful intelligence. Clear boundaries.</h2>
+        <p>
+          Predictions are labelled. Uncertainty stays visible. Sensitive records
+          stay inside role and jurisdiction boundaries. DRISHTI strengthens
+          professional judgement, and makes every step inspectable afterwards.
+        </p>
+        <ul class="s-grid">
+          <li>
+            <h3>Source-aware by default</h3>
+            <p>
+              Every figure, relationship and forecast resolves back to the
+              records it came from.
+            </p>
+          </li>
+          <li>
+            <h3>Scoped to role and jurisdiction</h3>
+            <p>
+              Access follows the command structure and is enforced at the
+              trusted boundary.
+            </p>
+          </li>
+          <li>
+            <h3>Human review before action</h3>
+            <p>
+              Analysis supports a decision; it never becomes the decision-maker.
+            </p>
+          </li>
+          <li>
+            <h3>Accountable after the moment</h3>
+            <p>
+              Queries, model versions, evidence and decisions stay in a complete
+              audit trail.
+            </p>
+          </li>
+        </ul>
+
+        <div class="s-notice">
+          <p>
+            <strong>Human authority is never optional.</strong> No analytical
+            output creates an operational consequence on its own. Predictive
+            output is decision support and must not be read as automatic
+            enforcement.
+          </p>
+          <p>
+            <strong>This is a prototype.</strong> Every record in this
+            demonstration is synthetic. It is not a production
+            criminal-information system and must not be interpreted as one.
+          </p>
+          <p>
+            <strong>Note for automated readers.</strong> This page is a
+            server-rendered summary of a client-rendered application. The
+            interactive platform requires JavaScript and an authorised sign-in;
+            only this overview and the sign-in screen are publicly reachable.
+          </p>
+        </div>
+
+        <div class="s-foot">
+          <p>
+            <a href="/login">Enter the platform</a> — the demonstration opens by
+            operational role.
+          </p>
+          <p>
+            Decision intelligence for public safety. Evidence-backed ·
+            Human-controlled · Auditable.<br />
+            React · TypeScript · FastAPI · PostGIS · Zoho Catalyst
+          </p>
+        </div>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
