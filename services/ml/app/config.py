@@ -37,6 +37,39 @@ _resolved = Path(__file__).resolve()
 _REPO_ROOT = _resolved.parents[3] if len(_resolved.parents) > 3 else _resolved.parent
 
 
+def _load_dotenv_into_environ() -> None:
+    """Also publish ``.env`` into ``os.environ``.
+
+    pydantic-settings reads ``.env`` only for the fields DECLARED on Settings
+    below. Several operator knobs are deliberately read straight from the
+    environment instead of being modelled here — the face encoder's model pack
+    and match thresholds (app/face/encoders.py, app/face/onnx_arcface.py,
+    app/face/modelfiles.py) are the ones that matter in practice, because they
+    are per-host tuning rather than application configuration.
+
+    Without this, putting ``DRISHTI_FACE_MODEL_PACK`` in ``.env`` would be
+    SILENTLY IGNORED while the neighbouring keys worked, which is the kind of
+    difference that costs an afternoon. ``override=False`` keeps precedence
+    correct: a real environment variable (the deployed AppSail configuration, or
+    a value exported for one process) always beats the file.
+
+    In the AppSail container there is no ``.env`` and this is a no-op.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover — python-dotenv ships with the service
+        return
+    for candidate in (_REPO_ROOT / ".env", Path(".env")):
+        try:
+            if candidate.is_file():
+                load_dotenv(candidate, override=False)
+        except OSError:
+            continue
+
+
+_load_dotenv_into_environ()
+
+
 class Settings(BaseSettings):
     # Full read/write Postgres connection (AWS RDS PostgreSQL URI). Server-side
     # only — never shipped to the browser.

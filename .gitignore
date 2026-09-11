@@ -153,3 +153,31 @@ _migration/
 # stay on the machine that took them and are never committed.
 # ---------------------------------------------------------------------------
 backups/
+
+# Local-only scratch areas used while provisioning face recognition and probing
+# the AppSail image under its real memory cap. Both have held generated docker
+# env-files containing DATABASE_URL, so they must never be committable.
+.docker-temp/
+.face-ingest-logs/
+
+# ---------------------------------------------------------------------------
+# Curated public-source case imagery. THIS REPOSITORY IS PUBLIC, and these are
+# pictures of real, identifiable people connected to a criminal trial that is
+# still pending:
+#
+#   * user-supplied-reference.jpg is a copyrighted editorial/publicity
+#     photograph. research/renukaswamy-case-evidence/index.html already records
+#     the handling rule for this class of material -- publisher-hosted, linked
+#     with attribution, "not copied into this repository", and licensed before
+#     any public reuse. Committing it here would be exactly the redistribution
+#     that rule exists to prevent.
+#   * synthetic-persona-*.jpg are re-encodes of an AI-generated likeness. A
+#     photorealistic fabricated image of a living person facing trial does not
+#     belong in public version control under any label, and git history is not
+#     something you can take back.
+#
+# Nothing depends on these bytes. The case record stores no imagery, the
+# evidence manifest links publisher URLs, and scripts/setup_face_demo.py
+# regenerates its two variants from any portrait passed with --source.
+# ---------------------------------------------------------------------------
+research/renukaswamy-case-evidence/assets/

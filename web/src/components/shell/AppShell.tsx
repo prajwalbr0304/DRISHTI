@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { useDataAnchor } from "@/hooks/useDataAnchor";
+import { useSeatCacheReset } from "@/hooks/useSeatCacheReset";
 import { useSeatScopeAnchor } from "@/hooks/useSeatScopeAnchor";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/shell/Sidebar";
@@ -17,6 +18,11 @@ export function AppShell() {
   // Anchors the global time window to the latest data date. Must live here (not
   // in the scrubber) so it runs on every route.
   useDataAnchor();
+  // Changing seat must not leave the previous seat's answers on screen. Ordered
+  // BEFORE the scope anchor: the cache is dropped first, so the anchor re-derives
+  // the district from a fresh /org/my-scope rather than from the outgoing seat's
+  // cached one.
+  useSeatCacheReset();
   // Same for the district scope: open on the seat's own region (an SP/SHO on their
   // district, a state seat on all of them) until the user picks. Must also run on
   // every route, not inside the top-bar selector.

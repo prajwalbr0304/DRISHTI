@@ -17,6 +17,8 @@ import {
 } from "@/routes/home/useDashboardData";
 import { useScopeChips } from "@/routes/home/useScopeChips";
 import { useMyScope } from "@/hooks/useMyScope";
+import { useDistrictNamer } from "@/hooks/useDistricts";
+import { SCOPE_TYPE_LABELS } from "@/config/roles";
 import { usePeekStore } from "@/stores/usePeekStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useScopeStore } from "@/stores/useScopeStore";
@@ -494,6 +496,102 @@ function OfficerLoadWidget({ label }: BoardWidgetProps) {
   );
 }
 
+/* ------------------------------- my posting ------------------------------- */
+/** The seat's own posting, named.
+ *
+ *  Every other panel on an IO board reports on a jurisdiction the officer has to
+ *  infer — from a map outline, or from the fact that the numbers look like their
+ *  station's. This states it: district, station, rank and scope tier, read from the
+ *  server-derived seat record rather than from the presentation role.
+ *
+ *  It also names the PROVENANCE, which is the part that matters when something
+ *  looks wrong. `trusted-assignment` means the server read a real posting;
+ *  `unresolved` means it found none, and in that case every figure on the board is
+ *  confined to nothing rather than defaulting to state-wide — so a board full of
+ *  dashes has an explanation here instead of looking like an outage. */
+function MyPostingWidget({ label }: BoardWidgetProps) {
+  const seat = useMyScope();
+  const nameOf = useDistrictNamer();
+  const unitId = seat.unitIds?.length === 1 ? seat.unitIds[0] : null;
+
+  /* Station NAMES are not on /org/my-scope, which carries ids. /geo/stations is the
+     smallest read that resolves one, and it is only issued when there is a unit to
+     resolve — so no board above station grain pays for it. */
+  const stations = useQuery({
+    queryKey: ["geo", "stations", "posting"],
+    queryFn: ({ signal }) => api.geo.stations({ limit: 2000 }, signal),
+    staleTime: 30 * 60_000,
+    retry: false,
+    enabled: unitId != null,
+  });
+  const station = stations.data?.stations.find((s) => s.station_id === unitId);
+
+  const districts =
+    seat.districtIds?.length
+      ? seat.districtIds.map(nameOf)
+      : seat.districtId != null
+        ? [nameOf(seat.districtId)]
+        : [];
+
+  const rows: { k: string; v: string }[] = [
+    { k: "Scope", v: SCOPE_TYPE_LABELS[seat.scopeType] },
+    {
+      k: districts.length > 1 ? "Districts" : "District",
+      v: districts.length ? districts.join(", ") : "Not district-pinned",
+    },
+    ...(unitId != null
+      ? [{ k: "Station", v: station?.name?.trim() || `Unit ${unitId}` }]
+      : []),
+    ...(seat.rank ? [{ k: "Rank", v: seat.rank }] : []),
+    ...(seat.username ? [{ k: "Seat", v: seat.username }] : []),
+  ];
+
+  return (
+    <Widget
+      gridTile
+      title={label}
+      contextChip={seat.source === "trusted-assignment" ? "verified posting" : undefined}
+      loading={seat.loading}
+      info={
+        <p className="text-content-dim">
+          The jurisdiction every other figure on this board is confined to, read from
+          your seat record on the server rather than from the role in the browser.
+          Changing the district selector in the top bar narrows the view within this
+          posting; it can never reach outside it.
+        </p>
+      }
+    >
+      <dl className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.k} className="flex items-baseline justify-between gap-3">
+            <dt className="shrink-0 text-11 uppercase tracking-wide text-content-dim">
+              {r.k}
+            </dt>
+            <dd className="min-w-0 truncate text-right text-13 font-medium text-content">
+              {r.v}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {seat.source === "unresolved" && (
+        /* Said plainly. An unposted seat is confined to nothing server-side, so the
+           rest of the board is empty BY DESIGN — without this the officer reads an
+           empty board as a broken one. */
+        <p className="mt-3 text-11 leading-relaxed text-warning">
+          No posting is recorded for this seat, so no records are in scope and the
+          figures on this board will stay empty. An administrator must assign a
+          district and station.
+        </p>
+      )}
+      {seat.isLeadInvestigator && (
+        <p className="mt-3 text-11 leading-relaxed text-content-dim">
+          This seat may be recorded as the investigating officer of record.
+        </p>
+      )}
+    </Widget>
+  );
+}
+
 /* ----------------------------- admin widgets ----------------------------- */
 function SeatDirectoryWidget({ label }: BoardWidgetProps) {
   const q = useQuery({
@@ -601,6 +699,7 @@ export const BOARD_WIDGETS: Record<string, (p: BoardWidgetProps) => JSX.Element>
   "my-jurisdiction": HotspotMapWidget,
   "pipeline": PipelineWidget,
   "my-caseload": PipelineWidget,
+  "my-posting": MyPostingWidget,
   "attention": AttentionWidget,
   "case-timeline": RecentActivityWidget,
   "district-league": DistrictLeagueWidget,

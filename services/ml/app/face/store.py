@@ -84,12 +84,27 @@ def model_version_for(conn, encoder: FaceEncoder) -> int:
     )
 
 
-def gallery_model(conn) -> Optional[tuple[int, str, int, int]]:
+def gallery_model(conn, prefer_model_name: Optional[str] = None
+                  ) -> Optional[tuple[int, str, int, int]]:
     """The live gallery: (ModelVersionID, ModelName, face_count, person_count).
 
-    Picks the model version that actually has enrolled, non-archived faces — the
+    Picks a model version that actually has enrolled, non-archived faces — the
     same "resolve the corpus first" move cases/similar.py makes, so a probe is
     never compared across encoder spaces.
+
+    ``prefer_model_name`` should be the ACTIVE encoder's name. When that model has
+    its own enrolled faces, that gallery is the live one. This matters because
+    more than one model's descriptors can legitimately be enrolled at once: a
+    workstation may hold a large ArcFace R50 gallery while a memory-capped
+    deployment runs MobileFaceNet, and each must search the gallery IT built.
+    Selecting on recency alone would mean whichever enrolment finished last
+    silently decided the answer for every deployment, so re-running an older
+    model's enrolment would break a running service.
+
+    With no preference, or when the preferred model has nothing enrolled, this
+    falls back to the most recently enrolled gallery — which is what lets the
+    caller detect and REPORT a model mismatch rather than quietly finding
+    nothing.
     """
     with conn.cursor() as cur:
         cur.execute(
@@ -101,10 +116,15 @@ def gallery_model(conn) -> Optional[tuple[int, str, int, int]]:
             'WHERE pfe."IsArchived" = FALSE '
             "  AND cp.\"ResolutionStatus\" <> 'merged' "
             'GROUP BY pfe."ModelVersionID", mv."ModelName" '
-            'ORDER BY MAX(pfe."CreatedAt") DESC, pfe."ModelVersionID" DESC LIMIT 1')
-        row = cur.fetchone()
-    if not row:
+            'ORDER BY MAX(pfe."CreatedAt") DESC, pfe."ModelVersionID" DESC')
+        rows = cur.fetchall()
+    if not rows:
         return None
+    if prefer_model_name:
+        for row in rows:
+            if str(row[1]) == prefer_model_name:
+                return int(row[0]), str(row[1]), int(row[2]), int(row[3])
+    row = rows[0]
     return int(row[0]), str(row[1]), int(row[2]), int(row[3])
 
 

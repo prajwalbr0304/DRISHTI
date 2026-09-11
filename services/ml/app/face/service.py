@@ -168,7 +168,7 @@ def status() -> S.FaceStatusResponse:
     if enabled and available:
         try:
             with db.ro_conn() as conn:
-                live = store.gallery_model(conn)
+                live = store.gallery_model(conn, prefer_model_name=engine.name)
                 probes = store.probe_counts(conn)
         except Exception as exc:  # noqa: BLE001 — status must not fail on DB trouble
             warnings.append(f"Gallery state unavailable: {type(exc).__name__}.")
@@ -234,7 +234,7 @@ def search(req: S.FaceSearchRequest, *, actor: Optional[str] = None,
     # The probe row is written in the SAME transaction as the search: a biometric
     # query without an audit record is not an outcome this service produces.
     with db.rw_conn() as conn:
-        live = store.gallery_model(conn)
+        live = store.gallery_model(conn, prefer_model_name=encoder.name)
         if not live:
             raise FaceGalleryUnavailable(
                 "No reference photos are enrolled yet, so there is nothing to "
@@ -458,7 +458,11 @@ def remove_face(face_id: int, *, actor: Optional[str] = None,
         if cpid is None:
             raise FaceNotFound(
                 f"Reference photo {face_id} not found, or already retired.")
-        live = store.gallery_model(conn)
+        try:
+            prefer = _encoder().name
+        except FaceEngineUnavailable:
+            prefer = None
+        live = store.gallery_model(conn, prefer_model_name=prefer)
         remaining = (store.count_person_faces(conn, cpid, live[0]) if live else 0)
         audit.record(ACTION_ARCHIVE, "PersonFaceEmbedding", face_id, actor=actor,
                      detail={"canonical_person_id": cpid, "remaining": remaining},

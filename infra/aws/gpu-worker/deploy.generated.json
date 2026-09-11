@@ -7,23 +7,80 @@
   "instance_type": "ml.g4dn.xlarge",
   "instance_gpu": "1x NVIDIA T4 (Turing sm_75), 16 GB VRAM, 4 vCPU, 16 GB RAM",
   "instance_type_rationale": "T4 runs the real TabFM + TimesFM 2.5-200m within 16 GB, and g4dn.xlarge is the cheapest GPU endpoint instance, which matters while every GPU quota in this account is 0 and has to be raised by request. Descriptor default ml.g5.xlarge (A10G) is preferred once quota allows.",
-
-  "_BLOCKED": {
+  "_RESOLVED": {
+    "status": "DEPLOYED AND VERIFIED ON REAL GPU - 2026-09-08",
+    "quota_granted": "sagemaker L-B67CFA0C 'ml.g4dn.xlarge for endpoint usage' in ap-south-1 = 1.0 (verified via get-service-quota; the change-request record still reads CASE_OPENED but the applied value is 1.0)",
+    "still_zero": "ec2 L-DB2E81BA 'Running On-Demand G and VT instances' = 0.0, and ml.g4dn.2xlarge/4xlarge/8xlarge endpoint usage = 0.0. Only ml.g4dn.xlarge is usable, so the worker MUST fit a 16 GB host + 16 GB T4.",
+    "endpoint": "drishti-gpu-async InService on ml.g4dn.xlarge (1x Tesla T4), autoscaling min=0/max=1 registered",
+    "verified": {
+      "timesfm": "actual_backend=timesfm actual_device=cuda gpu_name='Tesla T4' cold_start=13.4s runtime=223ms peak_vram=946MB confidence=0.955, 14-step decile fan chart",
+      "tabfm": "actual_backend=tabfm actual_device=cuda gpu_name='Tesla T4' cold_start=90.1s peak_vram=6633MB confidence=0.9998, finite band probabilities",
+      "badtabfm": "FAILED CLOSED - error_code=CUDA_UNAVAILABLE, 'TabFM weight digest mismatch', actual_backend=null",
+      "fallback": "actual_backend=incontext actual_device=cpu digest='cpu-fallback-no-weights' - correctly NOT labelled tabfm"
+    },
+    "pipeline_run": {
+      "command": "services/ml/run_gpu_timesfm.py (wraps forecast_trajectories_safe)",
+      "result": "37/37 districts forecast on the real T4 and persisted to \"CrimePrediction\" with Features.actual_device=cuda, gpu_name='Tesla T4', served_via=aws_sagemaker_async; ModelVersion 230; elapsed 165.6s",
+      "evidence": "37 distinct idempotency keys under async-io/idem/ = 37 distinct GPU inferences (was 1 before the idempotency fix)",
+      "sample": "Bengaluru City 237.42, Bengaluru Urban 133.14, Belagavi 90.59, Mysuru 73.69, Dakshina Kannada 64.79 - each with its own confidence + p10/p50/p90 interval",
+      "k6_acceptance": "services/ml/tests/test_predict_runtime.py::test_real_tabfm_cuda_prediction_succeeds PASSES against the live plane; its S3 result records actual_backend=tabfm actual_device=cuda gpu_name='Tesla T4' peak_gpu_mem_mb=6605"
+    },
+    "still_not_wired": "The TabFM *district forecast layer* (services/ml/app/forecast/tabfm_forecast.py) has NO SageMaker dispatch - it calls risk/models_iface.get_foundation_model() in process, so it runs on local CPU, not this endpoint. Real GPU TabFM is reachable only via the predict runtime (station_workload_band). Giving the forecast layer a SageMaker path is new feature work, not a fix.",
+    "defects_fixed_to_get_here": [
+      "services/gpu-worker/_tabfm_loader.py held BOTH a ~6.3GB fp32 module AND a full ~6.3GB state dict during load_state_dict, peaking ~13GB and getting SIGKILLed on the 16GB host. Replaced with _stream_load_weights(): per-tensor copy straight from safetensors into pre-allocated params, so peak host RAM is just the module.",
+      "An interim fp16 attempt loaded fine (3.3GB VRAM) but produced all-NaN probabilities - this model's activations exceed the fp16 range. Params are now fp32 (6.6GB VRAM, fits the T4) and TabFMClassifier(use_amp=True) still autocasts matmuls to fp16 for tensor-core speed.",
+      "backends.run_tabfm/run_timesfm returned NaN results as state=COMPLETED, violating fail-closed. Added an output finiteness guard that raises BackendUnavailable.",
+      "sagemaker_ops.py _poll only watched the output key, so a fast container failure burned the entire timeout (cost a 25-minute false 'timeout'). It now also polls <failure-prefix>/<inference-id>-error.out.",
+      "sagemaker_ops.py had no update path - 'deploy' is create-only and silently keeps the old image via _safe [exists]. Added a 'redeploy' subcommand that versions model+endpoint-config by image digest and calls update_endpoint.",
+      "codebuild_image.py's CodeBuild role lacked kms:Decrypt, so it could not read the source zip once the bucket defaulted to the model-plane CMK.",
+      "iam/sagemaker-exec-policy.json hardcoded the dead account 860510875713 in every ARN.",
+      "backends._timesfm_infer_core rebuilt TimesFM_2p5_200M_torch on EVERY request and never freed it, so 37 district forecasts accumulated ~14.13 GiB of PyTorch allocations beside the pinned TabFM model until 'CUDA out of memory. Tried to allocate 20.00 MiB'. Added an lru_cache'd _load_timesfm(); this also cut per-request latency from ~5.2s of model loading to ~0.2s of inference.",
+      "SageMakerTimesFMForecaster keyed idempotency on f'timesfm:{last_period}:{horizon}:{len(series)}' with NO district or series content, so all 37 districts collided on one key and the adapter replayed district 1's forecast into all 37 rows. Now keyed on a sha256 of (last_period, horizon, series). This could never have shown up before today because the SageMaker path was unreachable while GPU quota was 0.",
+      "sagemaker_ops._register_autoscaling created ONLY a target-tracking policy on ApproximateBacklogSizePerInstance. With min_capacity=0 that metric is undefined at 0 instances, so the endpoint accepted invocations, parked them in the backlog and NEVER provisioned a GPU - requests hung until the caller timed out. Added the required StepScaling policy driven by a HasBacklogWithoutCapacity CloudWatch alarm, plus an 'autoscale' subcommand to repair a live endpoint. Verified: alarm -> ALARM, desired 0->1, instance up in ~4 min.",
+      "SageMakerTimesFMForecaster hardcoded poll_timeout_s=300, shorter than a scale-from-zero cold start, producing a spurious 'dispatch did not complete: state=RUNNING'. Now DRISHTI_TIMESFM_POLL_TIMEOUT_S, default 1200.",
+      "The dispatch RuntimeError discarded error_detail, so a CUDA OOM and a licence/digest rejection both read as 'error=INFERENCE_ERROR' and the cause had to be dug out of the S3 result object by hand. It now includes detail."
+    ],
+    "known_issue_not_fixed": "The adapter's IdempotencyStore persists FAILED results under the idempotency key, so a transient infrastructure failure (e.g. the CUDA OOM) is replayed forever for that input and the work can never be retried. Clearing async-io/idem/ + async-io/jobs/ is the current workaround. Idempotency should memoize successful work only, or cache failures with a short TTL.",
+    "_superseded_BLOCKED": {
     "status": "GPU QUOTA IS ZERO ACCOUNT-WIDE - the endpoint in step 5 CANNOT be created yet",
     "checked_on": "2026-09-06",
     "sagemaker_endpoint_quota": "ml.g4dn.xlarge / ml.g4dn.2xlarge / ml.g5.xlarge 'for endpoint usage' = 0.0 in ap-south-1, us-east-1, us-west-2 and ap-southeast-1",
     "ec2_gpu_quota": "'Running On-Demand G and VT instances' = 0.0 vCPU in ap-south-1 and us-east-1, so the raw-EC2 fallback is equally blocked",
     "ec2_cpu_quota_for_contrast": "'Running On-Demand Standard' = 5 vCPU (ap-south-1) / 32 vCPU (us-east-1) - CPU capacity exists, GPU does not",
     "requests_filed": [
-      { "service": "sagemaker", "quota_code": "L-B67CFA0C", "quota": "ml.g4dn.xlarge for endpoint usage", "region": "ap-south-1", "desired": 1, "case_id": "e1f101d572784bec821f1b84523280c2OCri0tPg", "status": "PENDING" },
-      { "service": "ec2", "quota_code": "L-DB2E81BA", "quota": "Running On-Demand G and VT instances", "region": "ap-south-1", "desired": 4, "case_id": "8be8a50266484126a336645e445a5be8K5FdZgXr", "status": "PENDING" },
-      { "service": "ec2", "quota_code": "L-DB2E81BA", "quota": "Running On-Demand G and VT instances", "region": "us-east-1", "desired": 4, "case_id": "e2ece2972eb242e39b72df8a83480885h1DiCMse", "status": "PENDING" }
+      {
+        "service": "sagemaker",
+        "quota_code": "L-B67CFA0C",
+        "quota": "ml.g4dn.xlarge for endpoint usage",
+        "region": "ap-south-1",
+        "desired": 1,
+        "case_id": "e1f101d572784bec821f1b84523280c2OCri0tPg",
+        "status": "PENDING"
+      },
+      {
+        "service": "ec2",
+        "quota_code": "L-DB2E81BA",
+        "quota": "Running On-Demand G and VT instances",
+        "region": "ap-south-1",
+        "desired": 4,
+        "case_id": "8be8a50266484126a336645e445a5be8K5FdZgXr",
+        "status": "PENDING"
+      },
+      {
+        "service": "ec2",
+        "quota_code": "L-DB2E81BA",
+        "quota": "Running On-Demand G and VT instances",
+        "region": "us-east-1",
+        "desired": 4,
+        "case_id": "e2ece2972eb242e39b72df8a83480885h1DiCMse",
+        "status": "PENDING"
+      }
     ],
     "check_status": "aws service-quotas list-requested-service-quota-change-history --service-code sagemaker --profile prajwal-sso --region ap-south-1",
     "note": "Steps 1-4 (ECR repo, S3 model plane, KMS CMK, IAM role, CodeBuild image, staged artifacts) are NOT GPU-gated and can be completed while these are pending. Only create-endpoint needs the quota.",
     "not_a_credits_problem": "Credits do not lift a service quota; this is an AWS Support approval on a new account and GPU requests are sometimes declined outright."
+    }
   },
-
   "ecr": {
     "repository": "drishti-gpu-worker",
     "repository_uri": "022499043641.dkr.ecr.ap-south-1.amazonaws.com/drishti-gpu-worker",
@@ -31,23 +88,21 @@
     "scan_on_push": true,
     "encryption": "AES256",
     "encryption_note": "ECR AES256 (AWS-managed) at rest; the KMS CMK is used for the S3 model/async-IO artifacts where the descriptor emphasises KMS.",
-    "local_tag": "drishti-gpu-worker:0.2.3",
-    "image_digest": null,
-    "image_ref": null,
+    "local_tag": "drishti-gpu-worker:0.2.6",
+    "image_digest": "sha256:b9f73b6009c7a613e7f8ab4845ca0aeeba2591c833d59f3af382dcd2cfcbef53",
+    "image_ref": "022499043641.dkr.ecr.ap-south-1.amazonaws.com/drishti-gpu-worker@sha256:b9f73b6009c7a613e7f8ab4845ca0aeeba2591c833d59f3af382dcd2cfcbef53",
     "image_note": "NOT YET BUILT IN THIS ACCOUNT. Build with: $env:AWS_PROFILE='prajwal-sso'; python infra/aws/gpu-worker/codebuild_image.py deploy. Tag 0.2.3 is the last known-good source revision (0.2.3 fixed the TabFM licence marker; 0.2.2 fixed serve quoting; 0.2.1 added serve; 0.2.0 lacked serve). The digest below must be captured from THIS account's ECR - an image digest from the old account 860510875713 is not resolvable here.",
     "prior_account_digests_do_not_reuse": {
       "_note": "Recorded for provenance only. These live in account 860510875713 and cannot be pulled by this account's SageMaker execution role.",
       "0.2.3": "sha256:a2944b7902030bc7d7f4fd1ba327922ce709af6b3efee97ecddcaac5981b7de7"
     }
   },
-
   "kms": {
     "alias": "alias/drishti-model-plane",
-    "key_id": null,
-    "key_arn": null,
-    "_note": "Create in step 2; sagemaker_ops.py reads key_arn for the async output KMS config."
+    "key_id": "14e0e9bd-03f6-4f40-9d5e-446f0f64654b",
+    "key_arn": "arn:aws:kms:ap-south-1:022499043641:key/14e0e9bd-03f6-4f40-9d5e-446f0f64654b",
+    "_note": "Created by bootstrap_infra.py; sagemaker_ops.py reads key_arn for the async output KMS config."
   },
-
   "s3": {
     "bucket": "drishti-model-plane-022499043641-ap-south-1",
     "block_public_access": true,
@@ -58,24 +113,36 @@
     "async_output_prefix": "s3://drishti-model-plane-022499043641-ap-south-1/async-io/output/",
     "async_failure_prefix": "s3://drishti-model-plane-022499043641-ap-south-1/async-io/failure/"
   },
-
   "iam": {
     "sagemaker_execution_role": "arn:aws:iam::022499043641:role/drishti-sagemaker-exec",
     "trust": "sagemaker.amazonaws.com",
     "scope": "ECR pull (worker repo only), S3 get/put/list (model-plane bucket only), KMS decrypt/generateDataKey (CMK only), SageMaker CloudWatch logs, PutMetricData"
   },
-
   "sagemaker": {
     "model_name": "drishti-gpu-worker",
     "endpoint_config_name": "drishti-gpu-async-cfg",
     "endpoint_name": "drishti-gpu-async",
     "_naming_note": "Fresh account, so the plain names are free. The old account had to use the '2' suffix because failed 0.2.0/0.2.1 images left a stuck-Creating endpoint. If a create-endpoint here ever hangs in Creating, do NOT retry the same name - it blocks until terminal.",
     "async_max_concurrent_invocations_per_instance": 2,
-    "autoscaling": { "min_capacity": 0, "max_capacity": 1, "scale_to_zero": true }
+    "autoscaling": {
+      "min_capacity": 0,
+      "max_capacity": 1,
+      "scale_to_zero": true
+    }
   },
-
   "models": {
-    "tabfm": { "package": "tabfm==1.0.0", "repo": "google/tabfm-1.0.0-pytorch", "license": "TabFM Non-Commercial License v1.0", "task": "station_workload_band", "_license_note": "NOT Apache-2.0. Non-commercial only - fine for this evaluation, but it is a real restriction for a police deployment and must be cleared before production use." },
-    "timesfm": { "package": "timesfm==2.0.2", "repo": "google/timesfm-2.5-200m-pytorch", "license": "Apache-2.0", "task": "timesfm_count_forecast" }
+    "tabfm": {
+      "package": "tabfm==1.0.0",
+      "repo": "google/tabfm-1.0.0-pytorch",
+      "license": "TabFM Non-Commercial License v1.0",
+      "task": "station_workload_band",
+      "_license_note": "NOT Apache-2.0. Non-commercial only - fine for this evaluation, but it is a real restriction for a police deployment and must be cleared before production use."
+    },
+    "timesfm": {
+      "package": "timesfm==2.0.2",
+      "repo": "google/timesfm-2.5-200m-pytorch",
+      "license": "Apache-2.0",
+      "task": "timesfm_count_forecast"
+    }
   }
 }

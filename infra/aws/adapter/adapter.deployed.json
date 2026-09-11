@@ -1,7 +1,8 @@
 {
-  "adapter_url": "https://1ym4tv6g13.execute-api.ap-south-1.amazonaws.com",
-  "secret_arn": "arn:aws:secretsmanager:ap-south-1:860510875713:secret:drishti/aws-adapter-secret-X7fuJ6",
-  "function_arn": "arn:aws:lambda:ap-south-1:860510875713:function:drishti-aws-adapter",
-  "dlq_arn": "arn:aws:sqs:ap-south-1:860510875713:drishti-adapter-dlq",
-  "sm_async_endpoint": "drishti-gpu-async2"
+  "adapter_url": "https://5d425amuo9.execute-api.ap-south-1.amazonaws.com",
+  "secret_arn": "arn:aws:secretsmanager:ap-south-1:022499043641:secret:drishti/aws-adapter-secret-zWsWJI",
+  "function_arn": "arn:aws:lambda:ap-south-1:022499043641:function:drishti-aws-adapter",
+  "dlq_arn": "arn:aws:sqs:ap-south-1:022499043641:drishti-adapter-dlq",
+  "sm_async_endpoint": "drishti-gpu-async",
+  "bedrock_model_id": "zai.glm-4.7-flash"
 }

@@ -611,6 +611,87 @@ def _new_canonical_person(conn, display_name: Optional[str], attributes: dict) -
         return int(cur.fetchone()[0])
 
 
+def _enrol_party_face(conn, canonical_person_id: int, attributes: dict,
+                      actor: Optional[str], draft_key: str) -> Optional[dict]:
+    """Enrol the face captured during intake onto the identity just created.
+
+    Without this, scanning a person who is NOT yet on file is a dead end: the
+    officer photographs them, the search correctly reports "not on file", the
+    party is created as a new identity on approval — and the descriptor that was
+    just computed is thrown away, so the next scan of the same person reports
+    "not on file" all over again. The gallery could only ever grow by someone
+    remembering to go to the person's profile afterwards.
+
+    Nothing new is stored to make this work. ``FaceSearchProbe`` already retains
+    the 512-dim descriptor of every probe (it is the audit record of the search),
+    so enrolment is a copy of that vector into the gallery under the SAME
+    ModelVersionID it was computed with — no image bytes, and no re-encoding that
+    could land in a different numeric space.
+
+    Opt-in and party-scoped: it runs only when the officer ticked the enrol box
+    for THIS party, which is why the probe reference is carried on the party
+    rather than looked up by draft key (a draft can hold several scanned people,
+    and guessing which probe belongs to which party is exactly the kind of
+    mix-up that must not happen to biometric data).
+
+    Failure is contained. A missing/expired probe or a gallery cap must never
+    roll back an approved FIR, so the work runs inside a SAVEPOINT and reports
+    instead of raising.
+    """
+    if not attributes.get("face_enrol_on_approval"):
+        return None
+    probe_ref = str(attributes.get("face_probe_ref") or "").strip()
+    if not probe_ref:
+        return None
+
+    from ..config import get_settings
+    from ..face import store as face_store
+
+    with conn.cursor() as cur:
+        cur.execute("SAVEPOINT face_enrol")
+    try:
+        probe = face_store.probe_by_ref(conn, probe_ref)
+        if probe is None:
+            raise ValueError(f"probe {probe_ref} not found")
+        vec = face_store.parse_vector_literal(probe.get("embedding_literal"))
+        if vec is None:
+            raise ValueError("probe descriptor is no longer retained")
+        cap = get_settings().face_max_gallery_per_person
+        held = face_store.count_person_faces(
+            conn, canonical_person_id, probe["model_version_id"])
+        if held >= cap:
+            raise ValueError(f"gallery limit reached ({held}/{cap})")
+
+        face_id, created = face_store.enrol_face(
+            conn, canonical_person_id=canonical_person_id,
+            model_version_id=probe["model_version_id"],
+            embedding=vec, image_sha256=probe["image_sha256"],
+            bounding_box=probe.get("bounding_box") or {},
+            detector_score=probe.get("detector_score"),
+            quality=probe.get("quality_score"),
+            # Name both halves of the provenance: the draft the capture came from
+            # and the probe whose descriptor this is, so the originating search
+            # (actor, time, shortlist) stays recoverable from the gallery row.
+            image_label=f"intake capture {draft_key} probe {probe_ref}",
+            enrolment_source="probe_confirmation", actor=actor,
+            # The photo taken while recording the person IS their reference
+            # image; a new identity has nothing else to show.
+            make_primary=True)
+        with conn.cursor() as cur:
+            cur.execute("RELEASE SAVEPOINT face_enrol")
+        return {"enrolled": True, "person_face_embedding_id": face_id,
+                "created": created, "probe_ref": probe_ref,
+                "canonical_person_id": canonical_person_id,
+                "model_version_id": probe["model_version_id"]}
+    except Exception as exc:  # noqa: BLE001 — approval must survive this
+        with conn.cursor() as cur:
+            cur.execute("ROLLBACK TO SAVEPOINT face_enrol")
+            cur.execute("RELEASE SAVEPOINT face_enrol")
+        return {"enrolled": False, "probe_ref": probe_ref,
+                "canonical_person_id": canonical_person_id,
+                "reason": f"{type(exc).__name__}: {exc}"}
+
+
 def _new_canonical_org(conn, name: str, attributes: dict) -> int:
     ref = "SYN-ORG-" + uuid.uuid4().hex[:12].upper()
     with conn.cursor() as cur:
@@ -779,6 +860,7 @@ def _approve(conn, draft_key: str, actor: Optional[str]) -> ApprovalResult:
     role_seq: dict[str, int] = {}
     party_role_ids: list[int] = []
     canonical_person_ids: list[int] = []
+    face_enrolments: list[dict] = []
     for p in parties:
         role_seq[p.role_type] = role_seq.get(p.role_type, 0) + 1
         seq = p.sequence_no or role_seq[p.role_type]
@@ -791,6 +873,13 @@ def _approve(conn, draft_key: str, actor: Optional[str]) -> ApprovalResult:
             cp_id = _new_canonical_person(conn, p.display_name, p.attributes or {})
         if cp_id:
             canonical_person_ids.append(cp_id)
+            # The face photographed during intake becomes searchable at the moment
+            # the identity exists, so the NEXT scan of this person returns their
+            # record instead of "not on file" again.
+            enrolled = _enrol_party_face(
+                conn, cp_id, p.attributes or {}, actor, draft_key)
+            if enrolled is not None:
+                face_enrolments.append(enrolled)
         legacy_table, legacy_id = (None, None)
         if p.role_type in ("accused", "victim", "complainant") and not is_unknown:
             legacy_table, legacy_id = _insert_legacy_person(
@@ -824,10 +913,16 @@ def _approve(conn, draft_key: str, actor: Optional[str]) -> ApprovalResult:
             'UPDATE "IntakeDraft" SET "Status"=\'approved\', "CaseMasterID"=%s, '
             '"ReviewedByActor"=%s, "ReviewedAt"=now(), "RevisionNo"="RevisionNo"+1 '
             'WHERE "IntakeDraftID"=%s', (case_id, actor, draft_id))
+    # Enrolling a face is a biometric act, so it is named on the approval trail
+    # rather than being an invisible side effect of approving an FIR.
     _activity(conn, draft_id, "approved", actor,
-              {"case_master_id": case_id, "crime_no": crime_no})
+              {"case_master_id": case_id, "crime_no": crime_no,
+               **({"face_enrolments": face_enrolments} if face_enrolments else {})})
     audit.record(audit.Action.INTAKE_APPROVE, "case", case_id, actor=actor, conn=conn,
-                 detail={"draft_key": draft_key, "crime_no": crime_no, "category": category})
+                 detail={"draft_key": draft_key, "crime_no": crime_no,
+                         "category": category,
+                         **({"face_enrolments": face_enrolments}
+                            if face_enrolments else {})})
 
     draft = _serialize_draft(conn, draft_key)
     return ApprovalResult(

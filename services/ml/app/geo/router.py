@@ -130,6 +130,13 @@ def trends(
     A wing seat's crime-head confinement takes precedence over an explicitly
     requested head that lies outside its remit — asking for a head the wing is not
     accountable for narrows to nothing rather than reaching outside the wing.
+
+    ``geo.unit_id`` carries the STATION grain, so a station seat gets its own series
+    rather than its district's. It was previously dropped here, which left the SHO
+    board reporting a district trend beside station-confined KPI cards — two
+    different jurisdictions on one board, with nothing saying so. Only a station or
+    assigned-case seat resolves a unit, and `geo_scope` has already confirmed it is
+    the caller's own, so this can narrow and never widen.
     """
     head = crime_head_id
     if geo.crime_head_ids:
@@ -137,7 +144,8 @@ def trends(
     return service.trends_series(geo.district_id, head, sub_head_id, start, end,
                                  window, k, decompose,
                                  district_ids=_district_scope(geo),
-                                 crime_head_ids=geo.crime_head_ids)
+                                 crime_head_ids=geo.crime_head_ids,
+                                 unit_id=geo.unit_id)
 
 
 @router.get("/points", response_model=PointsResponse)

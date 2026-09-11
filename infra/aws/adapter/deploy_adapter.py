@@ -157,12 +157,23 @@ def _ensure_lambda(role_arn: str, secret_val: str, dlq_arn: str) -> str:
             DeadLetterConfig={"TargetArn": dlq_arn})
         print("  [ok] updated adapter Lambda")
     except lam.exceptions.ResourceNotFoundException:
-        lam.create_function(
-            FunctionName=FUNCTION, Runtime="python3.12", Role=role_arn,
-            Handler="handler.lambda_handler", Code={"ZipFile": code},
-            Timeout=60, MemorySize=512, Environment=env,
-            DeadLetterConfig={"TargetArn": dlq_arn}, Publish=True,
-            Description="DRISHTI Prompt 24 protected AWS adapter (signed HMAC ingress to SageMaker async)")
+        # A freshly-created role's inline policy is not immediately visible to
+        # Lambda's create-time validation of the DLQ SendMessage grant, so retry.
+        for attempt in range(10):
+            try:
+                lam.create_function(
+                    FunctionName=FUNCTION, Runtime="python3.12", Role=role_arn,
+                    Handler="handler.lambda_handler", Code={"ZipFile": code},
+                    Timeout=60, MemorySize=512, Environment=env,
+                    DeadLetterConfig={"TargetArn": dlq_arn}, Publish=True,
+                    Description="DRISHTI Prompt 24 protected AWS adapter "
+                                "(signed HMAC ingress to SageMaker async)")
+                break
+            except lam.exceptions.InvalidParameterValueException as exc:
+                if attempt == 9:
+                    raise
+                print(f"  [wait] role not propagated yet ({str(exc)[:60]}...); retrying")
+                time.sleep(6)
         print("  [ok] created adapter Lambda")
     _wait_updated(lam)
     return lam.get_function(FunctionName=FUNCTION)["Configuration"]["FunctionArn"]

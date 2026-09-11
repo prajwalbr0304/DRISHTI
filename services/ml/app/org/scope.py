@@ -13,7 +13,7 @@ DB-backed :func:`resolve_scope_for_user` is the thin trusted-lookup wrapper.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from . import hierarchy
@@ -337,7 +337,41 @@ def scope_from_gateway_context(ctx) -> ScopeContext:
     """Build a trusted :class:`ScopeContext` from a verified signed gateway
     context (Prompt 21 §E.3). The role + district/unit were resolved SERVER-SIDE
     by the gateway function and signed, so this needs no DB and cannot be spoofed
-    by the browser. Used by the deployed AppSail path."""
+    by the browser. Used by the deployed AppSail path.
+
+    ONE EXCEPTION, for the demo-auth path. When the context carries a requested
+    seat name and NO geographic scope of its own, that seat is looked up in the
+    ``users`` table and its real posting is used. This exists because demo auth
+    (DRISHTI_DEMO_AUTH) mints a single full-access ``system_admin`` context for
+    every caller: without the lookup, all ~11,800 seats collapsed onto one
+    platform-wide identity, so an SP posted to one district was served — and
+    offered in the district selector — all 38.
+
+    Three properties make this safe rather than a hole:
+
+      * the signed context supplies a NAME; the scope comes from the database, so
+        it is still derived server-side from trusted data and never asserted;
+      * a signed geographic scope always WINS. The lookup only runs when the
+        context carries none, so the authenticated path (where `resolveIdentity`
+        resolved a real district/unit) is untouched;
+      * in demo mode the baseline is unrestricted platform access, so resolving a
+        named seat can only ever NARROW what is served.
+
+    A failed lookup — unknown seat, inactive seat, DB down — falls back to the
+    signed context unchanged, which is the pre-existing behaviour.
+    """
+    requested = (getattr(ctx, "actor", None) or "").strip()
+    if requested and ctx.district_id is None and ctx.unit_id is None:
+        try:
+            # Local import: org.service imports this module, so a top-level import
+            # would be circular.
+            from . import service as org_service
+            seat = org_service.resolve_scope_for_user(username=requested)
+        except Exception:  # noqa: BLE001 — unknown/inactive seat, or DB unavailable
+            seat = None
+        if seat is not None and seat.resolved:
+            return replace(seat, source="signed-gateway-context+seat")
+
     return derive_scope(
         ctx.role,
         user_id=None,

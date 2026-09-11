@@ -23,6 +23,7 @@ pre/post-processing, so the descriptors live in the same ArcFace space:
 """
 from __future__ import annotations
 
+import os
 import threading
 from dataclasses import dataclass
 from typing import Optional
@@ -185,6 +186,33 @@ def preferred_providers() -> list[str]:
     return picked or ["CPUExecutionProvider"]
 
 
+def _low_memory() -> bool:
+    """Whether to build sessions for a hard-capped container.
+
+    ONNX Runtime's defaults are tuned for a workstation: the CPU BFC arena
+    pre-allocates and never returns memory to the OS, memory-pattern planning
+    reserves activation buffers up front, and intra-op threads are sized to the
+    physical core count with per-thread scratch. On a 512 MB AppSail instance
+    that overhead is the difference between serving and being OOM-killed, so it
+    is switchable rather than assumed.
+    """
+    return os.getenv("DRISHTI_FACE_LOW_MEMORY", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _intra_threads() -> Optional[int]:
+    """Intra-op thread cap. Each thread carries its own scratch allocation, so on
+    a small instance more threads cost memory for latency we cannot use anyway."""
+    raw = os.getenv("DRISHTI_FACE_ORT_INTRA_THREADS", "").strip()
+    if raw:
+        try:
+            val = int(raw)
+        except ValueError:
+            return None
+        return val if 1 <= val <= 64 else None
+    return 1 if _low_memory() else None
+
+
 def _make_session(path: str, providers: list[str]):
     import onnxruntime as ort
     opts = ort.SessionOptions()
@@ -192,6 +220,14 @@ def _make_session(path: str, providers: list[str]):
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     # One ONNX call per HTTP request: intra-op threads help, inter-op does not.
     opts.inter_op_num_threads = 1
+    threads = _intra_threads()
+    if threads is not None:
+        opts.intra_op_num_threads = threads
+    if _low_memory():
+        # Allocate per-run instead of holding a growing arena, and skip the
+        # activation pre-plan. Costs some latency; keeps resident memory bounded.
+        opts.enable_cpu_mem_arena = False
+        opts.enable_mem_pattern = False
     return ort.InferenceSession(path, sess_options=opts, providers=providers)
 
 

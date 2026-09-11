@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import type { MyScopeResponse } from "@/api/endpoints/org";
+import { useSeatKey } from "@/hooks/useSeatKey";
 import { useRole } from "@/providers/RoleProvider";
 import type { ScopeType, UserRole } from "@/config/roles";
 
@@ -46,6 +47,16 @@ export interface SeatRegion {
   scopeType: ScopeType;
   /** Districts a range seat covers. null when not range-scoped. */
   districtIds: number[] | null;
+  /** Units (police stations) the seat is confined to. null above station grain.
+   *
+   *  Carried because the district alone cannot name a STATION seat's posting, and a
+   *  station or IO board has to be able to say which station its figures are for —
+   *  that is the difference between "your caseload" and "some caseload". */
+  unitIds: number[] | null;
+  /** Rank on the trusted seat record, e.g. "Police Sub-Inspector". Display only. */
+  rank: string | null;
+  /** Username of the resolved seat. Display/audit only, never authentication. */
+  username: string | null;
   /** Wing / range the seat is anchored to, when applicable. */
   wingId: number | null;
   rangeId: number | null;
@@ -74,11 +85,19 @@ const BROAD_ROLES = new Set<UserRole>([
 
 export function useMyScope(): SeatRegion {
   const { role } = useRole();
+  const seatKey = useSeatKey();
 
   const q = useQuery({
-    // Keyed by role so switching seats re-resolves; the request carries the
-    // seat's actor header, which is what the server resolves the posting from.
-    queryKey: ["org", "my-scope", role],
+    /* Keyed by SEAT, not by role. The request carries the seat's actor header and
+       the server resolves the posting from that record, so two seats sharing a role
+       get different answers — an SP of Bagalkot and an SP of Mysuru are both
+       `district_command` and are entitled to different districts.
+
+       Keyed by role alone this cache replayed the first seat's scope to the second:
+       opening SP Ganesh Gowda after SP Anand reported Anand's district here, and
+       because this hook is what anchors the region selector and what every board
+       reads, the whole workspace then claimed to be somewhere it was not. */
+    queryKey: ["org", "my-scope", seatKey],
     queryFn: ({ signal }) => api.org.myScope(signal),
     staleTime: 5 * 60_000,
     retry: false,
@@ -98,6 +117,9 @@ export function resolveSeatRegion(
   const seat = {
     scopeType: (scope?.scope_type as ScopeType | undefined) ?? "unresolved",
     districtIds: pinned,
+    unitIds: scope?.unit_ids ?? null,
+    rank: scope?.rank ?? null,
+    username: scope?.username ?? null,
     wingId: scope?.wing_id ?? null,
     rangeId: scope?.range_id ?? null,
     crimeHeadIds: scope?.crime_head_ids ?? null,

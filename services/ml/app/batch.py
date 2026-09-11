@@ -84,6 +84,24 @@ def _cmd_hidden_associations(args) -> int:
     return 0
 
 
+def _cmd_load_curated_case(args) -> int:
+    """Load the curated public-source case record through the real FIR path.
+
+    Writes no biometric material for any real person: see the module docstring in
+    app/cases/curated_public_case.py. Loading this case moves the analytics-policy
+    digest, so the reminder below is printed rather than left to be rediscovered
+    when /geo/hotspots starts failing closed.
+    """
+    from .cases import curated_public_case as curated
+    with db.rw_conn() as conn:
+        result = curated.load(conn, actor=args.actor)
+    print(json.dumps(result, indent=2, default=str))
+    if result.get("status") == "loaded":
+        print("\nNOTE: curated case material changes the analytics-policy digest. "
+              "Re-run: hotspots, emerging-alerts, workload-run", flush=True)
+    return 0 if result.get("status") == "loaded" else 1
+
+
 def _cmd_hotspots(args) -> int:
     from .geo import hotspots
     with db.rw_conn() as conn:
@@ -336,8 +354,12 @@ def _cmd_face_enrol(args) -> int:
         print(f"  {path.name} -> person {cpid} "
               f"(quality {resp.quality}, gallery {resp.gallery_face_count})")
 
+    try:
+        prefer = face_service._encoder().name
+    except Exception:  # noqa: BLE001 — a summary line must not fail the command
+        prefer = None
     with _db.ro_conn() as conn:
-        live = store.gallery_model(conn)
+        live = store.gallery_model(conn, prefer_model_name=prefer)
     results["gallery"] = ({"model_version_id": live[0], "model_name": live[1],
                            "face_count": live[2], "person_count": live[3]}
                           if live else None)
@@ -595,7 +617,7 @@ def _cmd_face_enrol_portraits(args) -> int:
 
     face_count, person_count = 0, 0
     with _db.ro_conn() as ro:
-        live = store.gallery_model(ro)
+        live = store.gallery_model(ro, prefer_model_name=encoder.name)
         if live:
             face_count, person_count = live[2], live[3]
 
@@ -841,6 +863,13 @@ def build_parser() -> argparse.ArgumentParser:
     ha.set_defaults(func=_cmd_hidden_associations)
 
     # ---- geospatial jobs (Phase 7) ----
+    lc = sub.add_parser("load-curated-case",
+                        help="load the curated public-source case record (real case "
+                             "from published court records) through the FIR intake "
+                             "path; read-only and excluded from derived analytics")
+    lc.add_argument("--actor", default="curated.loader")
+    lc.set_defaults(func=_cmd_load_curated_case)
+
     hs = sub.add_parser("hotspots", help="ST-DBSCAN + KDE hotspots -> CrimeHotspot")
     hs.add_argument("--eps-m", type=float, default=1500.0)
     hs.add_argument("--eps-days", type=float, default=150.0)

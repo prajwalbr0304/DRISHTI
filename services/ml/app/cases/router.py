@@ -71,8 +71,20 @@ def list_cases(
 
 
 @router.get("/filters", response_model=FilterOptionsResponse)
-def case_filters(_role: str = Depends(require_case_read)):
-    return explorer.filter_options()
+def case_filters(_role: str = Depends(require_case_read),
+                 geo: GeoScope = Depends(geo_scope)):
+    """Filter-rail lookups, CONFINED to the caller's seat.
+
+    Every district picker in the workspace reads this one endpoint — the top-bar
+    region selector, the Case Explorer rail, and the Trends, Forecasts and Patterns
+    modes. It used to answer with all 38 districts regardless of seat, so a district
+    seat was offered 37 districts that `enforce_geo_request` refuses with a 403.
+    Narrowing it here fixes all five surfaces at once, and does it on the side that
+    actually knows the answer.
+    """
+    return explorer.filter_options(district_ids=geo.effective_district_ids(),
+                                   unit_id=geo.unit_id,
+                                   crime_head_ids=geo.crime_head_ids)
 
 
 @router.get("/caseload", response_model=CaseloadResponse)

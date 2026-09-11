@@ -35,7 +35,7 @@ PROJECT = "drishti-gpu-worker-build"
 ROLE = "drishti-codebuild-role"
 SRC_DIR = os.path.join(_HERE, "..", "..", "..", "services", "gpu-worker")
 SRC_KEY = "codebuild/gpu-worker-source.zip"
-TAG = os.getenv("DRISHTI_IMAGE_TAG", "0.2.3")
+TAG = os.getenv("DRISHTI_IMAGE_TAG", "0.2.6")
 
 BUILDSPEC = """version: 0.2
 phases:
@@ -71,6 +71,10 @@ def _ensure_role() -> str:
             "ecr:GetDownloadUrlForLayer", "ecr:DescribeImages"],
          "Resource": f"arn:aws:ecr:{REGION}:{ACCOUNT}:repository/{REPO}"},
         {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": f"arn:aws:s3:::{BUCKET}/*"},
+        # The source zip lands in a bucket whose default encryption is the
+        # model-plane CMK, so CodeBuild cannot read it without kms:Decrypt.
+        {"Effect": "Allow", "Action": ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+         "Resource": _CFG["kms"]["key_arn"] or "*"},
         {"Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:CreateLogStream",
                                        "logs:PutLogEvents"],
          "Resource": f"arn:aws:logs:{REGION}:{ACCOUNT}:*"},

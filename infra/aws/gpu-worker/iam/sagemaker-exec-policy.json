@@ -4,40 +4,61 @@
     {
       "Sid": "EcrAuthToken",
       "Effect": "Allow",
-      "Action": ["ecr:GetAuthorizationToken"],
+      "Action": [
+        "ecr:GetAuthorizationToken"
+      ],
       "Resource": "*"
     },
     {
       "Sid": "EcrPullWorkerImageOnly",
       "Effect": "Allow",
-      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
-      "Resource": "arn:aws:ecr:ap-south-1:860510875713:repository/drishti-gpu-worker"
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "arn:aws:ecr:ap-south-1:022499043641:repository/drishti-gpu-worker"
     },
     {
       "Sid": "S3AsyncIoModelPlaneOnly",
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ],
       "Resource": [
-        "arn:aws:s3:::drishti-model-plane-860510875713-ap-south-1",
-        "arn:aws:s3:::drishti-model-plane-860510875713-ap-south-1/*"
+        "arn:aws:s3:::drishti-model-plane-022499043641-ap-south-1",
+        "arn:aws:s3:::drishti-model-plane-022499043641-ap-south-1/*"
       ]
     },
     {
       "Sid": "KmsModelPlaneCmkOnly",
       "Effect": "Allow",
-      "Action": ["kms:Decrypt", "kms:GenerateDataKey"],
-      "Resource": "arn:aws:kms:ap-south-1:860510875713:key/6f81cab9-c76d-4347-b8c5-e25632191a6f"
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey"
+      ],
+      "Resource": "arn:aws:kms:ap-south-1:022499043641:key/14e0e9bd-03f6-4f40-9d5e-446f0f64654b"
     },
     {
       "Sid": "SageMakerLogs",
       "Effect": "Allow",
-      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"],
-      "Resource": "arn:aws:logs:ap-south-1:860510875713:log-group:/aws/sagemaker/*"
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": "arn:aws:logs:ap-south-1:022499043641:log-group:/aws/sagemaker/*"
     },
     {
       "Sid": "SageMakerMetrics",
       "Effect": "Allow",
-      "Action": ["cloudwatch:PutMetricData"],
+      "Action": [
+        "cloudwatch:PutMetricData"
+      ],
       "Resource": "*"
     }
   ]

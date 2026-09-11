@@ -128,7 +128,17 @@ Write-Host "            DRISHTI_AWS_ADAPTER_SECRET, SEMANTIC_PLANNER_PROVIDER=aw
 Write-Host "            BEDROCK_MODEL_ID=zai.glm-4.7-flash, BEDROCK_REGION=us-east-1"
 Write-Host "  Bedrock prefers the signed AWS adapter. Dedicated least-privilege"
 Write-Host "  AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY enable direct GLM failover."
-Write-Host "  do NOT set: DATABASE_URL (the operational CRUD path uses Catalyst Data Store)."
+Write-Host ""
+Write-Host "  FACE RECOGNITION: the pack, model directory, low-memory session profile" -ForegroundColor Yellow
+Write-Host "  and calibrated match thresholds are baked into the image as ENV defaults,"
+Write-Host "  so no Console action is needed for them. Override in the Console only to"
+Write-Host "  retune. The pack MUST stay buffalo_s on a 512 MB instance (buffalo_l is"
+Write-Host "  OOM-killed loading its ArcFace R50 session) and MUST match the pack that"
+Write-Host "  built the enrolled PersonFaceEmbedding gallery, or /face/search returns 409."
+Write-Host ""
+Write-Host "  DATABASE_URL: the operational CRUD path uses Catalyst Data Store and does" -ForegroundColor Yellow
+Write-Host "  not need it. It IS required for facial recognition, whose pgvector gallery"
+Write-Host "  lives in RDS — /face/status reports a zero gallery without it."
 Write-Host ""
 Write-Host "Then smoke-test the deployed base URL:" -ForegroundColor Cyan
 Write-Host "  python $($RepoRoot)\infra\catalyst\pipelines\smoke_test.py --base-url https://<appsail-url>"

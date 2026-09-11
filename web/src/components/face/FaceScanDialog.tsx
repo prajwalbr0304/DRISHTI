@@ -13,7 +13,7 @@ interface Props {
   existingCanonicalPersonId?: number | null;
   onConfirm?: (c: FaceConfirmation) => void | Promise<void>;
   confirmLabel?: string;
-  onNoMatch?: () => void;
+  onNoMatch?: (probeRef: string) => void;
   title?: string;
   description?: string;
 }

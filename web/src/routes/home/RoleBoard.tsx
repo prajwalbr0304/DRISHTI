@@ -93,7 +93,7 @@ export function RoleBoard({
      not disturb the ADGP wing board even though both are senior_command. */
   const gridId = `board:${scope}`;
   const hiddenKeys = useDashboardStore((s) => hiddenTiles(s, gridId));
-  const { resolve } = useKpiValues();
+  const { resolve } = useKpiValues(scope);
   /* Admin switches. Presentation only: a hidden card's endpoint still answers, so
      this decides what is DRAWN, never what may be read. */
   const ui = useUiVisibility();

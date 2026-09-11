@@ -28,6 +28,7 @@ from ..intake.guards import require_write_allowed
 from .. import roles as _roles
 from ..roles import normalize_role
 from . import hierarchy, scope as scope_mod, service
+from .deps import resolve_seat_scope
 from .schemas import (AssignRoleRequest, CreateUserRequest, HierarchyResponse,
                       MyScopeResponse, RangesResponse, RolesResponse,
                       ScopeMatrixResponse, SeatsResponse, SetActiveRequest,
@@ -115,21 +116,28 @@ def get_seats(q: Optional[str] = Query(None, max_length=120),
 
 
 @router.get("/my-scope", response_model=MyScopeResponse)
-def my_scope(x_demo_actor: Optional[str] = Header(default=None),
-             x_role: Optional[str] = Header(default=None)):
-    """Resolve the caller's trusted scope. In deployed mode the gateway injects
-    the authenticated actor; locally the demo actor/role stand in. Falls back to
-    a role-default scope when the actor is not a known user."""
-    username = (x_demo_actor or "").strip() or None
+def my_scope(request: Request):
+    """Resolve the caller's trusted scope.
+
+    Delegates to ``resolve_seat_scope`` — the SAME resolver every scoped endpoint
+    uses — rather than re-deriving the scope from headers here. That matters
+    because this endpoint is what the whole frontend anchors on: the region
+    selector, the board choice and every widget's default scope come from this
+    answer, so if it disagrees with what the endpoints actually enforce, the
+    workspace confidently reports on a jurisdiction it is not being served.
+
+    It disagreed in exactly one case. This read the demo-actor header directly and
+    ignored the signed gateway context, so a caller carrying a signed geographic
+    scope AND a requested seat name got the seat, while every other endpoint
+    correctly preferred the signed scope. Resolution precedence now lives in one
+    place (``org/deps.resolve_seat_scope``): signed context first, then the seat
+    behind the demo actor, then the role default.
+    """
     try:
-        if username:
-            sc = service.resolve_scope_for_user(username=username)
-        else:
-            sc = scope_mod.derive_scope(normalize_role(x_role), source="role-default")
-    except service.OrgError:
-        sc = scope_mod.derive_scope(normalize_role(x_role), source="role-default")
+        sc = resolve_seat_scope(request)
     except Exception:  # noqa: BLE001 — DB unavailable: fall back to role default
-        sc = scope_mod.derive_scope(normalize_role(x_role), source="role-default-offline")
+        sc = scope_mod.derive_scope(
+            normalize_role(request.headers.get("x-role")), source="role-default-offline")
     out = sc.as_dict()
     out["note"] = _SCOPE_NOTE
     return out

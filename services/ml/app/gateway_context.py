@@ -30,6 +30,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -61,6 +62,13 @@ _SERVICE_DEFAULT_ROLE = "investigating_officer"
 # DRISHTI_CONTEXT_AUDIENCE; set it to an empty string to disable the check.
 DEFAULT_AUDIENCE = "drishti-appsail"
 
+# Accepted shape of a requested seat name (mirrors SEAT_ACTOR_PATTERN in
+# infra/catalyst/functions/gateway_api/index.js): a username, an email, or a demo
+# actor like `demo.sho`. Enforced on BOTH sides on purpose — the signer restricts
+# what it mints, and AppSail restricts what it will act on.
+_ACTOR_MAX_LEN = 120
+_ACTOR_RE = re.compile(r"^[A-Za-z0-9._@+-]+$")
+
 
 class ContextError(ValueError):
     """Raised when a signed context is missing, malformed, expired or forged."""
@@ -88,6 +96,11 @@ class GatewayContext:
     scope_level: Optional[str] = None
     district_id: Optional[int] = None
     unit_id: Optional[int] = None
+    # A seat USERNAME the caller asked to operate as, present only in the demo-auth
+    # path (DRISHTI_DEMO_AUTH). It NAMES a seat; it does not describe one — the
+    # scope is still looked up server-side from the `users` table (see
+    # org/scope.scope_from_gateway_context). Never a role, district or unit.
+    actor: Optional[str] = None
 
     @property
     def is_service(self) -> bool:
@@ -249,6 +262,18 @@ def verify_signed_context(
     unit_id = _scope_int("unit_id")
     scope_level = (str(data.get("scope_level")).strip() or None) if data.get("scope_level") else None
 
+    # Requested seat name (demo-auth path). Re-validated here rather than trusted
+    # from the signer: this value reaches a parameterised `users` lookup, and the
+    # same conservative charset the Node side applies is enforced again on arrival.
+    # A value failing it is DROPPED, not sanitised — a half-corrected username
+    # could name a different seat than the one asked for.
+    actor_raw = data.get("actor")
+    actor: Optional[str] = None
+    if actor_raw is not None:
+        candidate = str(actor_raw).strip()
+        if candidate and len(candidate) <= _ACTOR_MAX_LEN and _ACTOR_RE.match(candidate):
+            actor = candidate
+
     # Replay is checked LAST so a request that fails signature/scope/audience/
     # expiry never consumes (burns) a nonce it would otherwise be allowed to use.
     nonce = str(data.get("nonce", ""))
@@ -269,6 +294,7 @@ def verify_signed_context(
         scope_level=scope_level,
         district_id=district_id,
         unit_id=unit_id,
+        actor=actor,
     )
 
 

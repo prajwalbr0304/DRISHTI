@@ -75,7 +75,11 @@ def _inject_trusted_identity(request: Request, ctx: GatewayContext) -> None:
     actor and organizational scope so the existing X-Role-based role gates and
     the scope resolver operate on the verified identity, never a client value."""
     trusted_role = (ctx.role or DEFAULT_ROLE).strip() or DEFAULT_ROLE
-    actor = (ctx.user_id or ctx.email or ctx.source
+    # A verified requested seat name wins for AUDIT/display purposes, so the trail
+    # records the seat that was actually operated as rather than the shared demo
+    # identity. It is not an authorization input: scope still comes from
+    # scope_from_gateway_context, which resolves it against the users table.
+    actor = (getattr(ctx, "actor", None) or ctx.user_id or ctx.email or ctx.source
              or ("service" if ctx.is_service else "gateway"))
     headers = [(k, v) for (k, v) in request.scope["headers"]
                if k.lower() not in _STRIP_HEADERS]

@@ -71,7 +71,12 @@
       "DRISHTI_CHANNEL_SIGNING_SECRET",
       "DRISHTI_CHANNEL_ALLOWED_ORIGINS",
       "DRISHTI_APPSAIL_STREAM_URL",
-      "DRISHTI_CHANNEL_TTL_MS"
+      "DRISHTI_CHANNEL_TTL_MS",
+      "DRISHTI_FACE_MODEL_PACK",
+      "DRISHTI_FACE_MODEL_DIR",
+      "DRISHTI_FACE_LOW_MEMORY",
+      "DRISHTI_FACE_MATCH_THRESHOLD",
+      "DRISHTI_FACE_STRONG_THRESHOLD"
     ],
     "key_notes": {
       "DRISHTI_REQUIRE_GATEWAY_CONTEXT": "true in deployment: AppSail verifies the signed gateway/service context (signature/audience/scope/expiry/replay) before handling any non-health request and rejects unauthenticated browser CRUD (items 10/12). Unset/false locally.",
@@ -90,7 +95,12 @@
       "SEMANTIC_PLANNER_PROVIDER": "Set to aws_bedrock. AppSail prefers the existing signed AWS adapter and may use explicit direct SDK failover with the dedicated least-privilege IAM user.",
       "BEDROCK_MODEL_ID": "Must be exactly zai.glm-4.7-flash. Code and AWS IAM both reject Claude, GPT/OpenAI, and any unreviewed model.",
       "BEDROCK_REGION": "Set to us-east-1 for the current GLM 4.7 Flash Bedrock endpoint.",
-      "BEDROCK_DIRECT_SDK_ENABLED": "Optional local/profile opt-in. In AppSail, the dedicated least-privilege AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY server-side variables enable direct failover even when this flag is false or blank."
+      "BEDROCK_DIRECT_SDK_ENABLED": "Optional local/profile opt-in. In AppSail, the dedicated least-privilege AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY server-side variables enable direct failover even when this flag is false or blank.",
+      "DRISHTI_FACE_MODEL_PACK": "MUST be buffalo_s on this instance size. Baked into the image as an ENV default, so it only needs setting in the Console to override. MEASURED: with the 512 MB cap the app baseline is ~220 MB and buffalo_l (ArcFace R50, ~182 MB of weights) is OOM-killed while building its ONNX session; buffalo_s (SCRFD-500MF + ArcFace MobileFaceNet, ~15 MB) peaks at ~280 MB through a full 1:N search. Descriptors from the two packs are NOT comparable, so the enrolled PersonFaceEmbedding gallery must be built with the SAME pack or /face/search refuses with 409.",
+      "DRISHTI_FACE_MODEL_DIR": "Where the baked ONNX packs live in the image (/opt/face-models). Set as an image ENV; override only if the weights are mounted elsewhere.",
+      "DRISHTI_FACE_LOW_MEMORY": "true on AppSail. Builds the onnxruntime sessions with the CPU arena and memory-pattern planning DISABLED and intra-op threads capped at 1 (app/face/onnx_arcface.py). ORT's defaults hold a growing arena that never returns memory to the OS, which on a 512 MB instance is the difference between serving and being OOM-killed. Costs some per-probe latency.",
+      "DRISHTI_FACE_MATCH_THRESHOLD": "Cosine similarity at/above which a gallery hit is shown to a reviewer. Calibrated against the enrolled gallery, NOT left at the code default: on the synthetic portrait set impostor pairs score materially higher than on real photographs, so the shipped default would admit false leads. See the calibration note in the runbook.",
+      "DRISHTI_FACE_STRONG_THRESHOLD": "Similarity at/above which the top hit is labelled a strong lead. Must be >= DRISHTI_FACE_MATCH_THRESHOLD."
     },
     "must_not_set_for_crud": [],
     "database_url_policy": "Prompt 23 Option A (hackathon deviation, documented): DATABASE_URL IS now set on the AppSail so it accesses the synthetic AWS RDS (drishti-db, ap-south-1) SERVER-TO-SERVER for the operational CRUD domains still on RDS (intake/cases/casework/evidence/chat/governance/etc. - deployment_boundary.py migration=rds_backed_migration_pending). The BROWSER never reaches RDS (browser -> API Gateway -> gateway_api -> signed context -> AppSail -> RDS). Chosen for live-demo completeness instead of the full Data Store migration. Bounded because: the DB is synthetic (verify_hackathon_startup enforces the synthetic_meta.app_environment marker at boot and refuses a non-synthetic DB), RLS is off by explicit hackathon request, and Board/Disaster remain Data Store-native. Revert by removing DATABASE_URL to fall back to Data-Store-only operational serving.",

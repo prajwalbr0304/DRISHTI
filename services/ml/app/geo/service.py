@@ -107,19 +107,22 @@ def hotspots(bbox: Optional[tuple] = None, start: Optional[dt.date] = None,
 def trends_series(district_id=None, head_id=None, sub_head_id=None,
                   start=None, end=None, window: int = 6, k: float = 2.0,
                   decompose: bool = True, district_ids=None,
-                  crime_head_ids=None) -> TrendResponse:
+                  crime_head_ids=None, unit_id=None) -> TrendResponse:
     """Monthly trend series, optionally confined to a seat's districts/heads.
 
     The returned ``scope`` echoes the confinement that was actually applied, so a
     caller can tell a range total from a single district's — otherwise a DIG's
-    figure is indistinguishable from a state figure on the wire.
+    figure is indistinguishable from a state figure on the wire. ``unit_id`` is the
+    station grain and is echoed for the same reason: an SHO's series and their
+    district's series are different numbers and must be distinguishable on the wire.
     """
     with db.ro_conn() as conn:
         periods, counts = trends.monthly_series(
             conn, district_id, head_id, sub_head_id, start, end,
-            district_ids=district_ids, crime_head_ids=crime_head_ids)
+            district_ids=district_ids, crime_head_ids=crime_head_ids,
+            unit_id=unit_id)
     scope = {"district_id": district_id, "crime_head_id": head_id,
-             "sub_head_id": sub_head_id,
+             "sub_head_id": sub_head_id, "unit_id": unit_id,
              "district_ids": list(district_ids) if district_ids is not None else None,
              "crime_head_ids": list(crime_head_ids) if crime_head_ids else None}
     if not periods:

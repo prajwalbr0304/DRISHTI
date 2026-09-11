@@ -18,7 +18,12 @@ import {
   useOutcomes, useStatePerformance,
 } from "@/routes/home/useStateCommandData";
 import { useCentrality } from "@/routes/home/useDashboardData";
+import {
+  kpiSources, useFlaggedFinance, useIdentityStats, useModelRegistry,
+  useReviewQueue, useSeatCount, useStagedImports, useUiOverrideCount,
+} from "@/routes/home/usePlatformData";
 import { usePatterns, useForecastBacktest } from "@/routes/analytics/useAnalyticsData";
+import type { ScopeType } from "@/config/roles";
 
 /* ============================================================================
    One hook that fetches every shared source once, and resolves a registry card
@@ -105,7 +110,13 @@ const ICONS: Record<string, ReactNode> = {
 
 export type KpiResolver = (spec: KpiSpec) => KpiCardProps;
 
-export function useKpiValues(): { resolve: KpiResolver } {
+/** @param scope the seat's scope type. Decides which of the non-operational
+ *  sources are FETCHED — the platform counters, the station approval inbox and the
+ *  financial-intelligence reads. Every hook below is still called unconditionally
+ *  (hooks must be); it is the request that is gated. Without it a station board
+ *  would issue admin requests it never asked for and render their 403s as errors. */
+export function useKpiValues(scope: ScopeType): { resolve: KpiResolver } {
+  const want = kpiSources(scope);
   const trends = useTrends();
   const alerts = useAlerts();
   const hotspots = useHotspots();
@@ -113,7 +124,10 @@ export function useKpiValues(): { resolve: KpiResolver } {
   const perf = useStatePerformance(WINDOW_DAYS);
   const outcomes = useOutcomes();
   const forecast = useForecastMap();
-  const backtest = useForecastBacktest();
+  /* Gated: the backtest is a held-out model evaluation, not a lookup, and only
+     the three Band-D cards read it. Ungated it ran on an SHO's and an IO's board
+     too, neither of which renders one. */
+  const backtest = useForecastBacktest(undefined, 1, 6, want.model);
   const contract = useContractAudit();
   const quality = useDataQualitySummary();
   const jurisdiction = useJurisdictionFreshness();
@@ -125,6 +139,15 @@ export function useKpiValues(): { resolve: KpiResolver } {
   const hearings = useNextHearings();
   const rollup = useDashboardRollup(WINDOW_DAYS);
   const rollupTotals = rollup.data?.totals;
+
+  /* Non-operational sources, fetched only on the boards that carry their cards. */
+  const seats = useSeatCount(want.platform);
+  const imports = useStagedImports(want.platform);
+  const models = useModelRegistry(want.platform);
+  const uiOverrides = useUiOverrideCount(want.platform);
+  const reviewQueue = useReviewQueue(want.review);
+  const flagged = useFlaggedFinance(want.financial);
+  const identity = useIdentityStats(want.financial);
 
   const totals = perf.data?.totals;
   const chargesheet = perf.data?.chargesheet;
@@ -435,6 +458,69 @@ export function useKpiValues(): { resolve: KpiResolver } {
           spark: trends.data?.series.map((p) => p.count),
           loading: trends.isLoading, error: trends.error,
           hint: `${spec.hint} The series is already confined to this wing's crime heads server-side.`,
+        };
+
+      /* --- cyber and financial ------------------------------------------ */
+      case "kpi-flagged-txn":
+        return {
+          ...base, value: flagged.data?.total,
+          loading: flagged.isLoading, error: flagged.error,
+          hint: `${spec.hint}${
+            flagged.data
+              ? ` Split by reason: ${Object.entries(flagged.data.by_reason)
+                  .map(([reason, n]) => `${reason} ${n}`)
+                  .join(", ")}.`
+              : ""}`,
+        };
+      case "kpi-money-trails":
+        return {
+          ...base,
+          /* Read off the same payload as the card above, not fetched separately.
+             `?? null` and not `?? 0`: an absent key means the detector recorded no
+             circular reason at all, which is a different fact from a run that found
+             none, and KpiCard shows an em-dash rather than a confident zero. */
+          value: flagged.data ? flagged.data.by_reason.circular ?? null : undefined,
+          loading: flagged.isLoading, error: flagged.error,
+          hint: `${spec.hint} Counted from the same flagged-transaction feed as the card beside it, so the two cannot disagree.`,
+        };
+      case "kpi-linked-accounts":
+        return {
+          ...base, value: identity.data?.network_edges,
+          loading: identity.isLoading, error: identity.error,
+          hint: `Entity-resolution links in the canonical graph${
+            identity.data
+              ? `, all ${identity.data.network_edges_provenanced.toLocaleString()} of them carrying provenance`
+              : ""}. An aggregate edge count — no persons, no identifiers.`,
+        };
+
+      /* --- station case work -------------------------------------------- */
+      case "kpi-review-queue":
+        return {
+          ...base, value: reviewQueue.data?.total,
+          loading: reviewQueue.isLoading, error: reviewQueue.error,
+        };
+
+      /* --- platform ----------------------------------------------------- */
+      case "kpi-active-seats":
+        return {
+          ...base, value: seats.data?.total,
+          loading: seats.isLoading, error: seats.error,
+        };
+      case "kpi-imports":
+        return {
+          ...base, value: imports.data?.total,
+          loading: imports.isLoading, error: imports.error,
+        };
+      case "kpi-models":
+        return {
+          ...base, value: models.data?.total,
+          loading: models.isLoading, error: models.error,
+        };
+      case "kpi-ui-overrides":
+        return {
+          ...base, value: uiOverrides.data?.items.length,
+          loading: uiOverrides.isLoading, error: uiOverrides.error,
+          hint: `${spec.hint} Counted across every role, not just this seat's: the question is how far this deployment has drifted from the shipped defaults.`,
         };
 
       /* --- not yet bound ------------------------------------------------ */

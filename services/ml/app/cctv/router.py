@@ -22,6 +22,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from . import guards, seed as seed_mod, service
+from .repo import CctvRepoError
 from .schemas import (AlertConfirmRequest, AlertDismissRequest, AnalyticsRunRequest,
                       CameraCreate, CameraPatch, DetectionIngestRequest,
                       DispatchProposeRequest, DispatchTransitionRequest,
@@ -40,6 +41,11 @@ def _call(fn, *args, **kwargs):
     except service.CctvValidation as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except service.CctvConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except CctvRepoError as exc:
+        # A persistence-layer refusal (append-only violation, missing row) is a
+        # real answer, not a crash — 409 keeps it distinguishable from the bare
+        # 500 that an unmapped exception used to produce.
         raise HTTPException(status_code=409, detail=str(exc))
 
 
@@ -62,7 +68,7 @@ def detection_types(_role: str = Depends(guards.require_cctv_read)):
 @router.get("/overview")
 def overview(district_id: Optional[int] = Query(None, ge=1),
              _role: str = Depends(guards.require_cctv_read)):
-    return service.overview(district_id=district_id)
+    return _call(service.overview, district_id=district_id)
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +79,8 @@ def list_cameras(district_id: Optional[int] = Query(None, ge=1),
                  status: Optional[str] = Query(None),
                  with_alerts_only: bool = Query(False),
                  _role: str = Depends(guards.require_cctv_read)):
-    return {"cameras": service.list_cameras(district_id=district_id, status=status,
-                                            with_alerts_only=with_alerts_only)}
+    return {"cameras": _call(service.list_cameras, district_id=district_id,
+                             status=status, with_alerts_only=with_alerts_only)}
 
 
 @router.get("/cameras/{camera_id}")
@@ -111,7 +117,8 @@ def retire_camera(camera_id: int, request: Request,
 def list_responders(district_id: Optional[int] = Query(None, ge=1),
                     status: Optional[str] = Query(None),
                     _role: str = Depends(guards.require_cctv_read)):
-    return {"responders": service.list_patrol_units(district_id=district_id, status=status)}
+    return {"responders": _call(service.list_patrol_units, district_id=district_id,
+                                status=status)}
 
 
 @router.post("/responders", status_code=201)
@@ -129,8 +136,8 @@ def nearest_responders(lon: float = Query(..., ge=-180.0, le=180.0),
                        limit: int = Query(5, ge=1, le=25),
                        _role: str = Depends(guards.require_cctv_read)):
     """Preview the nearest-responder ranking. Persists nothing."""
-    return service.responder_candidates(lon, lat, district_id=district_id,
-                                        max_distance_km=max_distance_km, limit=limit)
+    return _call(service.responder_candidates, lon, lat, district_id=district_id,
+                 max_distance_km=max_distance_km, limit=limit)
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +149,8 @@ def list_detections(camera_id: Optional[int] = Query(None, ge=1),
                     district_id: Optional[int] = Query(None, ge=1),
                     limit: int = Query(100, ge=1, le=1000),
                     _role: str = Depends(guards.require_cctv_read)):
-    return {"detections": service.list_detections(
-        camera_id=camera_id, detection_type=detection_type,
+    return {"detections": _call(
+        service.list_detections, camera_id=camera_id, detection_type=detection_type,
         district_id=district_id, limit=limit)}
 
 
@@ -185,9 +192,10 @@ def list_alerts(status: Optional[str] = Query(None),
                 min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0),
                 limit: int = Query(200, ge=1, le=1000),
                 _role: str = Depends(guards.require_cctv_read)):
-    return {"alerts": service.list_alerts(
-        status=status, district_id=district_id, camera_id=camera_id,
-        detection_type=detection_type, min_confidence=min_confidence, limit=limit)}
+    return {"alerts": _call(
+        service.list_alerts, status=status, district_id=district_id,
+        camera_id=camera_id, detection_type=detection_type,
+        min_confidence=min_confidence, limit=limit)}
 
 
 @router.get("/alerts/{alert_id}")
@@ -233,8 +241,9 @@ def list_dispatches(alert_id: Optional[int] = Query(None, ge=1),
                     district_id: Optional[int] = Query(None, ge=1),
                     limit: int = Query(200, ge=1, le=1000),
                     _role: str = Depends(guards.require_cctv_read)):
-    return {"dispatches": service.list_dispatches(
-        alert_id=alert_id, status=status, district_id=district_id, limit=limit)}
+    return {"dispatches": _call(
+        service.list_dispatches, alert_id=alert_id, status=status,
+        district_id=district_id, limit=limit)}
 
 
 @router.post("/alerts/{alert_id}/dispatch/propose")
@@ -268,7 +277,7 @@ def transition_dispatch(dispatch_id: int, req: DispatchTransitionRequest, reques
 @router.get("/activity")
 def activity(limit: int = Query(100, ge=1, le=500),
              _role: str = Depends(guards.require_cctv_read)):
-    return {"activity": service.recent_activity(limit=limit)}
+    return {"activity": _call(service.recent_activity, limit=limit)}
 
 
 @router.post("/demo/seed")

@@ -6,6 +6,7 @@ import { api } from "@/api";
 import { errorMessage } from "@/api/contracts";
 import { cn, formatNumber } from "@/lib/utils";
 import { roleCan } from "@/config/roles";
+import { useSeatKey } from "@/hooks/useSeatKey";
 import { useRole } from "@/providers/RoleProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ const PAGE_SIZE = 25;
 export function CaseExplorer() {
   const { role } = useRole();
   const navigate = useNavigate();
+  const seatKey = useSeatKey();
 
   const [filters, setFilters] = useState<CaseFilters>({});
   const [page, setPage] = useState(1);
@@ -41,8 +43,10 @@ export function CaseExplorer() {
   // server enforces the same decision). INTERIM: every role holds `case_read`.
   const canReadCases = roleCan(role, "case_read");
 
+  // Seat-keyed: /cases/filters is confined to the caller's jurisdiction, so the
+  // rail must not offer districts and stations belonging to a previously-open seat.
   const optionsQ = useQuery({
-    queryKey: ["cases", "filters"],
+    queryKey: ["cases", "filters", seatKey],
     queryFn: ({ signal }) => api.cases.filters(signal),
     enabled: canReadCases,
     staleTime: 10 * 60_000,

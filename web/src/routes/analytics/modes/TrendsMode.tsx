@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/dashboard/KpiCard";
 import { NativeSelect } from "@/components/ui/native-select";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { DecompositionChart } from "@/components/charts/DecompositionChart";
+import { useScopedDistricts } from "@/hooks/useDistricts";
 import { useFilterOptions, useTrends, type TrendScope } from "@/routes/analytics/useAnalyticsData";
 
 /* Trends (doc 01 §4.6 / doc 03 §2.3): crime volume over time by head / sub-head /
@@ -15,6 +16,7 @@ import { useFilterOptions, useTrends, type TrendScope } from "@/routes/analytics
 export function TrendsMode() {
   const askAbout = useUIStore((s) => s.askAbout);
   const filters = useFilterOptions();
+  const scopedDistricts = useScopedDistricts();
 
   const [districtId, setDistrictId] = useState<string>("");
   const [headId, setHeadId] = useState<string>("");
@@ -53,12 +55,19 @@ export function TrendsMode() {
     <div className="space-y-4">
       {/* Scope selectors */}
       <div className="flex flex-wrap items-end gap-3">
+        {/* Bounded by the seat, and labelled by it. A seat posted to one district
+            gets that district's name on the empty option rather than "All
+            districts": leaving the select empty still returns exactly that
+            district, because the server confines the series either way. */}
         <Field label="District">
           <NativeSelect
             value={districtId}
             onChange={setDistrictId}
-            options={(filters.data?.districts ?? []).map((d) => ({ value: String(d.id), label: d.name ?? `District ${d.id}` }))}
-            placeholder="All districts"
+            options={scopedDistricts.districts.map((d) => ({
+              value: String(d.id),
+              label: d.name,
+            }))}
+            placeholder={scopedDistricts.allLabel}
             aria-label="District"
             className="w-48"
           />
